@@ -16,10 +16,17 @@ websites he already uses in other tabs.
 
 ## Current status
 
-**Single-code login (v0.6.0).** The whole app opens with one shared code —
-`TRUSTX` — typed on `login.html`. Entering it signs the browser in to
-Firestore (anonymous auth) and grants **full access to everything**,
-including the **Developer console** (`admin.html`):
+**Trusted-device login (v0.7.0).** One shared code opens the whole app. The
+first time a browser enters the code it becomes a **trusted device**: it
+stores a random 256-bit credential locally and skips the code on every later
+visit — until someone revokes it from the Developer console. The access code
+itself now lives **server-side** (`settings/security`): Firestore rules verify
+enrollment, so the code constant in the client is only a default and no
+plaintext secret is ever readable from the app source.
+
+The Developer console (`admin.html`) gives code-signed-in devices **full
+access**, including a **Trusted devices** manager (revoke/restore/remove any
+browser) and:
 
 - **Services**: add, rename, re-price, archive/restore the catalog.
 - **All data**: transactions (per day or most recent) with totals, plus the
@@ -41,20 +48,23 @@ NET = today's collections − today's expenses (dues are money not yet
 received and are excluded).
 
 > **Deploy required:** run `firebase deploy --only firestore` first — the
-> rules move from the account/membership model to the code model. The
-> composite index behind today's list (`dateKey` ASC + `createdAt` DESC) is
-> unchanged. Existing `members/`, `pendingMembers/` and `settings/security`
-> documents are no longer used (denied by the rules) but can stay in place.
+> rules now add the trust registry (`settings/security`, `enrollments/**`,
+> `devices/**`) and allow the auto-login gate to read a device doc by its
+> unguessable hash id before any session exists. The composite index behind
+> today's list (`dateKey` ASC + `createdAt` DESC) is unchanged. Existing
+> `members/`, `pendingMembers/` and old `settings/security` documents are no
+> longer used (denied by the rules) but can stay in place. Every already
+> enrolled browser re-verifies once with the code after this deploy.
 
 ## Project structure
 
 ```
 /
-├── index.html            Entry point (boot / auth routing / setup notice)
-├── login.html            Single-code sign in (enter the shop code)
+├── index.html            Entry point (trusted-device gate / auth routing)
+├── login.html            Shop-code sign in (enrolls this browser as trusted)
 ├── dashboard.html        App shell, today's figures, quick services
 ├── transactions.html     Record a sale (new transaction entry + today's list)
-├── admin.html            Developer console (services + all data)
+├── admin.html            Developer console (services, trusted devices, all data)
 ├── css/
 │   ├── style.css         Design tokens + core components
 │   ├── forms.css         Inputs, selects, chips, auth page
@@ -64,7 +74,7 @@ received and are excluded).
 │   └── responsive.css    Desktop-first, mobile fallback
 ├── js/
 │   ├── firebase.js       Firebase config, lazy SDK load, offline persistence
-│   ├── auth.js           Single-code sign-in, shop record bootstrap
+│   ├── auth.js           Code sign-in, trusted-device enrollment/check, shop bootstrap
 │   ├── ledger.js         Transactions/services reads + writes + day summary
 │   ├── admin.js          Developer console rendering
 │   ├── shell.js          Shared protected-page bootstrap (chip, sync, keys)
@@ -94,6 +104,9 @@ All collections are top-level — there is no `shops/` path:
 | Path | Read | Write |
 |---|---|---|
 | `settings/general` | code-signed-in devices | auto-created on first use; any signed-in device may edit |
+| `settings/security` | **never readable or writable by clients** | seeded with the default code on first use; enrollment rules compare against it server-side |
+| `enrollments/{nonce}` | denied | one-time proof-of-code (single use, owner-burn) during first-time device setup |
+| `devices/{tokenHash}` | signed-in devices (list); unauthenticated GET **by unguessable hash id** (the auto-login gate) | enrollment creates; owner heartbeats/renames/restores; any signed-in device may revoke or remove |
 | `transactions/{txnId}` | code-signed-in devices | signed-in, server-validated (`createdBy == uid`, money checks) |
 | `services/{serviceId}` | code-signed-in devices | signed-in; `delete` always denied (archive via `active=false`) |
 | `expenses/{expId}` | code-signed-in devices | (writing arrives in a later build) |
@@ -157,24 +170,47 @@ firebase deploy --only firestore     # rules + indexes
 ## Access
 
 The whole shop opens with one shared code: **`TRUSTX`** (case-insensitive,
-no spaces — `trustx` works).
+no spaces — `trustx` works). It is the code seeded into
+`settings/security` on first use; Firestore rules compare an enrollment
+attempt against it, so approval happens on the server, not in page scripts.
 
-- **How it works:** type the code on `login.html`. It is checked against the
-  constant `SHOP_CODE` in `js/auth.js`; if it matches, the browser signs in
-  to Firebase **anonymously** and creates a persistent device session, so a
-  shop computer stays signed in once set up. Everyone who has the code gets
-  **full access**, including the Developer console.
-- **No accounts, no roles, no members.** The `members/`, `pendingMembers/`
-  and `settings/security` collections from earlier builds are gone; old data
-  in those paths is simply unreachable.
-- **Honest trade-off:** because the code is a fixed constant checked in the
-  browser, anyone who reads the app source can bypass it. Firestore does not
-  treat it as a security boundary — its rules require a signed-in (anonymous)
-  user and enforce record integrity (typed fields, `createdBy == uid`,
-  `total == quantity * rate`, service must exist and be active, no deletes).
+**How it works:**
+
+1. **First visit (`login.html`):** enter the code. The app signs in
+   anonymously (a real Firebase session) and writes a one-time
+   `enrollments/{nonce}` proof-of-code. The rules only accept it if the
+   submitted code equals the code stored in `settings/security`. It then
+   creates an **active** `devices/{tokenHash}` doc — where `tokenHash` is
+   the SHA-256 of a fresh 256-bit random token kept **only in the browser's
+   IndexedDB** (never in localStorage, URLs, or the network) — and burns the
+   enrollment.
+2. **Later visits (`index.html`):** the trust gate hashes the stored token
+   and reads `devices/<hash>` **before any session exists** (the id itself
+   is the proof — it is unguessable). If the doc exists and is `active`, the
+   app signs in automatically and you land on the dashboard. No code typed.
+3. **Revoked or removed browsers** land on `login.html` and must enter the
+   code again; re-verification issues a brand-new token. `/transactions`,
+   `/dashboard` and `/admin` are trust-gated too, so a revoked session is
+   redirected even if the browser kept an old anonymous session.
+4. **Managing devices:** any signed-in device can open the Developer console →
+   **Trusted devices** and revoke / restore / remove any browser (that's the
+   "what if the code leaks?" valve: revoke everything, then re-verify on the
+   trusted computer).
+
+- **No accounts, no roles, no members.** Everyone who proves the code gets
+  **full access**, including the Developer console. `members/` and
+  `pendingMembers/` from earlier builds are gone; old data in those paths is
+  unreachable.
+- **Honest trade-offs:** the shared code is see-and-share (anyone who gets it
+  can enroll a device), and a device credential is only as safe as the
+  browser profile holding it. The code is never stored or transmitted in
+  plaintext in the app source past the default seed; brute-forcing enrollment
+  is limited by single-use nonces and short-lived anonymous sessions, and
+  hardened further with Firebase **App Check** (recommended for production).
   Keep the code private among the people who use the shop.
-- **Sign out** returns to the login screen; the same browser can sign back in
-  with the code (its session normally persists).
+- **Sign out** returns to the login screen. Because the browser stays a
+  trusted device, it signs back in automatically — to stop that on a given
+  computer, revoke it from the Developer console (or clear the site data).
 
 ## Tests
 
@@ -205,10 +241,16 @@ hardening pass.
   global keys, and ensures the shop record exists.
 - The Developer console lives in `js/admin.js`:
   `renderAdminPage(ctx)` — service maintenance and the all-data browser.
-- Sign-in lives in `js/auth.js`:
-  `SHOP_CODE` (the constant), `isCorrectCode(input)`, `signInAnonymous()`,
-  `ensureShopRecord()` (silently creates `settings/general` on first use),
-  `getGeneral()`.
+- Sign-in and trusted devices live in `js/auth.js`:
+  `SHOP_CODE` (the seeded default), `signInAnonymous()`,
+  `ensureShopRecord()` (silently creates `settings/general` and seeds
+  `settings/security` on first use), `getGeneral()`,
+  `enrollDevice({ label })` (server-verified, stores the credential),
+  `checkTrustedDevice()` (capability read of `devices/<hash>`),
+  `listTrustedDevices()`, `revokeDevice/restoreDevice/removeDevice`,
+  `updateDeviceLastUsed(hash)`, `generateDeviceToken()`, plus the
+  IndexedDB helpers (`loadDeviceCredential`, `saveDeviceCredential`,
+  `clearDeviceCredential`) and `canStoreDeviceCredential()`.
 - Ledger data lives in `js/ledger.js`:
   `fetchTodaySummary(dateKey?)`, `fetchServices({ includeInactive })`,
   `createTransaction({ serviceId, serviceName, quantity, rate, paymentMethod,
@@ -230,14 +272,25 @@ hardening pass.
 
 - **"Firebase is not configured yet."** — Replace the `YOUR_*` values in
   `js/firebase.js` (see *Connect Firebase* above).
-- **"Shop code not recognised."** — the code you typed isn't `TRUSTX`.
-  Try again, or open `js/auth.js` and change `SHOP_CODE` (then redeploy).
+- **"That code is not recognised."** — the code you typed doesn't match the
+  code stored in `settings/security`. The default seed is `TRUSTX`; it can
+  only be changed from the Firebase console (edit the `security` document)
+  or by re-seeding — there is intentionally no in-app setter.
+- **`auth/configuration-not-found`** — the Firebase project behind your web
+  API key isn't available to the browser SDK. Confirm the key in
+  `js/firebase.js` is the real Web API key for your project, the right
+  project is selected, and **Authentication → Sign-in method → Anonymous**
+  is enabled, then redeploy.
+- **A trusted browser suddenly asks for the code again** — either someone
+  revoked/removed it from the Developer console, or the browser's site data
+  (and so the credential) was cleared.
 - **Blank page / console silence** — open the browser console (F12) and look
   for a red error; report the message.
-- **Rules blocked a read/write** — rules deny signed-out access and anything
-  not type-safe. A save failing on `createTransaction` with a money mismatch
-  normally means a service's `pricePaise` in Firestore isn't an integer —
-  re-add the service from the Developer console.
+- **Rules blocked a read/write** — rules deny everything not strictly type-safe
+  and signed-in (or a capability GET of a device doc by its exact hash id). A
+  save failing on `createTransaction` with a money mismatch normally means a
+  service's `pricePaise` in Firestore isn't an integer — re-add the service
+  from the Developer console.
 
 ## Roadmap (this 10-part build)
 
@@ -254,3 +307,5 @@ hardening pass.
 8. Daily closing
 9. Reports & service statistics
 10. Settings polish, security-rule tests, deployment hardening
+    (v0.7.0 added the trusted-device registry; per-IP brute-force rate
+    limiting remains a **Firebase App Check** recommendation for production).

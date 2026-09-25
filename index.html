@@ -43,7 +43,13 @@
 
   <script type="module">
     import { isConfigured, initFirebase } from "./js/firebase.js";
-    import { initAuth, getCurrentUser, reportError } from "./js/auth.js";
+    import {
+      initAuth,
+      signInAnonymous,
+      checkTrustedDevice,
+      updateDeviceLastUsed,
+      reportError,
+    } from "./js/auth.js";
 
     const bootArea = document.getElementById("bootArea");
 
@@ -66,8 +72,16 @@
     } else {
       initFirebase()
         .then(() => initAuth())
-        .then(() => {
-          window.location.replace(getCurrentUser() ? "dashboard.html" : "login.html");
+        .then(() => checkTrustedDevice())
+        .then((trust) => {
+          if (!trust.trusted) {
+            window.location.replace("login.html");
+            return;
+          }
+          return signInAnonymous().then(() => {
+            updateDeviceLastUsed(trust.tokenHash);
+            window.location.replace("dashboard.html");
+          });
         })
         .catch((err) => {
           console.error("[seva-ledger] boot failed:", err);

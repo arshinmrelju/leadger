@@ -37,7 +37,7 @@
       <div class="field">
         <label for="codeInput">Shop code</label>
         <input class="input code-input input-lg" id="codeInput" name="code" type="password" autocomplete="one-time-code" maxlength="32" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" autocapitalize="characters" />
-        <span class="field-hint">Enter the shop code to open the ledger.</span>
+        <span class="field-hint">Enter the shop code to open the ledger; this browser is then trusted for future visits.</span>
       </div>
       <button type="submit" class="btn btn-accent btn-block btn-lg" id="codeSubmitBtn">Open ledger</button>
     </form>
@@ -47,10 +47,9 @@
     import { isConfigured, initFirebase } from "./js/firebase.js";
     import {
       initAuth,
-      onAuthStateChange,
-      getCurrentUser,
       signInAnonymous,
-      isCorrectCode,
+      enrollDevice,
+      signOut,
       reportError,
     } from "./js/auth.js";
 
@@ -74,7 +73,7 @@
     }
 
     function goDashboard() {
-      if (getCurrentUser()) window.location.replace("dashboard.html");
+      window.location.replace("dashboard.html");
     }
 
     async function boot() {
@@ -91,6 +90,8 @@
       const params = new URLSearchParams(window.location.search);
       if (params.get("reason") === "signedout") {
         showAlert("You have been signed out.", "info");
+      } else if (params.get("reason") === "untrusted") {
+        showAlert("This browser is no longer trusted. Enter the shop code to trust it again.", "info");
       }
 
       try {
@@ -102,12 +103,10 @@
         return;
       }
 
-      /* A valid session already exists (the code was entered before):
-         go straight in. Anonymous sessions are only created AFTER the
-         code passes, so this cannot bypass the code. */
-      onAuthStateChange((user) => {
-        if (user) goDashboard();
-      });
+      /* Deliberately NO auto-redirect on an existing session: a revoked
+         device may still carry a persisted anonymous session, and the
+         only way back in is the code. The index.html trust gate routes
+         here whenever this browser is not an active trusted device. */
     }
 
     boot();
@@ -120,18 +119,19 @@
         showAlert("Enter the shop code.");
         return;
       }
-      if (!isCorrectCode(code)) {
-        showAlert("That code is not recognised.");
-        codeInput.focus();
-        codeInput.select();
-        return;
-      }
       setBtnLoading(true);
       try {
+        /* The session is created only to satisfy the enrollment rules;
+           whether the code is actually right is decided server-side.
+           On failure we drop the provisional session again. */
         await signInAnonymous();
+        await enrollDevice({ label: "" });
         goDashboard();
       } catch (err) {
+        await signOut().catch(() => {});
         showAlert(reportError(err));
+        codeInput.focus();
+        codeInput.select();
         setBtnLoading(false);
       }
     });

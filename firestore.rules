@@ -6,11 +6,16 @@ rules_version = '2';
 // SINGLE-SHOP (flat) model. There is no per-shop namespace; this
 // instance IS one shop.
 //
-// Simple trust model: the whole shop opens with one shared code
-// (TRUSTX) which is verified in the BROWSER before an anonymous
-// session is created. Firestore's job here is record integrity,
-// not access tiers:
-//   * Only signed-in (anonymous, code-gated) users touch data.
+// Simple trust model: the shop opens with one shared code, verified
+// SERVER-SIDE at enrollment. A browser that proves the code once mints
+// a 256-bit random token (kept only in its IndexedDB); the token's
+// sha256 is a devices/<hash> document that auto-authenticates it on
+// later visits. Firestore's job here is record integrity and the
+// trust registry:
+//   * The auto-login gate can GET a device doc anonymously because its
+//     id is an unguessable 256-bit capability; a real session is only
+//     created for trusted/verified devices, so data stays code-gated.
+//   * Only signed-in (anonymous) devices touch data.
 //   * Every document is strongly typed and non-forgeable on the
 //     server: createdBy == request.auth.uid, createdAt == request.time,
 //     transactions money stays integer paise with
@@ -20,11 +25,14 @@ rules_version = '2';
 //
 // Data model covered here:
 //   settings/general               shop identity (auto-created on first use)
+//   settings/security              the access code (server-side only; never client-readable)
+//   enrollments/{nonce}            one-time proof-of-code (single use)
+//   devices/{tokenHash}            trusted-device registry (auto-login + revocation)
 //   transactions/{txnId}           sales
 //   services/{serviceId}           service catalog
 //   expenses/{expId}               spends (read-only this build)
 //
-// The old members/ and settings/security collections are no longer
+// The old members/ and pendingMembers/ collections are no longer
 // used; the deny-all tail below keeps them unreachable.
 // =============================================================
 
@@ -33,6 +41,10 @@ service cloud.firestore {
 
     function signedIn() {
       return request.auth != null;
+    }
+
+    function unsigned() {
+      return request.auth == null;
     }
 
     function validGeneralDoc(doc) {
@@ -57,15 +69,27 @@ service cloud.firestore {
     // time any code-signed-in device opens the app (see auth.js
     // ensureShopRecord). Update is open to any signed-in device — one
     // shop, one identity.
+    // `security` carries the access code used for device enrollment.
+    // It is NEVER readable or writable by clients after creation:
+    // only the rules engine compares it to an enrollment attempt, so
+    // the code itself never leaves Firestore's server boundary.
     match /settings/{docId} {
-      allow get, list: if signedIn();
+      allow get, list: if signedIn() && docId != 'security';
 
       allow create: if signedIn()
-        && docId == 'general'
-        && !exists(/databases/$(database)/documents/settings/general)
-        && validGeneralDoc(request.resource.data)
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.createdBy == request.auth.uid;
+        && (
+            (docId == 'general'
+             && !exists(/databases/$(database)/documents/settings/general)
+             && validGeneralDoc(request.resource.data)
+             && request.resource.data.createdAt == request.time
+             && request.resource.data.createdBy == request.auth.uid)
+            || (docId == 'security'
+                && !exists(/databases/$(database)/documents/settings/security)
+                && request.resource.data.keys().hasOnly(['accessCode', 'createdAt', 'createdBy'])
+                && request.resource.data.accessCode.matches('^[A-Z0-9]{4,12}$')
+                && request.resource.data.createdAt == request.time
+                && request.resource.data.createdBy == request.auth.uid)
+          );
 
       allow update: if signedIn()
         && docId == 'general'
@@ -74,6 +98,111 @@ service cloud.firestore {
         && request.resource.data.createdBy == resource.data.createdBy;
 
       allow delete: if false;
+    }
+
+    // ---------------- Device enrollment (proof-of-code, single use) ----------------
+    // First-time devices prove possession of the access code by writing
+    // a one-time enrollment nonce. The rules compare the submitted
+    // `verifiedCode` against settings/security.accessCode server-side.
+    // The client then creates the actual `devices` document keyed to
+    // this enrollment, marks it `used`, and deletes it. The code is
+    // never persisted anywhere a client can read.
+    match /enrollments/{nonce} {
+      allow create: if signedIn()
+        && nonce.matches('^[a-f0-9]{32}$')
+        && request.resource.data.keys().hasOnly(['verifiedCode', 'createdAt', 'createdBy', 'used'])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.used == false
+        && exists(/databases/$(database)/documents/settings/security)
+        && get(/databases/$(database)/documents/settings/security).data.accessCode
+             == request.resource.data.verifiedCode;
+
+      allow get, list: if false;
+
+      // Only the owner flips `used` after the device doc exists.
+      allow update: if signedIn()
+        && request.auth.uid == resource.data.createdBy
+        && request.resource.data.keys().hasOnly(['used', 'deviceHash'])
+        && request.resource.data.used == true
+        && request.resource.data.deviceHash is string
+        && request.resource.data.deviceHash.matches('^[a-f0-9]{64}$');
+
+      allow delete: if signedIn() && request.auth.uid == resource.data.createdBy;
+    }
+
+    // ---------------- Trusted devices ----------------
+    // A recognized browser holds a 256-bit random token whose SHA-256
+    // is this document id. The id is UNGUESSABLE (2^256), so it acts as
+    // a capability: an unauthenticated visitor may GET a device doc by
+    // id to run the auto-login gate BEFORE creating any session, while
+    // listing is reserved for signed-in devices. An ACTIVE
+    // devices/<tokenHash> doc enables automatic sign-in without the
+    // access code; revocation (active = false) or removal forces
+    // verification again. The network/client fields are coarse
+    // metadata only (no IP, no fingerprinting).
+    match /devices/{tokenHash} {
+      function validDeviceCreateDoc(doc) {
+        return doc.keys().hasOnly([
+              'tokenHash', 'uid', 'label', 'client', 'network',
+              'createdAt', 'createdBy', 'lastUsedAt', 'lastUsedNetwork',
+              'active', 'enrollmentId'
+            ])
+          && doc.tokenHash is string && doc.tokenHash.matches('^[a-f0-9]{64}$') && doc.tokenHash == tokenHash
+          && doc.uid is string && doc.uid == request.auth.uid && doc.uid == doc.createdBy
+          && doc.label is string && doc.label.size() >= 1 && doc.label.size() <= 80
+          && doc.client is map
+          && doc.client.keys().hasOnly(['ua', 'lang'])
+          && doc.client.ua is string && doc.client.ua.size() <= 100
+          && doc.client.lang is string && doc.client.lang.size() <= 40
+          && doc.network is map
+          && doc.network.keys().hasOnly(['type', 'saveData', 'online'])
+          && doc.network.type is string && doc.network.type.size() <= 20
+          && doc.network.saveData is bool
+          && doc.network.online is bool
+          && doc.active == true
+          && doc.enrollmentId is string && doc.enrollmentId.matches('^[a-f0-9]{32}$')
+          && exists(/databases/$(database)/documents/enrollments/$(doc.enrollmentId))
+          && get(/databases/$(database)/documents/enrollments/$(doc.enrollmentId)).data.createdBy == request.auth.uid
+          && doc.createdBy == request.auth.uid
+          && doc.createdAt == request.time
+          && doc.lastUsedAt == request.time;
+      }
+
+      allow read: if signedIn();
+      // Capability read: the 64-hex doc id is the sha256 of a 256-bit
+      // random token held only by the trusted browser, so knowing the
+      // id == owning the credential before any session exists.
+      allow get: if unsigned();
+
+      allow create: if signedIn()
+        && validDeviceCreateDoc(request.resource.data)
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.used == false;
+
+      allow update: if signedIn()
+        && (
+            // Any signed-in device may revoke (active true -> false).
+            (request.resource.data.active == false
+             && resource.data.active == true
+             && request.resource.data.keys().hasOnly(['active']))
+            ||
+            // The owning device maintains heartbeat / rename / restore.
+            (request.auth.uid == resource.data.createdBy
+             && request.resource.data.keys().hasOnly(['lastUsedAt', 'lastUsedNetwork', 'label', 'active'])
+             && request.resource.data.lastUsedAt == request.time
+             && request.resource.data.lastUsedNetwork is map
+             && request.resource.data.lastUsedNetwork.keys().hasOnly(['type', 'saveData', 'online'])
+             && request.resource.data.lastUsedNetwork.type is string
+             && request.resource.data.lastUsedNetwork.type.size() <= 20
+             && request.resource.data.lastUsedNetwork.saveData is bool
+             && request.resource.data.lastUsedNetwork.online is bool
+             && request.resource.data.label is string && request.resource.data.label.size() >= 1 && request.resource.data.label.size() <= 80
+             && request.resource.data.active is bool)
+          );
+
+      // Full removal (cleanup). The audit-friendly path is revoke
+      // (active = false) which any signed-in device can do above.
+      allow delete: if signedIn();
     }
 
     // ---------------- Transactions ----------------
@@ -199,8 +328,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Everything else (members, pendingMembers, settings/security, …)
-    // is denied by default.
+    // Everything else (members, pendingMembers, …) is denied by default.
     match /{document=**} {
       allow read, write: if false;
     }

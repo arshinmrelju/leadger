@@ -3,16 +3,16 @@
    -----------------------------------------------------------------
    Shared by dashboard.html, transactions.html and admin.html. Owns:
      - auth guard + session-loss redirect
-     - the shared-code login (single shop; everyone has full access)
+     - trusted-device gate (revocation enforced even with a session)
      - user chip + shop name + date + sync pill
      - online/offline listeners and Kolkata day rollover
      - Ctrl/Cmd+N "new transaction" shortcut
    Pages call initAppShell(...) and receive a rendering context once
-   the code-signed-in session is active.
+   the trusted-device session is active.
    ========================================================= */
 
 import { toast, confirm, setSyncState } from "./app.js";
-import { escapeHtml, formatKolkataLong, todayKolkata } from "./utils.js";
+import { escapeHtml, formatKolkataLong, todayKolkata, debounce } from "./utils.js";
 import {
   requireAuth,
   guardPage,
@@ -21,6 +21,8 @@ import {
   signOut,
   ensureShopRecord,
   getGeneral,
+  checkTrustedDevice,
+  updateDeviceLastUsed,
   reportError,
 } from "./auth.js";
 
@@ -161,6 +163,16 @@ export async function initAppShell({ onReady, onDayChange } = {}) {
   guardPage("login.html");
   registerGlobalKeys();
 
+  /* Trust gate: a protected page must belong to an active trusted
+     device — even when a session exists. A revoked device still has a
+     persisted anonymous session, so this check (not the auth state) is
+     what forces it to the code screen. */
+  const trust = await checkTrustedDevice();
+  if (!trust.trusted) {
+    window.location.replace("login.html?reason=untrusted");
+    return;
+  }
+
   const real = getCurrentUser() || user;
   renderUserChip(real);
 
@@ -172,10 +184,16 @@ export async function initAppShell({ onReady, onDayChange } = {}) {
     wireConnection(typeof onDayChange === "function" ? onDayChange : null);
     setSyncState(navigator.onLine ? "online" : "offline");
 
+    /* Fire-and-forget heartbeat so the admin device list stays fresh. */
+    const beat = debounce(() => updateDeviceLastUsed(trust.tokenHash), 400);
+    beat();
+    setInterval(beat, 5 * 60 * 1000);
+
     const ctx = {
       user: real,
       general,
       isAdmin: true,
+      trust,
     };
     await onReady(ctx);
   } catch (err) {
