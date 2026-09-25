@@ -13,7 +13,7 @@ import { isConfigured, initFirebase } from "./firebase.js";
 
 export const APP = {
   name: "SEVA LEDGER",
-  version: "0.4.0",
+  version: "0.5.0",
   currency: "INR",
   currencySymbol: "\u20B9",
   timezone: "Asia/Kolkata",

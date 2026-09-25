@@ -172,14 +172,19 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
 }
 
 /** Best-effort read of the quick-service catalog, active first. */
-export async function fetchServices() {
+export async function fetchServices({ includeInactive = false } = {}) {
   const b = await getFirebridge();
   const fs = b.firestore;
   const snap = await fs.getDocs(fs.collection(b.db, "services"));
-  return snap.docs
+  const list = snap.docs
     .map((d) => normalizeService(d.id, d.data()))
-    .filter((s) => s.active)
-    .sort((x, y) => x.sortOrder - y.sortOrder || String(x.name).localeCompare(String(y.name)));
+    .sort(
+      (x, y) =>
+        (x.active ? 0 : 1) - (y.active ? 0 : 1) ||
+        x.sortOrder - y.sortOrder ||
+        String(x.name).localeCompare(String(y.name))
+    );
+  return includeInactive ? list : list.filter((s) => s.active);
 }
 
 /* ------------------------------------------------------------------
@@ -278,6 +283,64 @@ export async function createTransaction({
 
   await fs.setDoc(fs.doc(b.db, "transactions", txnId), doc);
   return { txnId, totalPaise, status: doc.status };
+}
+
+/**
+ * Edit a service (Developer only — the rules enforce it). Pass only the
+ * fields you want to change: `name`, `price` (rupees), `active`.
+ */
+export async function updateService(serviceId, { name, price, active } = {}) {
+  const b = await getFirebridge();
+  const fs = b.firestore;
+  if (!serviceId) throw new Error("Missing service id.");
+  const user = b.auth.currentUser;
+
+  const patch = {};
+  if (name !== undefined) {
+    const clean = String(name).trim();
+    if (!clean || clean.length > 80) throw new Error("Service name must be 1–80 characters.");
+    patch.name = clean;
+  }
+  if (price !== undefined) {
+    const pricePaise = rateToPaise(price);
+    if (pricePaise === null) throw new Error("Enter a valid rate for the service.");
+    patch.pricePaise = pricePaise;
+  }
+  if (active !== undefined) patch.active = active === true;
+  if (!Object.keys(patch).length) return { serviceId };
+
+  patch.updatedAt = fs.serverTimestamp();
+  patch.updatedBy = user ? user.uid : "";
+  await fs.updateDoc(fs.doc(b.db, "services", serviceId), patch);
+  return { serviceId, ...patch };
+}
+
+/**
+ * Read transactions for the all-data browser. With a `dateKey`, uses the
+ * (dateKey, createdAt DESC) index; without one, reads the most recent
+ * docs across all dates (orderBy createdAt DESC only).
+ */
+export async function fetchTransactions({ dateKey = null, limit = 200 } = {}) {
+  const b = await getFirebridge();
+  const fs = b.firestore;
+  const base = fs.collection(b.db, "transactions");
+  const q = dateKey
+    ? fs.query(base, fs.where("dateKey", "==", dateKey), fs.orderBy("createdAt", "desc"), fs.limit(limit))
+    : fs.query(base, fs.orderBy("createdAt", "desc"), fs.limit(limit));
+  const snap = await fs.getDocs(q);
+  return snap.docs.map((d) => normalizeTxn(d.id, d.data()));
+}
+
+/** Read expenses for the all-data browser. */
+export async function fetchExpenses({ dateKey = null, limit = 200 } = {}) {
+  const b = await getFirebridge();
+  const fs = b.firestore;
+  const base = fs.collection(b.db, "expenses");
+  const q = dateKey
+    ? fs.query(base, fs.where("date", "==", dateKey), fs.limit(limit))
+    : fs.query(base, fs.orderBy("createdAt", "desc"), fs.limit(limit));
+  const snap = await fs.getDocs(q);
+  return snap.docs.map((d) => normalizeExpense(d.id, d.data()));
 }
 
 /**

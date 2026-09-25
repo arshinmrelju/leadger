@@ -16,24 +16,23 @@ websites he already uses in other tabs.
 
 ## Current status
 
-**Transactional build (Part 4 of 10).** A single shop records real sales on a
-dedicated `/transactions` page and sees them reflected on the dashboard
-immediately — all real Firestore reads/writes, no mock data.
+**Developer console (Part 5 of 10).** A separate role-gated `admin.html`
+gives the **developer** (the `ADMIN` role — *not* the shop owner) a full
+management console, while the dashboard stays operational-only:
 
-- **Record a sale** in seconds: pick a service (or add one inline), set
-  quantity and rate, tap **Cash / UPI / Card / Due**, optional customer name,
-  **Save**. The rate pre-fills from the service's price and the total updates
-  live.
-- **Payment method drives status**: paid for cash/UPI/card, pending for due.
-- **Today's receipts** list on the same page: refreshable, with per-payment
-  badges, totals and an empty/offline state. Offline saves queue locally and
-  show "Saved — will sync"; a green "Changes synced" confirms when they land.
-- **Dashboard is wired to real data**: today's revenue, count, cash/UPI/card,
-  dues, expenses and net come from today's `transactions` and `expenses`
-  reads; quick-service buttons deep-link into the entry form.
-- **One-shop model**: no `shops/{shopId}/...` paths anywhere. Collections are
-  top-level; the owner bootstraps on first run, staff join by invite or the
-  shop access code, and roles (Admin/Employee) gate the UI and the rules.
+- **Members**: list members, invite by email, promote/demote
+  (Developer/Employee), disable/reactivate, cancel invites.
+- **Shop access code**: set / change / copy the staff door key.
+- **Services**: add, rename, re-price, archive/restore services
+  (Developer-only writes; staff can still create services inline).
+- **All data**: transactions (per day or most recent) with totals, plus the
+  expenses list — a read-only back-office view.
+
+Everything is still the **transactional build (Part 4)** under the hood:
+record-a-sale on `/transactions`, live dashboard, offline queue.
+
+Note: the **`ADMIN` role IS the developer** — it is the account from
+which everything is managed. Employees (`EMPLOYEE`) record sales only.
 
 Performance: only today's rows are ever queried (one indexed read), kept
 sorted by `createdAt` DESC; no long-lived listeners on the dashboard —
@@ -44,10 +43,11 @@ business day; `createdAt` is the Firestore timestamp used for ordering.
 NET = today's collections − today's expenses (dues are money not yet
 received and are excluded).
 
-> **Deploy required:** run `firebase deploy --only firestore` so the new
-> single-shop rules and the composite index behind today's list
-> (`dateKey` ASC + `createdAt` DESC) go live before testing. Existing data
-> under the old `shops/{shopId}/...` layout is orphaned by this build.
+> **Deploy required:** run `firebase deploy --only firestore` before testing
+> the developer console — the rules gain the `services` update path
+> (Developer-only rename/archive). The composite index behind today's list
+> (`dateKey` ASC + `createdAt` DESC) is unchanged. Existing data under the
+> old `shops/{shopId}/...` layout is orphaned by this build.
 
 ## Project structure
 
@@ -55,18 +55,21 @@ received and are excluded).
 /
 ├── index.html            Entry point (boot / auth routing / setup notice)
 ├── login.html            Sign in, create account, Google, shop access code
-├── dashboard.html        App shell, today's figures, members & access code
+├── dashboard.html        App shell, today's figures, quick services
 ├── transactions.html     Record a sale (new transaction entry + today's list)
+├── admin.html            Developer console (members, access code, services, data)
 ├── css/
 │   ├── style.css         Design tokens + core components
 │   ├── forms.css         Inputs, selects, chips, auth page
 │   ├── dashboard.css     Stat cards, quick grids, entry panel
 │   ├── transactions.css  Transaction entry (segmented payment, hide, totals)
+│   ├── admin.css         Developer console rows/actions
 │   └── responsive.css    Desktop-first, mobile fallback
 ├── js/
 │   ├── firebase.js       Firebase config, lazy SDK load, offline persistence
 │   ├── auth.js           Auth, memberships, roles, invites, access code
 │   ├── ledger.js         Transactions/services reads + writes + day summary
+│   ├── admin.js          Developer console rendering
 │   ├── shell.js          Shared protected-page bootstrap (chip, shields, keys)
 │   ├── app.js            Shared init, toasts, modals, shell behavior, errors
 │   └── utils.js          Money (paise), dates (Asia/Kolkata), validation
@@ -98,7 +101,7 @@ All collections are top-level — there is no `shops/` path:
 | `members/{uid}` | signed-in members | self-create on first run & code join; admin role/active changes |
 | `pendingMembers/{email}` | members | invites by admin    |
 | `transactions/{txnId}` | signed-in members | any signed-in member, server-validated |
-| `services/{serviceId}` | signed-in members | any signed-in member |
+| `services/{serviceId}` | signed-in members | create: any member; update/archive: admin (developer) |
 | `expenses/{expId}` | signed-in members | (writing arrives in a later build) |
 
 A transaction document: `serviceId`, `serviceName`, `quantity`,
@@ -166,8 +169,9 @@ The code is a per-store door key like `TRUSTX01` (8 characters, `A-Z0-9`).
   in anonymously (turn on **Anonymous** auth), verifies the code against
   `settings/security` server-side, and creates that member. The persistent
   session keeps the shop computer signed in — set it up once, it stays in.
-- **How the admin sets it:** on the Dashboard's **Shop access code** block —
-  Set / Change / Copy, generating codes like `TRUSTX01` automatically.
+- **How the developer sets it:** in the **Developer console** (`admin.html`)
+  — Shop access code block: Set / Change / Copy, generating codes like
+  `TRUSTX01` automatically.
 - **Where it lives:** `settings/security` (admin-write, staff cannot read
   it); the security rules compare the presented code (**hashed**) against the
   stored one whenever a membership is created or joined, so shop data stays
@@ -205,13 +209,21 @@ protection) is planned for a later hardening pass.
   `setLoading(button, bool)`.
 - Logged-in pages bootstrap through `js/shell.js` `initAppShell({ page,
   onReady, onDayChange })` — renders the user chip, first-run / disabled /
-  no-access shields, sync pill, day rollover and global keys.
+  no-access shields, sync pill, day rollover, global keys, and hides
+  `[data-admin-only]` nav items from employees.
+- The developer console lives in `js/admin.js`:
+  `renderAdminPage(ctx)` — members, shop access code, service maintenance
+  and the all-data browser.
 - Ledger data lives in `js/ledger.js`:
-  `fetchTodaySummary(dateKey?)`, `fetchServices()`,
+  `fetchTodaySummary(dateKey?)`, `fetchServices({ includeInactive })`,
   `createTransaction({ serviceId, serviceName, quantity, rate, paymentMethod,
   customerName, dateKey })` (rate in rupees, stored as paise),
-  `createService({ name, price })`, `flushPendingWrites()`,
+  `createService({ name, price })`, `updateService(serviceId, { name, price,
+  active })`, `fetchTransactions({ dateKey, limit })`,
+  `fetchExpenses({ dateKey, limit })`, `flushPendingWrites()`,
   `normalizeTxn()`, `isNetworkError(err)`.
+- Roles: `ROLES.ADMIN` **is the developer** (label `roleLabel(role)` →
+  "Developer"/"Employee"); `canAdmin(role)` gates developer actions.
 - Global uncaught errors are logged and surface as a friendly toast — raw
   Firebase errors are never shown to employees.
 
@@ -244,12 +256,13 @@ protection) is planned for a later hardening pass.
 1. ✅ Foundation: structure, shell, design system, Firebase wiring
 2. ✅ Authentication & onboarding: sign-in, memberships, roles, invitations, shop code, rules
 3. ✅ Today's dashboard: live Firestore figures, recent transactions, sync status, quick services
-4. 🔄 **Transaction system (this build):** record-sale page, inline services,
-   payment methods, offline queue, dashboard wiring, flat single-shop data
-   model. *Remaining:* daily ledger (date filters, edit, due→paid, CSV).
-5. Customers
-6. Expenses
-7. Daily closing
-8. Reports & service statistics
-9. Settings, services, employee & role management
-10. Offline sync polish, security-rule tests, deployment hardening
+4. 🔄 Transaction system: record-sale page, inline services, payment
+   methods, offline queue, dashboard wiring, flat single-shop data model.
+   *Remaining:* daily ledger (date filters, edit, due→paid, CSV).
+5. 🔄 **Developer console (this build):** `admin.html` — members, shop
+   access code, service maintenance, all-data browser.
+6. Customers
+7. Expenses
+8. Daily closing
+9. Reports & service statistics
+10. Settings polish, security-rule tests, deployment hardening

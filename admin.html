@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Developer console &middot; SEVA LEDGER</title>
+  <meta name="description" content="SEVA LEDGER developer console" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/forms.css" />
+  <link rel="stylesheet" href="css/dashboard.css" />
+  <link rel="stylesheet" href="css/admin.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js"
+    }
+  }
+  </script>
+</head>
+<body data-page="admin">
+  <div class="app">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img class="brand-logo" src="assets/logo.svg" alt="" width="38" height="38" />
+        <div class="brand-text">
+          <div class="brand-name">SEVA LEDGER</div>
+          <div class="brand-sub">Developer console</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        <div class="nav-section-title">Workspace</div>
+
+        <a class="nav-link" data-nav="dashboard" href="dashboard.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          Dashboard
+        </a>
+
+        <a class="nav-link" data-nav="transactions" href="transactions.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17h10"/><path d="M4 5h16v14H4z"/><path d="M4 5l2-2h12l2 2"/></svg>
+          Transactions
+        </a>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
+          Daily Ledger
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Customers
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Expenses
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg>
+          Reports
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <div class="nav-section-title">Management</div>
+
+        <a class="nav-link is-active" data-nav="admin" href="admin.html" data-admin-only>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Admin
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div id="userChip"></div>
+        <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
+          SEVA LEDGER &middot; v0.5.0
+        </div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- ===================== Main ===================== -->
+    <div class="main">
+      <header class="topbar">
+        <button class="topbar-hamburger" type="button" data-sidebar-toggle aria-label="Toggle navigation">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+        <div class="topbar-title">Developer console</div>
+        <span class="pill pill-neutral" id="topbarShop" style="display:none;"></span>
+        <span class="pill pill-neutral" id="topbarDate" aria-live="off"></span>
+        <span class="pill pill-neutral" id="syncPill">
+          <span class="dot dot-neutral"></span>
+          <span data-sync-label>Checking&hellip;</span>
+        </span>
+      </header>
+
+      <main class="content" id="mainContent">
+        <div class="state">
+          <span class="spinner" aria-hidden="true"></span>
+          <p class="muted">Loading&hellip;</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ===================== Modals ===================== -->
+
+  <!-- Add member by email -->
+  <div class="modal-overlay" id="addMemberModal" role="dialog" aria-modal="true">
+    <div class="modal modal-sm" role="document">
+      <div class="modal-header">
+        <h3>Add a member</h3>
+        <button type="button" class="modal-close" data-close aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="addMemberForm" novalidate>
+          <div class="field">
+            <label for="memberEmail">Email address</label>
+            <input class="input" id="memberEmail" type="email" inputmode="email" autocomplete="off" placeholder="employee@example.com" />
+            <span class="field-hint">When they sign in with this email, they will be added as an employee of this shop.</span>
+          </div>
+          <div class="flex" style="justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" data-close>Cancel</button>
+            <button type="submit" class="btn btn-primary" id="addMemberBtn">Send invitation</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initAppShell } from "./js/shell.js";
+    import { renderAdminPage } from "./js/admin.js";
+
+    initAppShell({
+      page: "admin",
+      onReady: async (ctx) => {
+        await renderAdminPage(ctx);
+      },
+    });
+  </script>
+</body>
+</html>

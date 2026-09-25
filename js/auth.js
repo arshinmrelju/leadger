@@ -328,6 +328,11 @@ export function canAdmin(role) {
   return role === ROLES.ADMIN;
 }
 
+/** Human label: the ADMIN role is the developer. */
+export function roleLabel(role) {
+  return role === ROLES.ADMIN ? "Developer" : role === ROLES.EMPLOYEE ? "Employee" : "";
+}
+
 /* ---------------- First-run: set up this shop ---------------- */
 
 /**

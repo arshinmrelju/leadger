@@ -24,6 +24,7 @@ import {
   bootstrapShop,
   joinWithAccessCode,
   canAdmin,
+  roleLabel,
   reportError,
   ROLES,
 } from "./auth.js";
@@ -57,11 +58,12 @@ function renderUserChip(user, state) {
   const chip = document.getElementById("userChip");
   if (!chip) return;
   const role = state ? state.role : null;
+  const roleLabelText = roleLabel(role);
   const roleBadge =
     role === ROLES.ADMIN
-      ? '<span class="role-badge role-badge-admin">Admin</span>'
+      ? '<span class="role-badge role-badge-admin">' + roleLabelText + "</span>"
       : role === ROLES.EMPLOYEE
-        ? '<span class="role-badge role-badge-employee">Employee</span>'
+        ? '<span class="role-badge role-badge-employee">' + roleLabelText + "</span>"
         : "";
   chip.innerHTML =
     '<div class="user-chip">' +
@@ -297,6 +299,11 @@ export async function initAppShell({ onReady, onDayChange } = {}) {
     wireConnection(typeof onDayChange === "function" ? onDayChange : null);
 
     setSyncState(navigator.onLine ? "online" : "offline");
+
+    /* Role-gated nav items (e.g. the Admin/developer console). */
+    document.querySelectorAll("[data-admin-only]").forEach((el) => {
+      el.hidden = !canAdmin(res.role);
+    });
 
     const ctx = {
       user: real,

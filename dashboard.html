@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -73,17 +73,16 @@
 
         <div class="nav-section-title">Management</div>
 
-        <button class="nav-link" type="button" data-coming>
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          Settings
-          <span class="nav-badge">Soon</span>
-        </button>
+        <a class="nav-link" data-nav="admin" href="admin.html" data-admin-only>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Admin
+        </a>
       </nav>
 
       <div class="sidebar-footer">
         <div id="userChip"></div>
         <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
-          SEVA LEDGER &middot; v0.4.0
+          SEVA LEDGER &middot; v0.5.0
         </div>
       </div>
     </aside>
@@ -116,31 +115,8 @@
 
   <!-- ===================== Modals ===================== -->
 
-  <!-- Add member by email -->
-  <div class="modal-overlay" id="addMemberModal" role="dialog" aria-modal="true">
-    <div class="modal modal-sm" role="document">
-      <div class="modal-header">
-        <h3>Add a member</h3>
-        <button type="button" class="modal-close" data-close aria-label="Close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <form id="addMemberForm" novalidate>
-          <div class="field">
-            <label for="memberEmail">Email address</label>
-            <input class="input" id="memberEmail" type="email" inputmode="email" autocomplete="off" placeholder="employee@example.com" />
-            <span class="field-hint">When they sign in with this email, they will be added as an employee of this shop.</span>
-          </div>
-          <div class="flex" style="justify-content:flex-end;">
-            <button type="button" class="btn btn-secondary" data-close>Cancel</button>
-            <button type="submit" class="btn btn-primary" id="addMemberBtn">Send invitation</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
   <script type="module">
-    import { toast, confirm, setLoading, setSyncState } from "./js/app.js";
+    import { setLoading, setSyncState } from "./js/app.js";
     import {
       formatINR,
       formatKolkataLong,
@@ -149,24 +125,10 @@
       todayKolkata,
     } from "./js/utils.js";
     import { fetchTodaySummary, fetchServices, isNetworkError } from "./js/ledger.js";
-    import {
-      getCurrentUser,
-      reportError,
-      ROLES,
-      listMembers,
-      listPendingInvites,
-      inviteMember,
-      setMemberRole,
-      setMemberActive,
-      cancelInvite,
-      getAccessCode,
-      setAccessCode,
-      generateAccessCode,
-    } from "./js/auth.js";
+    import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
 
     const mainContent = document.getElementById("mainContent");
-    const membersCache = [];
 
     function shield(icon, title, text, actionsHtml) {
       return (
@@ -196,14 +158,14 @@
       return (
         '<div class="stat-card ' + (className || "") + '">' +
         '<div class="stat-label">' + labelHtml + "</div>" +
-        '<div class="stat-value' + (emphasis ? " stat-emphasis" : "") + '" id="' + valueId + '">₹0</div>' +
+        '<div class="stat-value' + (emphasis ? " stat-emphasis" : "") + '" id="' + valueId + '">â‚¹0</div>' +
         (noteId ? '<div class="stat-note" id="' + noteId + '">&nbsp;</div>' : "") +
         "</div>"
       );
     }
 
     /* =========================================================
-       Dashboard — today's figures + recent transactions.
+       Dashboard â€” today's figures + recent transactions.
        Reads real Firestore data (transactions + expenses for today's
        Asia/Kolkata date only). No mock rows.
        ========================================================= */
@@ -266,8 +228,7 @@
         "</div>" +
         '<p class="small muted mt-2" style="margin-bottom:0;">Tap a service to jump into a quick sale.</p>' +
         "</div></section>" +
-        "</div>" +
-        '<section id="membersCard"></section>';
+        "</div>";
 
       applyHooks();
       loadDashboardData();
@@ -445,233 +406,14 @@
       });
     }
 
-    /* ---------- Members card (admin) ---------- */
-    function renderMembersCard() {
-      const box = document.getElementById("membersCard");
-      if (!box) return;
-      box.innerHTML =
-        '<div class="card mt-2"><div class="card-header"><h3>Members</h3>' +
-        '<div class="card-actions"><button type="button" class="btn btn-primary btn-sm" id="openAddMemberBtn">Add member</button></div></div>' +
-        '<div class="card-body" id="membersList"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading members&hellip;</p></div></div></div>' +
-        '<div class="card mt-2"><div class="card-header"><h3>Shop access code</h3></div>' +
-        '<div class="card-body">' +
-        '<p class="small muted">Staff can sign in with this code on the shop computer instead of an email account.</p>' +
-        '<div class="flex" style="gap:0.6rem;flex-wrap:wrap;align-items:center;">' +
-        '<code id="shopCodeBox" style="font-size:1.3rem;letter-spacing:.12em;">&mdash;</code>' +
-        '<button type="button" class="btn btn-secondary btn-sm" id="codeCopyBtn">Copy</button>' +
-        '<button type="button" class="btn btn-primary btn-sm" id="codeRegenBtn">Set code</button>' +
-        "</div></div></div>";
-
-      document.getElementById("openAddMemberBtn").addEventListener("click", () => {
-        document.getElementById("memberEmail").value = "";
-        document.getElementById("addMemberModal").classList.add("is-open");
-        setTimeout(() => document.getElementById("memberEmail").focus(), 60);
-      });
-
-      document.querySelectorAll(".modal-overlay [data-close], .modal-overlay .modal-close").forEach((el) => {
-        el.addEventListener("click", () => el.closest(".modal-overlay").classList.remove("is-open"));
-      });
-
-      const form = document.getElementById("addMemberForm");
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const btn = document.getElementById("addMemberBtn");
-        const email = document.getElementById("memberEmail").value.trim();
-        if (!email) {
-          toast("Enter an email address.", "error");
-          return;
-        }
-        btn.classList.add("is-loading");
-        btn.disabled = true;
-        try {
-          await inviteMember(email);
-          document.getElementById("addMemberModal").classList.remove("is-open");
-          toast("Invitation sent to " + email + ".", "success");
-          loadMembersList();
-        } catch (err) {
-          toast(reportError(err), "error");
-        } finally {
-          btn.classList.remove("is-loading");
-          btn.disabled = false;
-        }
-      });
-
-      loadMembersList();
-      loadShopCodeBox();
-    }
-
-    /* ---------- Shop access code (admin) ---------- */
-    async function loadShopCodeBox() {
-      const box = document.getElementById("shopCodeBox");
-      if (!box) return;
-      const copyBtn = document.getElementById("codeCopyBtn");
-      const regenBtn = document.getElementById("codeRegenBtn");
-      let current = "";
-      try {
-        current = await getAccessCode();
-      } catch (err) {
-        toast(reportError(err), "error");
-      }
-      box.textContent = current || "—";
-      regenBtn.textContent = current ? "Change code" : "Set code";
-
-      const setCode = async (fresh) => {
-        try {
-          current = await setAccessCode(fresh);
-          box.textContent = current;
-          regenBtn.textContent = "Change code";
-          toast("Shop access code set: " + current + ". Save it somewhere safe.", "success");
-        } catch (err) {
-          toast(reportError(err), "error");
-        }
-      };
-
-      regenBtn.addEventListener("click", async () => {
-        const fresh = generateAccessCode();
-        const ok = await confirm({
-          title: "Change shop access code",
-          message: "Staff will use this code to sign in: " + fresh + ". The previous code is switched off immediately.",
-          confirmText: "Use this code",
-          variant: "primary",
-        });
-        if (!ok) return;
-        await setCode(fresh);
-      });
-
-      copyBtn.addEventListener("click", async () => {
-        if (!current) {
-          toast("Set a code first.", "info");
-          return;
-        }
-        try {
-          await navigator.clipboard.writeText(current);
-          toast("Code copied.", "success");
-        } catch (_) {
-          toast("Select and copy the code above.", "info");
-        }
-      });
-    }
-
-    /* ---------- Members list ---------- */
-    function memberRow(member) {
-      const isSelf = member.uid === getCurrentUser().uid;
-      const active = member.active !== false;
-      const name = member.name || (isSelf ? "You" : "Member");
-      const email = member.email || "shop access code";
-      const select =
-        '<select class="select input-sm" data-role data-uid="' + escapeHtml(member.uid) + '" ' + (isSelf ? "disabled" : "") + ">" +
-        '<option value="ADMIN"' + (member.role === ROLES.ADMIN ? " selected" : "") + ">Admin</option>" +
-        '<option value="EMPLOYEE"' + (member.role !== ROLES.ADMIN ? " selected" : "") + ">Employee</option>" +
-        "</select>";
-      const toggle =
-        '<button type="button" class="btn btn-sm ' + (active ? "btn-secondary" : "btn-danger-soft") + '" data-active data-uid="' + escapeHtml(member.uid) + '" ' + (isSelf ? "disabled" : "") + ">" +
-        (active ? "Active" : "Disabled") + "</button>";
-      return (
-        '<div class="member-row">' +
-        '<div class="member-info">' +
-        '<div class="member-name">' + escapeHtml(name) + (isSelf ? ' <span class="small muted">(you)</span>' : "") + "</div>" +
-        '<div class="member-email">' + escapeHtml(email) + "</div>" +
-        "</div>" +
-        select +
-        toggle +
-        '<span class="badge ' + (member.role === ROLES.ADMIN ? "badge-accent" : "badge-neutral") + '">' + (member.role === ROLES.ADMIN ? "Admin" : "Employee") + "</span>" +
-        "</div>"
-      );
-    }
-
-    async function loadMembersList() {
-      const list = document.getElementById("membersList");
-      if (!list) return;
-      try {
-        const [members, invites] = await Promise.all([listMembers(), listPendingInvites()]);
-        membersCache.length = 0;
-        membersCache.push(...members);
-        let html = members.map(memberRow).join("");
-        if (invites.length) {
-          html +=
-            '<div class="mt-2"><div class="small muted mb-1">Pending invitations</div>' +
-            invites
-              .map(
-                (inv) =>
-                  '<div class="invite-row"><span class="badge badge-warning">Invited</span>' +
-                  '<span class="flex" style="flex:1;">' + escapeHtml(inv.email) + "</span>" +
-                  '<button type="button" class="btn btn-danger-soft btn-sm" data-cancel-invite="' + escapeHtml(inv.email) + '">Cancel</button></div>'
-              )
-              .join("") +
-            "</div>";
-        }
-        if (!html) {
-          html = '<div class="state"><h3>No members yet</h3><p>The owner is added automatically when the shop is set up.</p></div>';
-        }
-        list.innerHTML = html;
-
-        list.querySelectorAll("[data-role]").forEach((sel) => {
-          sel.addEventListener("change", async () => {
-            try {
-              await setMemberRole(sel.dataset.uid, sel.value);
-              toast("Role updated.", "success");
-              loadMembersList();
-            } catch (err) {
-              toast(reportError(err), "error");
-              sel.value = membersCache.find((m) => m.uid === sel.dataset.uid)?.role || sel.value;
-            }
-          });
-        });
-
-        list.querySelectorAll("[data-active]").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            const member = membersCache.find((m) => m.uid === btn.dataset.uid);
-            const nextActive = member.active === false;
-            const action = nextActive ? "reactivate" : "disable";
-            const ok = await confirm({
-              title: action === "disable" ? "Disable member" : "Reactivate member",
-              message:
-                action === "disable"
-                  ? "This member will immediately lose access to the shop until reactivated."
-                  : "This member will regain access to the shop.",
-              confirmText: action === "disable" ? "Disable" : "Reactivate",
-              variant: action === "disable" ? "danger" : "primary",
-            });
-            if (!ok) return;
-            try {
-              await setMemberActive(btn.dataset.uid, nextActive);
-              toast(nextActive ? "Member reactivated." : "Member disabled.", "success");
-              loadMembersList();
-            } catch (err) {
-              toast(reportError(err), "error");
-            }
-          });
-        });
-
-        list.querySelectorAll("[data-cancel-invite]").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            try {
-              await cancelInvite(btn.dataset.cancelInvite);
-              toast("Invitation cancelled.", "info");
-              loadMembersList();
-            } catch (err) {
-              toast(reportError(err), "error");
-            }
-          });
-        });
-      } catch (err) {
-        list.innerHTML = shield(
-          '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
-          "Could not load members",
-          reportError(err),
-          '<button type="button" class="btn btn-secondary" onclick="window.location.reload()">Retry</button>'
-        );
-      }
-    }
 
     /* =========================================================
        Boot
        ========================================================= */
     initAppShell({
       page: "dashboard",
-      onReady: async (ctx) => {
+      onReady: async () => {
         await renderDashboard();
-        if (ctx.isAdmin) renderMembersCard();
       },
       onDayChange: () => {
         loadDashboardData();

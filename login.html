@@ -87,10 +87,13 @@
     import {
       initAuth,
       onAuthStateChange,
+      getCurrentUser,
       signInWithGoogle,
       signInWithEmail,
       createAccount,
       joinWithAccessCode,
+      resolveMembership,
+      canAdmin,
       reportError,
     } from "./js/auth.js";
 
@@ -127,6 +130,21 @@
       googleBtn.disabled = disabled;
       emailForm.querySelectorAll("input, button").forEach((el) => (el.disabled = disabled));
       codeForm.querySelectorAll("input, button").forEach((el) => (el.disabled = disabled));
+    }
+
+    async function goDashboard() {
+      const user = getCurrentUser();
+      if (!user) return;
+      try {
+        const res = await resolveMembership(user);
+        if (res.state === "ok" && canAdmin(res.role)) {
+          window.location.replace("admin.html");
+          return;
+        }
+      } catch (_) {
+        // fall through to the dashboard; the shell shows the right shield
+      }
+      window.location.replace("dashboard.html");
     }
 
     async function boot() {

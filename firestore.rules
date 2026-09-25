@@ -10,7 +10,7 @@ rules_version = '2';
 // Data model covered here:
 //   settings/general                  shop identity; ownerUid pins the owner
 //   settings/security                 the access code (secret, admin-only)
-//   members/{uid}                     role: ADMIN | EMPLOYEE
+//   members/{uid}                     role: ADMIN | EMPLOYEE  (ADMIN = the developer)
 //   pendingMembers/{email}            invitation by email
 //   transactions/{txnId}              sales
 //   services/{serviceId}              service catalog
@@ -261,7 +261,9 @@ service cloud.firestore {
 
     // ---------------- Services ----------------
     // Inline quick-add is allowed for any active member so staff can
-    // create services on the fly. Editing/deleting arrives later.
+    // create services on the fly. Editing/archiving is Developer-only
+    // (`ADMIN` — the developer role); deletion is never allowed, so
+    // "removal" means setting active=false.
     match /services/{serviceId} {
       function validServiceDoc(doc) {
         return doc.keys().hasOnly([
@@ -282,12 +284,33 @@ service cloud.firestore {
           && doc.updatedAt == request.time;
       }
 
+      function validServiceUpdate(doc) {
+        return doc.keys().hasOnly([
+              'serviceId', 'name', 'code', 'pricePaise',
+              'active', 'sortOrder', 'createdAt', 'createdBy',
+              'updatedAt', 'updatedBy'
+            ])
+          && doc.serviceId is string && doc.serviceId.size() <= 120
+          && doc.serviceId == serviceId
+          && doc.name is string && doc.name.size() >= 1 && doc.name.size() <= 80
+          && doc.code is string && doc.code.size() <= 12
+          && doc.pricePaise is number && doc.pricePaise >= 0 && doc.pricePaise <= 10000000
+          && doc.active is bool
+          && doc.sortOrder is number
+          && doc.createdAt == resource.data.createdAt
+          && doc.createdBy == resource.data.createdBy
+          && doc.updatedAt == request.time
+          && doc.updatedBy == request.auth.uid;
+      }
+
       allow read: if signedIn() && activeMember(request.auth.uid);
 
       allow create: if signedIn() && activeMember(request.auth.uid)
         && validServiceDoc(request.resource.data);
 
-      allow update: if false;
+      allow update: if signedIn() && isAdmin(request.auth.uid)
+        && validServiceUpdate(request.resource.data);
+
       allow delete: if false;
     }
 
