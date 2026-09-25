@@ -1,0 +1,52 @@
+/* =========================================================
+   SEVA LEDGER — Transaction entry
+   ========================================================= */
+
+.txn-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.txn-wrap .card-header h3 { margin: 0; }
+
+/* ---- Segmented payment method ---- */
+.seg-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.seg-btn {
+  padding: 0.6rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--color-text-soft);
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.seg-btn:hover { border-color: var(--color-primary); }
+
+.seg-btn.seg-cash.is-active { background: var(--color-success-soft); border-color: var(--color-success); color: #166534; }
+.seg-btn.seg-upi.is-active { background: var(--color-info-soft); border-color: var(--color-info); color: #1e40af; }
+.seg-btn.seg-card.is-active { background: #ede9fe; border-color: #7c3aed; color: #6d28d9; }
+.seg-btn.seg-due.is-active { background: var(--color-warning-soft); border-color: var(--color-warning); color: #92400e; }
+
+/* ---- Generic hide (add-service box etc.) ---- */
+.is-hidden { display: none !important; }
+
+/* ---- Form message ---- */
+#formMsg { margin-bottom: 1rem; }
+
+/* ---- Live total strip ---- */
+#txnForm .entry-total { margin-top: 0.25rem; }
+
+/* ---- Today's mini list ---- */
+#todayBody .txn-num { font-variant-numeric: tabular-nums; }

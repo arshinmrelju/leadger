@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEVA LEDGER</title>
+  <meta name="description" content="SEVA LEDGER — digital service shop ledger" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/forms.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+
+  <!-- Firebase modular SDK (pinned) loaded via import map.
+       The app shell never needs the network to render; Firebase
+       modules are imported lazily inside js/firebase.js. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <main class="auth-body">
+    <div class="auth-card card" style="text-align:center;">
+      <img class="auth-logo" src="assets/logo.svg" alt="SEVA LEDGER logo" width="58" height="58" />
+      <h1 class="auth-title">SEVA LEDGER</h1>
+      <p class="auth-sub">Digital service shop ledger &middot; India (&#x20B9; &middot; Asia/Kolkata)</p>
+
+      <div id="bootArea">
+        <div class="flex" style="justify-content:center; gap:0.6rem;">
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="muted">Starting&hellip;</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+
+  <script type="module">
+    import { isConfigured, initFirebase } from "./js/firebase.js";
+    import { initAuth, getCurrentUser, reportError } from "./js/auth.js";
+
+    const bootArea = document.getElementById("bootArea");
+
+    function render(html) {
+      bootArea.innerHTML = html;
+    }
+    function fail(message) {
+      render('<p class="small soft" style="max-width:340px;margin:0 auto;">' + message + "</p>");
+    }
+
+    if (!isConfigured()) {
+      render(
+        '<p class="small soft" style="max-width:340px;margin:0 auto;">' +
+          "Firebase is not configured yet.<br/>" +
+          "Open <code>js/firebase.js</code> and replace the " +
+          "<code>YOUR_*</code> values with your web app config from the " +
+          "Firebase console, then reload this page." +
+          "</p>"
+      );
+    } else {
+      initFirebase()
+        .then(() => initAuth())
+        .then(() => {
+          window.location.replace(getCurrentUser() ? "dashboard.html" : "login.html");
+        })
+        .catch((err) => {
+          console.error("[seva-ledger] boot failed:", err);
+          fail(reportError(err));
+        });
+    }
+  </script>
+</body>
+</html>

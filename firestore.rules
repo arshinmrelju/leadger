@@ -1,0 +1,322 @@
+rules_version = '2';
+
+// =============================================================
+// SEVA LEDGER — Cloud Firestore security rules
+// -------------------------------------------------------------
+// SINGLE-SHOP (flat) model. There is no per-shop namespace; this
+// instance IS one shop. Multiple users (owner + staff) access it
+// through role-gated top-level collections.
+//
+// Data model covered here:
+//   settings/general                  shop identity; ownerUid pins the owner
+//   settings/security                 the access code (secret, admin-only)
+//   members/{uid}                     role: ADMIN | EMPLOYEE
+//   pendingMembers/{email}            invitation by email
+//   transactions/{txnId}              sales
+//   services/{serviceId}              service catalog
+//   expenses/{expId}                  spends (read-only this build)
+//
+// Core guarantees:
+//   * Anonymous / signed-out users cannot read, list or write data
+//     (except: any signed-in user may GET settings/general once to
+//     detect first-run; nobody can list settings or read the code).
+//   * A user may act only if they are an ACTIVE member.
+//   * ADMIN-only operations are enforced here, never in JS alone.
+//   * Members can only be created for the calling user: as first-run
+//     owner bootstrap, by claiming a matching email invitation, or by
+//     proving the stored access code (comparison happens server-side;
+//     employees never read the code).
+//   * createdAt == request.time and createdBy == request.auth.uid
+//     are enforced, so records are not forgeable.
+//   * The owner can never be demoted or deactivated.
+//   * Transaction money stays integer paise; the server re-checks
+//     total == quantity * rate and every field type/range.
+// =============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberRef(uid) {
+      return /databases/$(database)/documents/members/$(uid);
+    }
+
+    function activeMember(uid) {
+      return exists(memberRef(uid))
+        && get(memberRef(uid)).data.active == true;
+    }
+
+    function isAdmin(uid) {
+      return activeMember(uid)
+        && get(memberRef(uid)).data.role == 'ADMIN';
+    }
+
+    function isOwner(uid) {
+      return exists(/databases/$(database)/documents/settings/general)
+        && get(/databases/$(database)/documents/settings/general).data.ownerUid == uid;
+    }
+
+    function validMemberDoc(doc) {
+      return doc.keys().hasOnly([
+            'uid', 'name', 'email', 'photoURL',
+            'role', 'active', 'createdAt',
+            'updatedAt', 'updatedBy', 'addedBy', 'joinCode'
+          ])
+        && doc.uid is string
+        && doc.role in ['ADMIN', 'EMPLOYEE']
+        && doc.active is bool
+        && doc.name is string
+        && doc.name.size() <= 100
+        && doc.email is string
+        && doc.email.size() <= 200
+        && doc.photoURL is string
+        && doc.photoURL.size() <= 1000;
+    }
+
+    function validGeneralDoc(doc) {
+      return doc.keys().hasOnly([
+            'name', 'phone', 'address',
+            'currency', 'ownerUid', 'active',
+            'createdAt', 'createdBy'
+          ])
+        && doc.name is string
+        && doc.name.size() >= 1
+        && doc.name.size() <= 80
+        && doc.phone is string
+        && doc.phone.size() <= 20
+        && doc.address is string
+        && doc.address.size() <= 300
+        && doc.currency is string
+        && doc.currency.size() == 3
+        && doc.ownerUid is string
+        && doc.active == true;
+    }
+
+    // ---------------- Settings ----------------
+    // `general` is the shop record: created once on first-run and then
+    // administrator-maintained. `security` carries the access code and
+    // is never readable by employees (the join flow is verified against
+    // it inside the rules engine, which bypasses allow checks).
+    match /settings/{docId} {
+      allow get: if signedIn() && (docId != 'security' || isAdmin(request.auth.uid));
+
+      allow list: if signedIn() && activeMember(request.auth.uid);
+
+      allow create: if signedIn()
+        && (
+            (docId == 'general'
+             && !exists(/databases/$(database)/documents/settings/general)
+             && validGeneralDoc(request.resource.data)
+             && request.resource.data.ownerUid == request.auth.uid
+             && request.resource.data.createdAt == request.time
+             && request.resource.data.createdBy == request.auth.uid)
+            || (docId == 'security'
+                && isAdmin(request.auth.uid)
+                && request.resource.data.keys().hasOnly(['accessCode', 'updatedAt', 'updatedBy'])
+                && request.resource.data.accessCode.matches('^[A-Z0-9]{8}$')
+                && request.resource.data.updatedAt == request.time
+                && request.resource.data.updatedBy == request.auth.uid)
+          );
+
+      allow update: if signedIn()
+        && (
+            (docId == 'general'
+             && isAdmin(request.auth.uid)
+             && validGeneralDoc(request.resource.data)
+             && request.resource.data.ownerUid == resource.data.ownerUid
+             && request.resource.data.createdAt == resource.data.createdAt
+             && request.resource.data.createdBy == resource.data.createdBy)
+            || (docId == 'security'
+                && isAdmin(request.auth.uid)
+                && request.resource.data.keys().hasOnly(['accessCode', 'updatedAt', 'updatedBy'])
+                && request.resource.data.accessCode.matches('^[A-Z0-9]{8}$')
+                && request.resource.data.updatedAt == request.time
+                && request.resource.data.updatedBy == request.auth.uid)
+          );
+
+      allow delete: if false;
+    }
+
+    // ---------------- Members ----------------
+    match /members/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin(request.auth.uid));
+
+      // Three legal ways to create a member doc:
+      //   A) First-run owner bootstrap (role ADMIN), only when the
+      //      shop has not been set up yet.
+      //   B) Claiming an email invitation (role EMPLOYEE).
+      //   C) Enrolling with the matching access code (EMPLOYEE).
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && validMemberDoc(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.active == true
+        && (
+            (request.resource.data.role == 'ADMIN'
+             && !exists(/databases/$(database)/documents/settings/general))
+            || (
+                request.auth.token.email != null
+                && request.resource.data.role == 'EMPLOYEE'
+                && request.resource.data.email == request.auth.token.email.lower()
+                && exists(/databases/$(database)/documents/pendingMembers/$(request.auth.token.email.lower()))
+                && get(/databases/$(database)/documents/pendingMembers/$(request.auth.token.email.lower())).data.email == request.resource.data.email
+              )
+            || (
+                request.resource.data.role == 'EMPLOYEE'
+                && request.resource.data.addedBy == 'access_code'
+                && request.resource.data.joinCode is string
+                && request.resource.data.joinCode.matches('^[A-Z0-9]{8}$')
+                && get(/databases/$(database)/documents/settings/security).data.accessCode == request.resource.data.joinCode
+              )
+          );
+
+      allow update: if signedIn()
+        && isAdmin(request.auth.uid)
+        && request.resource.data.uid == resource.data.uid
+        && validMemberDoc(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && !(isOwner(resource.data.uid) && request.resource.data.role != 'ADMIN')
+        && !(isOwner(resource.data.uid) && request.resource.data.active == false);
+
+      allow delete: if false;
+    }
+
+    // ---------------- Email invitations ----------------
+    match /pendingMembers/{email} {
+      allow read: if signedIn()
+        && (isAdmin(request.auth.uid)
+            || (request.auth.token.email != null
+                && request.auth.token.email.lower() == email));
+
+      allow create: if signedIn()
+        && isAdmin(request.auth.uid)
+        && request.resource.data.keys().hasOnly(['email', 'invitedBy', 'invitedAt', 'note'])
+        && request.resource.data.email == email
+        && request.resource.data.invitedAt == request.time;
+
+      allow update: if signedIn() && isAdmin(request.auth.uid);
+
+      // Admin revokes, OR the invited user removes it once their
+      // membership is actually created (claim flow).
+      allow delete: if signedIn()
+        && (
+            isAdmin(request.auth.uid)
+            || (
+                request.auth.token.email != null
+                && request.auth.token.email.lower() == email
+                && activeMember(request.auth.uid)
+              )
+          );
+    }
+
+    // ---------------- Transactions ----------------
+    // Single-method sales. Money is integer paise; `rate` is paise per
+    // unit, `total` = quantity x rate, `dateKey` is the Asia/Kolkata
+    // business-day key, `createdAt` orders the day. Editing/deletion
+    // arrive with the daily-ledger build.
+    match /transactions/{txnId} {
+      function validTransactionDoc(doc) {
+        return doc.keys().hasOnly([
+              'txnId', 'serviceId', 'serviceName', 'quantity',
+              'rate', 'total', 'paymentMethod', 'customerId',
+              'customerName', 'status', 'dateKey',
+              'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+            ])
+          && doc.txnId is string && doc.txnId.size() <= 120
+          && doc.txnId == txnId
+          && doc.serviceId is string && doc.serviceId.size() >= 1 && doc.serviceId.size() <= 120
+          && exists(/databases/$(database)/documents/services/$(doc.serviceId))
+          && get(/databases/$(database)/documents/services/$(doc.serviceId)).data.active == true
+          && doc.serviceName is string && doc.serviceName.size() >= 1 && doc.serviceName.size() <= 80
+          && doc.serviceName == get(/databases/$(database)/documents/services/$(doc.serviceId)).data.name
+          && doc.quantity is int && doc.quantity >= 1 && doc.quantity <= 100000
+          && doc.rate is number && doc.rate >= 0 && doc.rate <= 10000000
+          && doc.total is number && doc.total >= 0 && doc.total <= 100000000000
+          && doc.total == doc.quantity * doc.rate
+          && doc.paymentMethod in ['cash', 'upi', 'card', 'due']
+          && doc.customerId is string && doc.customerId.size() <= 200
+          && doc.customerName is string && doc.customerName.size() <= 120
+          && doc.status in ['paid', 'pending']
+          && ((doc.paymentMethod == 'due' && doc.status == 'pending')
+              || (doc.paymentMethod != 'due' && doc.status == 'paid'))
+          && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && doc.createdBy == request.auth.uid
+          && doc.updatedBy == request.auth.uid
+          && doc.createdAt == request.time
+          && doc.updatedAt == request.time;
+      }
+
+      allow read: if signedIn() && activeMember(request.auth.uid);
+
+      allow create: if signedIn() && activeMember(request.auth.uid)
+        && validTransactionDoc(request.resource.data);
+
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ---------------- Services ----------------
+    // Inline quick-add is allowed for any active member so staff can
+    // create services on the fly. Editing/deleting arrives later.
+    match /services/{serviceId} {
+      function validServiceDoc(doc) {
+        return doc.keys().hasOnly([
+              'serviceId', 'name', 'code', 'pricePaise',
+              'active', 'sortOrder', 'createdAt', 'createdBy',
+              'updatedAt', 'updatedBy'
+            ])
+          && doc.serviceId is string && doc.serviceId.size() <= 120
+          && doc.serviceId == serviceId
+          && doc.name is string && doc.name.size() >= 1 && doc.name.size() <= 80
+          && doc.code is string && doc.code.size() <= 12
+          && doc.pricePaise is number && doc.pricePaise >= 0 && doc.pricePaise <= 10000000
+          && doc.active is bool
+          && doc.sortOrder is number
+          && doc.createdBy == request.auth.uid
+          && doc.updatedBy == request.auth.uid
+          && doc.createdAt == request.time
+          && doc.updatedAt == request.time;
+      }
+
+      allow read: if signedIn() && activeMember(request.auth.uid);
+
+      allow create: if signedIn() && activeMember(request.auth.uid)
+        && validServiceDoc(request.resource.data);
+
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ---------------- Expenses (read-only this build) ----------------
+    match /expenses/{expId} {
+      function validExpenseDoc(doc) {
+        return doc.keys().hasOnly([
+              'expId', 'date', 'title', 'category',
+              'amountPaise', 'note', 'createdBy', 'createdAt',
+              'updatedAt', 'updatedBy'
+            ])
+          && doc.expId is string && doc.expId.size() <= 120
+          && doc.expId == expId
+          && doc.date is string && doc.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && doc.title is string && doc.title.size() <= 160
+          && doc.category is string && doc.category.size() <= 60
+          && doc.amountPaise is number && doc.amountPaise >= 0
+          && doc.note is string && doc.note.size() <= 500;
+      }
+
+      allow read: if signedIn() && activeMember(request.auth.uid);
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Everything else is denied by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

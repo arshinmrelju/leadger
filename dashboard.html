@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard &middot; SEVA LEDGER</title>
+  <meta name="description" content="SEVA LEDGER dashboard" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/forms.css" />
+  <link rel="stylesheet" href="css/dashboard.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js"
+    }
+  }
+  </script>
+</head>
+<body data-page="dashboard">
+  <div class="app">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img class="brand-logo" src="assets/logo.svg" alt="" width="38" height="38" />
+        <div class="brand-text">
+          <div class="brand-name">SEVA LEDGER</div>
+          <div class="brand-sub">Shop ledger</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        <div class="nav-section-title">Workspace</div>
+
+        <a class="nav-link is-active" data-nav="dashboard" href="dashboard.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          Dashboard
+        </a>
+
+        <a class="nav-link" data-nav="transactions" href="transactions.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17h10"/><path d="M4 5h16v14H4z"/><path d="M4 5l2-2h12l2 2"/></svg>
+          Transactions
+        </a>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
+          Daily Ledger
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Customers
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Expenses
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg>
+          Reports
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <div class="nav-section-title">Management</div>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+          <span class="nav-badge">Soon</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div id="userChip"></div>
+        <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
+          SEVA LEDGER &middot; v0.4.0
+        </div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- ===================== Main ===================== -->
+    <div class="main">
+      <header class="topbar">
+        <button class="topbar-hamburger" type="button" data-sidebar-toggle aria-label="Toggle navigation">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+        <div class="topbar-title">Dashboard</div>
+        <span class="pill pill-neutral" id="topbarShop" style="display:none;"></span>
+        <span class="pill pill-neutral" id="topbarDate" aria-live="off"></span>
+        <span class="pill pill-neutral" id="syncPill">
+          <span class="dot dot-neutral"></span>
+          <span data-sync-label>Checking&hellip;</span>
+        </span>
+      </header>
+
+      <main class="content" id="mainContent">
+        <!-- Rendered by dashboard JS (app shell). -->
+        <div class="state">
+          <span class="spinner" aria-hidden="true"></span>
+          <p class="muted">Loading&hellip;</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ===================== Modals ===================== -->
+
+  <!-- Add member by email -->
+  <div class="modal-overlay" id="addMemberModal" role="dialog" aria-modal="true">
+    <div class="modal modal-sm" role="document">
+      <div class="modal-header">
+        <h3>Add a member</h3>
+        <button type="button" class="modal-close" data-close aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="addMemberForm" novalidate>
+          <div class="field">
+            <label for="memberEmail">Email address</label>
+            <input class="input" id="memberEmail" type="email" inputmode="email" autocomplete="off" placeholder="employee@example.com" />
+            <span class="field-hint">When they sign in with this email, they will be added as an employee of this shop.</span>
+          </div>
+          <div class="flex" style="justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" data-close>Cancel</button>
+            <button type="submit" class="btn btn-primary" id="addMemberBtn">Send invitation</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { toast, confirm, setLoading, setSyncState } from "./js/app.js";
+    import {
+      formatINR,
+      formatKolkataLong,
+      formatKolkataTime,
+      escapeHtml,
+      todayKolkata,
+    } from "./js/utils.js";
+    import { fetchTodaySummary, fetchServices, isNetworkError } from "./js/ledger.js";
+    import {
+      getCurrentUser,
+      reportError,
+      ROLES,
+      listMembers,
+      listPendingInvites,
+      inviteMember,
+      setMemberRole,
+      setMemberActive,
+      cancelInvite,
+      getAccessCode,
+      setAccessCode,
+      generateAccessCode,
+    } from "./js/auth.js";
+    import { initAppShell } from "./js/shell.js";
+
+    const mainContent = document.getElementById("mainContent");
+    const membersCache = [];
+
+    function shield(icon, title, text, actionsHtml) {
+      return (
+        '<div class="state card" style="max-width:520px;margin:2rem auto;padding:2rem;">' +
+        '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        icon +
+        "</svg>" +
+        "<h3>" + escapeHtml(title) + "</h3>" +
+        "<p>" + escapeHtml(text) + "</p>" +
+        (actionsHtml || "") +
+        "</div>"
+      );
+    }
+
+    const ICON_PLUS =
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+
+    function ic(paths) {
+      return (
+        '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        paths +
+        "</svg>"
+      );
+    }
+
+    function statBlock(labelHtml, valueId, className, emphasis, noteId) {
+      return (
+        '<div class="stat-card ' + (className || "") + '">' +
+        '<div class="stat-label">' + labelHtml + "</div>" +
+        '<div class="stat-value' + (emphasis ? " stat-emphasis" : "") + '" id="' + valueId + '">₹0</div>' +
+        (noteId ? '<div class="stat-note" id="' + noteId + '">&nbsp;</div>' : "") +
+        "</div>"
+      );
+    }
+
+    /* =========================================================
+       Dashboard — today's figures + recent transactions.
+       Reads real Firestore data (transactions + expenses for today's
+       Asia/Kolkata date only). No mock rows.
+       ========================================================= */
+    async function renderDashboard() {
+      const txnIc = ic('<path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h3"/>');
+      const trendIc = ic('<path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/>');
+      const cashIc = ic('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10h.01M18 14h.01"/>');
+      const upiIc = ic('<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>');
+      const cardIc = ic('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>');
+      const dueIc = ic('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>');
+      const expIc = ic('<circle cx="12" cy="12" r="9"/><path d="M7 12h10"/><path d="M12 7v10"/>');
+      const netIc = ic('<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>');
+
+      document.getElementById("topbarDate").textContent = formatKolkataLong(new Date());
+
+      mainContent.innerHTML =
+        '<section aria-label="Today\'s summary">' +
+        '<div class="dash-head">' +
+        "<div>" +
+        "<h1>Today&rsquo;s figures</h1>" +
+        '<p class="small muted" id="summarySub">Loading&hellip;</p>' +
+        "</div>" +
+        '<a class="btn btn-primary btn-lg" href="transactions.html">' + ICON_PLUS + "New transaction</a>" +
+        "</div>" +
+        '<div class="dash-grid">' +
+        statBlock(trendIc + "Today&rsquo;s revenue", "statRevenue", "stat-revenue", true, "revenueNote") +
+        statBlock(txnIc + "Transactions", "statCount") +
+        statBlock(cashIc + "Cash", "statCash", "stat-cash") +
+        statBlock(upiIc + "UPI", "statUpi", "stat-upi") +
+        statBlock(cardIc + "Card", "statCard", "stat-cardp") +
+        statBlock(dueIc + "Due", "statDue", "stat-due") +
+        statBlock(expIc + "Expenses", "statExpenses", "stat-expenses") +
+        statBlock(netIc + "Net", "statNet", "stat-net", true) +
+        "</div>" +
+        "</section>" +
+        '<div class="dash-columns mt-2">' +
+        '<section class="card" aria-label="Recent transactions">' +
+        '<div class="card-header"><h3>Recent transactions</h3>' +
+        '<div class="card-actions">' +
+        '<span class="small muted" id="recentCount"></span>' +
+        '<button type="button" class="btn btn-secondary btn-sm" id="refreshBtn" title="Refresh today\'s figures">Refresh</button>' +
+        "</div></div>" +
+        '<div class="table-wrap"><table class="table txn-table">' +
+        "<thead><tr>" +
+        "<th>Time</th><th>Customer</th><th>Service</th><th>Payment</th>" +
+        '<th class="text-right">Amount</th><th class="text-right">Paid</th>' +
+        '<th class="text-right">Due</th>' +
+        "</tr></thead>" +
+        '<tbody id="recentBody">' +
+        '<tr><td colspan="7"><div class="state"><span class="spinner" aria-hidden="true"></span>' +
+        '<p class="muted">Loading today&rsquo;s transactions&hellip;</p></div></td></tr>' +
+        "</tbody></table></div>" +
+        '<div class="txn-footer small muted" id="recentFooter">&nbsp;</div>' +
+        "</section>" +
+        '<section class="card" aria-label="Quick services">' +
+        '<div class="card-header"><h3>Quick services</h3></div>' +
+        '<div class="card-body">' +
+        '<div class="quick-grid" id="quickGrid">' +
+        '<div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading&hellip;</p></div>' +
+        "</div>" +
+        '<p class="small muted mt-2" style="margin-bottom:0;">Tap a service to jump into a quick sale.</p>' +
+        "</div></section>" +
+        "</div>" +
+        '<section id="membersCard"></section>';
+
+      applyHooks();
+      loadDashboardData();
+      loadQuickServices();
+    }
+
+    function applyHooks() {
+      document.getElementById("refreshBtn").addEventListener("click", () => {
+        const btn = document.getElementById("refreshBtn");
+        setLoading(btn, true);
+        loadDashboardData().finally(() => setLoading(btn, false));
+      });
+    }
+
+    /* ---------- Dashboard data + rendering ---------- */
+
+    async function loadDashboardData() {
+      const body = document.getElementById("recentBody");
+      const footer = document.getElementById("recentFooter");
+      const sub = document.getElementById("summarySub");
+      try {
+        const summary = await fetchTodaySummary(todayKolkata());
+        renderStats(summary);
+        renderRecent(summary.transactions);
+        if (sub) sub.textContent = formatKolkataLong(new Date()) + " \u00B7 Asia/Kolkata";
+        setSyncState(navigator.onLine ? "online" : "offline");
+      } catch (err) {
+        console.error("[seva-ledger] dashboard load:", err);
+        if (sub) sub.textContent = "Could not load today's figures. Check your connection.";
+        if (body) {
+          body.innerHTML =
+            '<tr><td colspan="7"><div class="state is-error">' +
+            '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>' +
+            "<h3>Could not load transactions</h3>" +
+            "<p>" +
+            escapeHtml(
+              isNetworkError(err)
+                ? "You appear to be offline. Changes will sync automatically when you reconnect."
+                : reportError(err)
+            ) +
+            "</p>" +
+            '<button type="button" class="btn btn-secondary" onclick="window.location.reload()">Retry</button>' +
+            "</div></td></tr>";
+        }
+        if (footer) footer.innerHTML = "&nbsp;";
+        setSyncState(isNetworkError(err) ? "offline" : "online");
+      }
+    }
+
+    function renderStats(s) {
+      const el = (id) => document.getElementById(id);
+      el("statRevenue").textContent = formatINR(s.amountPaise);
+      el("statCount").textContent = String(s.count);
+      el("statCash").textContent = formatINR(s.cashPaise);
+      el("statUpi").textContent = formatINR(s.upiPaise);
+      el("statCard").textContent = formatINR(s.cardPaise);
+      el("statDue").textContent = formatINR(s.duePaise);
+      el("statExpenses").textContent = formatINR(s.expensesPaise);
+      const netEl = el("statNet");
+      netEl.textContent = formatINR(s.netPaise);
+      netEl.classList.toggle("text-danger", s.netPaise < 0);
+
+      const note = document.getElementById("revenueNote");
+      if (note) {
+        note.textContent =
+          (s.count === 1 ? "1 transaction" : s.count + " transactions") +
+          " \u00B7 " +
+          formatINR(s.paidPaise) +
+          " collected";
+      }
+      const count = document.getElementById("recentCount");
+      if (count) {
+        count.textContent = s.count ? (s.count === 1 ? "1 today" : s.count + " today") : "No transactions today";
+      }
+    }
+
+    function methodChips(t) {
+      return (
+        '<span class="badge badge-method badge-' + t.paymentMethod + '">' +
+        escapeHtml(t.methodLabel) +
+        (t.status === "pending" ? ' <span class="badge badge-warning" style="margin-left:2px;">Pending</span>' : "") +
+        "</span>"
+      );
+    }
+
+    function txnRow(t) {
+      const customer = t.customerName || "Walk-in";
+      const qtyInfo = t.quantity > 1 ? " &times; " + String(t.quantity) : "";
+      const dueCell =
+        t.duePaise > 0
+          ? '<span class="text-danger">' + formatINR(t.duePaise) + "</span>"
+          : '<span class="muted">' + formatINR(0) + "</span>";
+      return (
+        "<tr>" +
+        '<td class="txn-time">' + escapeHtml(formatKolkataTime(t.createdAt)) + "</td>" +
+        '<td class="txn-customer"><div class="txn-clip">' + escapeHtml(customer) + "</div></td>" +
+        '<td class="txn-service"><div class="txn-clip">' + escapeHtml(t.serviceName) + qtyInfo + "</div></td>" +
+        "<td>" + methodChips(t) + "</td>" +
+        '<td class="text-right txn-num">' + formatINR(t.totalPaise) + "</td>" +
+        '<td class="text-right txn-num">' + formatINR(t.collectedPaise) + "</td>" +
+        '<td class="text-right txn-num">' + dueCell + "</td>" +
+        "</tr>"
+      );
+    }
+
+    function renderRecent(transactions) {
+      const body = document.getElementById("recentBody");
+      const footer = document.getElementById("recentFooter");
+      if (!body || !footer) return;
+      if (!transactions.length) {
+        body.innerHTML =
+          '<tr><td colspan="7"><div class="state">' +
+          '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>' +
+          "<h3>No transactions today</h3>" +
+          "<p>Sales you record during the day will appear here.</p>" +
+          '<a class="btn btn-primary" href="transactions.html">' + ICON_PLUS + "Record a sale</a>" +
+          "</div></td></tr>";
+        footer.innerHTML = "&nbsp;";
+        return;
+      }
+      const shown = transactions.slice(0, 12);
+      body.innerHTML = shown.map(txnRow).join("");
+      footer.innerHTML =
+        transactions.length > 12
+          ? "Showing the most recent " + shown.length + " of " + transactions.length + ". The full daily ledger arrives in a later build."
+          : transactions.length === 1
+          ? "1 transaction today."
+          : transactions.length + " transactions today.";
+    }
+
+    /* ---------- Quick services ---------- */
+
+    function quickCode(s) {
+      const fromName = (s.name || "")
+        .replace(/[^a-zA-Z0-9\s]/g, "")
+        .trim()
+        .split(/\s+/)
+        .map((w) => w[0] || "")
+        .join("")
+        .toUpperCase();
+      return (s.code || fromName || "SV").slice(0, 2);
+    }
+
+    async function loadQuickServices() {
+      const grid = document.getElementById("quickGrid");
+      if (!grid) return;
+      let services = [];
+      try {
+        services = await fetchServices();
+      } catch (err) {
+        console.warn("[seva-ledger] services:", err);
+      }
+      const list = services.slice(0, 12);
+      grid.innerHTML =
+        list
+          .map(
+            (s) =>
+              '<button type="button" class="quick-service" tabindex="-1" data-id="' + escapeHtml(s.serviceId) + '">' +
+              '<span class="qs-icon">' + escapeHtml(quickCode(s)) + "</span>" +
+              '<span class="qs-name">' + escapeHtml(s.name) + "</span>" +
+              '<span class="qs-price">' + (s.pricePaise >= 0 ? formatINR(s.pricePaise) : "&nbsp;") + "</span>" +
+              "</button>"
+          )
+          .join("") ||
+        '<div class="state" style="padding:1rem 0;">' +
+        '<p class="muted" style="margin:0 0 0.9rem;">No services yet. Add them from the Transactions page.</p>' +
+        '<a class="btn btn-primary btn-sm" href="transactions.html">Add services</a>' +
+        "</div>";
+      grid.querySelectorAll(".quick-service").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          sessionStorage.setItem("seva.preselectService", btn.dataset.id);
+          window.location.href = "transactions.html";
+        });
+      });
+    }
+
+    /* ---------- Members card (admin) ---------- */
+    function renderMembersCard() {
+      const box = document.getElementById("membersCard");
+      if (!box) return;
+      box.innerHTML =
+        '<div class="card mt-2"><div class="card-header"><h3>Members</h3>' +
+        '<div class="card-actions"><button type="button" class="btn btn-primary btn-sm" id="openAddMemberBtn">Add member</button></div></div>' +
+        '<div class="card-body" id="membersList"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading members&hellip;</p></div></div></div>' +
+        '<div class="card mt-2"><div class="card-header"><h3>Shop access code</h3></div>' +
+        '<div class="card-body">' +
+        '<p class="small muted">Staff can sign in with this code on the shop computer instead of an email account.</p>' +
+        '<div class="flex" style="gap:0.6rem;flex-wrap:wrap;align-items:center;">' +
+        '<code id="shopCodeBox" style="font-size:1.3rem;letter-spacing:.12em;">&mdash;</code>' +
+        '<button type="button" class="btn btn-secondary btn-sm" id="codeCopyBtn">Copy</button>' +
+        '<button type="button" class="btn btn-primary btn-sm" id="codeRegenBtn">Set code</button>' +
+        "</div></div></div>";
+
+      document.getElementById("openAddMemberBtn").addEventListener("click", () => {
+        document.getElementById("memberEmail").value = "";
+        document.getElementById("addMemberModal").classList.add("is-open");
+        setTimeout(() => document.getElementById("memberEmail").focus(), 60);
+      });
+
+      document.querySelectorAll(".modal-overlay [data-close], .modal-overlay .modal-close").forEach((el) => {
+        el.addEventListener("click", () => el.closest(".modal-overlay").classList.remove("is-open"));
+      });
+
+      const form = document.getElementById("addMemberForm");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const btn = document.getElementById("addMemberBtn");
+        const email = document.getElementById("memberEmail").value.trim();
+        if (!email) {
+          toast("Enter an email address.", "error");
+          return;
+        }
+        btn.classList.add("is-loading");
+        btn.disabled = true;
+        try {
+          await inviteMember(email);
+          document.getElementById("addMemberModal").classList.remove("is-open");
+          toast("Invitation sent to " + email + ".", "success");
+          loadMembersList();
+        } catch (err) {
+          toast(reportError(err), "error");
+        } finally {
+          btn.classList.remove("is-loading");
+          btn.disabled = false;
+        }
+      });
+
+      loadMembersList();
+      loadShopCodeBox();
+    }
+
+    /* ---------- Shop access code (admin) ---------- */
+    async function loadShopCodeBox() {
+      const box = document.getElementById("shopCodeBox");
+      if (!box) return;
+      const copyBtn = document.getElementById("codeCopyBtn");
+      const regenBtn = document.getElementById("codeRegenBtn");
+      let current = "";
+      try {
+        current = await getAccessCode();
+      } catch (err) {
+        toast(reportError(err), "error");
+      }
+      box.textContent = current || "—";
+      regenBtn.textContent = current ? "Change code" : "Set code";
+
+      const setCode = async (fresh) => {
+        try {
+          current = await setAccessCode(fresh);
+          box.textContent = current;
+          regenBtn.textContent = "Change code";
+          toast("Shop access code set: " + current + ". Save it somewhere safe.", "success");
+        } catch (err) {
+          toast(reportError(err), "error");
+        }
+      };
+
+      regenBtn.addEventListener("click", async () => {
+        const fresh = generateAccessCode();
+        const ok = await confirm({
+          title: "Change shop access code",
+          message: "Staff will use this code to sign in: " + fresh + ". The previous code is switched off immediately.",
+          confirmText: "Use this code",
+          variant: "primary",
+        });
+        if (!ok) return;
+        await setCode(fresh);
+      });
+
+      copyBtn.addEventListener("click", async () => {
+        if (!current) {
+          toast("Set a code first.", "info");
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(current);
+          toast("Code copied.", "success");
+        } catch (_) {
+          toast("Select and copy the code above.", "info");
+        }
+      });
+    }
+
+    /* ---------- Members list ---------- */
+    function memberRow(member) {
+      const isSelf = member.uid === getCurrentUser().uid;
+      const active = member.active !== false;
+      const name = member.name || (isSelf ? "You" : "Member");
+      const email = member.email || "shop access code";
+      const select =
+        '<select class="select input-sm" data-role data-uid="' + escapeHtml(member.uid) + '" ' + (isSelf ? "disabled" : "") + ">" +
+        '<option value="ADMIN"' + (member.role === ROLES.ADMIN ? " selected" : "") + ">Admin</option>" +
+        '<option value="EMPLOYEE"' + (member.role !== ROLES.ADMIN ? " selected" : "") + ">Employee</option>" +
+        "</select>";
+      const toggle =
+        '<button type="button" class="btn btn-sm ' + (active ? "btn-secondary" : "btn-danger-soft") + '" data-active data-uid="' + escapeHtml(member.uid) + '" ' + (isSelf ? "disabled" : "") + ">" +
+        (active ? "Active" : "Disabled") + "</button>";
+      return (
+        '<div class="member-row">' +
+        '<div class="member-info">' +
+        '<div class="member-name">' + escapeHtml(name) + (isSelf ? ' <span class="small muted">(you)</span>' : "") + "</div>" +
+        '<div class="member-email">' + escapeHtml(email) + "</div>" +
+        "</div>" +
+        select +
+        toggle +
+        '<span class="badge ' + (member.role === ROLES.ADMIN ? "badge-accent" : "badge-neutral") + '">' + (member.role === ROLES.ADMIN ? "Admin" : "Employee") + "</span>" +
+        "</div>"
+      );
+    }
+
+    async function loadMembersList() {
+      const list = document.getElementById("membersList");
+      if (!list) return;
+      try {
+        const [members, invites] = await Promise.all([listMembers(), listPendingInvites()]);
+        membersCache.length = 0;
+        membersCache.push(...members);
+        let html = members.map(memberRow).join("");
+        if (invites.length) {
+          html +=
+            '<div class="mt-2"><div class="small muted mb-1">Pending invitations</div>' +
+            invites
+              .map(
+                (inv) =>
+                  '<div class="invite-row"><span class="badge badge-warning">Invited</span>' +
+                  '<span class="flex" style="flex:1;">' + escapeHtml(inv.email) + "</span>" +
+                  '<button type="button" class="btn btn-danger-soft btn-sm" data-cancel-invite="' + escapeHtml(inv.email) + '">Cancel</button></div>'
+              )
+              .join("") +
+            "</div>";
+        }
+        if (!html) {
+          html = '<div class="state"><h3>No members yet</h3><p>The owner is added automatically when the shop is set up.</p></div>';
+        }
+        list.innerHTML = html;
+
+        list.querySelectorAll("[data-role]").forEach((sel) => {
+          sel.addEventListener("change", async () => {
+            try {
+              await setMemberRole(sel.dataset.uid, sel.value);
+              toast("Role updated.", "success");
+              loadMembersList();
+            } catch (err) {
+              toast(reportError(err), "error");
+              sel.value = membersCache.find((m) => m.uid === sel.dataset.uid)?.role || sel.value;
+            }
+          });
+        });
+
+        list.querySelectorAll("[data-active]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const member = membersCache.find((m) => m.uid === btn.dataset.uid);
+            const nextActive = member.active === false;
+            const action = nextActive ? "reactivate" : "disable";
+            const ok = await confirm({
+              title: action === "disable" ? "Disable member" : "Reactivate member",
+              message:
+                action === "disable"
+                  ? "This member will immediately lose access to the shop until reactivated."
+                  : "This member will regain access to the shop.",
+              confirmText: action === "disable" ? "Disable" : "Reactivate",
+              variant: action === "disable" ? "danger" : "primary",
+            });
+            if (!ok) return;
+            try {
+              await setMemberActive(btn.dataset.uid, nextActive);
+              toast(nextActive ? "Member reactivated." : "Member disabled.", "success");
+              loadMembersList();
+            } catch (err) {
+              toast(reportError(err), "error");
+            }
+          });
+        });
+
+        list.querySelectorAll("[data-cancel-invite]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            try {
+              await cancelInvite(btn.dataset.cancelInvite);
+              toast("Invitation cancelled.", "info");
+              loadMembersList();
+            } catch (err) {
+              toast(reportError(err), "error");
+            }
+          });
+        });
+      } catch (err) {
+        list.innerHTML = shield(
+          '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+          "Could not load members",
+          reportError(err),
+          '<button type="button" class="btn btn-secondary" onclick="window.location.reload()">Retry</button>'
+        );
+      }
+    }
+
+    /* =========================================================
+       Boot
+       ========================================================= */
+    initAppShell({
+      page: "dashboard",
+      onReady: async (ctx) => {
+        await renderDashboard();
+        if (ctx.isAdmin) renderMembersCard();
+      },
+      onDayChange: () => {
+        loadDashboardData();
+      },
+    });
+  </script>
+</body>
+</html>

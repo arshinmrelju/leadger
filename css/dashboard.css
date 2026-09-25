@@ -1,0 +1,207 @@
+/* =========================================================
+   SEVA LEDGER — Dashboard
+   ========================================================= */
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.1rem;
+  margin-bottom: 1.4rem;
+}
+
+.stat-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stat-card .stat-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.stat-card .stat-label .stat-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.stat-card .stat-value {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-card .stat-value.stat-emphasis {
+  color: var(--color-primary);
+  font-size: 2rem;
+}
+
+.stat-card.stat-revenue { border-top: 3px solid var(--color-primary); }
+.stat-card.stat-net { border-top: 3px solid var(--color-accent); }
+.stat-card.stat-due { border-top: 3px solid var(--color-warning); }
+
+.stat-card .stat-note {
+  font-size: 0.76rem;
+  color: var(--color-faint);
+}
+
+/* Two-column dashboard body */
+.dash-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+/* Quick service buttons */
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 0.6rem;
+}
+
+.quick-service {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.8rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.quick-service:hover {
+  border-color: var(--color-primary);
+  background: #f0fdfa;
+  transform: translateY(-1px);
+}
+
+.quick-service .qs-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+.quick-service .qs-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text-soft);
+  text-align: center;
+  line-height: 1.15;
+}
+
+/* Quick entry */
+.entry-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: var(--radius);
+  background: var(--color-primary-darker);
+  color: #ffffff;
+}
+
+.entry-total .entry-total-label {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+  font-weight: 700;
+}
+
+.entry-total .entry-total-value {
+  font-size: 1.7rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #fbbf24;
+}
+
+/* Rule row used in settings/due panels */
+.rule-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.rule-row:last-child { border-bottom: 0; }
+.rule-row .rule-main { flex: 1 1 auto; min-width: 0; }
+.rule-row .rule-title { font-weight: 600; font-size: 0.92rem; }
+.rule-row .rule-sub { font-size: 0.8rem; color: var(--color-muted); }
+
+/* ---------- Dashboard header + stat-card variations ---------- */
+.dash-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.15rem;
+}
+.dash-head h1 { font-size: 1.35rem; }
+.dash-head p { margin: 0.25rem 0 0; }
+
+.dash-head .btn-lg {
+  font-size: 0.95rem;
+  padding: 0.72rem 1.1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-card .stat-label svg { width: 15px; height: 15px; }
+.stat-card.stat-cash { border-top: 3px solid var(--color-success); }
+.stat-card.stat-upi { border-top: 3px solid var(--color-info); }
+.stat-card.stat-cardp { border-top: 3px solid #7c3aed; }
+.stat-card.stat-expenses { border-top: 3px solid #e11d48; }
+.stat-card .stat-value.text-danger { color: var(--color-danger); }
+
+/* ---------- Recent transactions ---------- */
+.txn-table th,
+.txn-table td { padding-left: 0.9rem; padding-right: 0.9rem; }
+.txn-table .txn-time { color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.txn-table .txn-num { font-variant-numeric: tabular-nums; }
+
+.txn-clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.txn-customer .txn-clip { max-width: 180px; }
+.txn-service .txn-clip { max-width: 210px; }
+.txn-table .txn-service { color: var(--color-text-soft); }
+
+.txn-footer {
+  padding: 0.7rem 1.2rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.badge-method { font-size: 0.7rem; padding: 2px 8px; }
+.badge-cash { background: var(--color-success-soft); color: #166534; }
+.badge-upi { background: var(--color-info-soft); color: #1e40af; }
+.badge-card { background: #ede9fe; color: #6d28d9; }
+.badge-due { background: var(--color-warning-soft); color: #92400e; }
+
+/* ---------- Quick services ---------- */
+.quick-service .qs-price {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-faint);
+}

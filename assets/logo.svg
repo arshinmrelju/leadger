@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">SEVA LEDGER</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#0b5e57"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <path d="M46 72c22-8 46-8 68 0v112c-22-8-46-8-68 0V72z" fill="none" stroke="#ffffff" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M210 72c-22-8-46-8-68 0v112c22-8 46-8 68 0V72z" fill="none" stroke="#ffffff" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M114 72v112" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+  <path d="M138 92c18-3 33 7 33 22 0 13-13 21-33 21h-6l12 27" fill="none" stroke="#fbbf24" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M126 116h38" stroke="#fbbf24" stroke-width="10" stroke-linecap="round"/>
+</svg>

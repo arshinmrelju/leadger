@@ -1,0 +1,235 @@
+/* =========================================================
+   SEVA LEDGER — Forms
+   ========================================================= */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  min-width: 0;
+}
+
+.field > label {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--color-text-soft);
+}
+
+.field .field-hint {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+.field .field-error {
+  display: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-danger);
+}
+
+.field.has-error .field-error { display: block; }
+.field.has-error .input,
+.field.has-error .select,
+.field.has-error textarea.input { border-color: var(--color-danger); box-shadow: var(--ring-danger); }
+
+.input,
+.select,
+textarea.input {
+  width: 100%;
+  padding: 0.58rem 0.8rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  appearance: none;
+}
+
+.input:focus,
+.select:focus,
+textarea.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--ring);
+}
+
+.input::placeholder,
+textarea.input::placeholder { color: var(--color-faint); }
+
+input.input[type="number"] { -moz-appearance: textfield; }
+input.input[type="number"]::-webkit-outer-spin-button,
+input.input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748b' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.2rem;
+  cursor: pointer;
+}
+
+.input-lg { padding: 0.75rem 1rem; font-size: 1.05rem; }
+.input-sm { padding: 0.35rem 0.65rem; font-size: 0.86rem; }
+
+.input-group {
+  display: flex;
+  align-items: stretch;
+}
+.input-group .input {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.input-group .input-group-addon {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.9rem;
+  border: 1px solid var(--color-border-strong);
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  background: var(--color-bg);
+  color: var(--color-muted);
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.input-prefix {
+  position: relative;
+}
+.input-prefix .prefix {
+  position: absolute;
+  left: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 700;
+  color: var(--color-muted);
+  pointer-events: none;
+}
+.input-prefix .input { padding-left: 2rem; }
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+  align-items: start;
+}
+.form-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.form-row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.form-row .field { margin-bottom: 1rem; }
+
+/* Payment method chips */
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.46rem 0.9rem;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--t-fast) var(--ease);
+}
+
+.chip input { position: absolute; opacity: 0; pointer-events: none; }
+
+.chip:hover { border-color: var(--color-faint); }
+
+.chip.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+
+.chip.is-selected-danger {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+  color: #92400e;
+}
+
+/* Checkbox / switch */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+}
+.check input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+/* ---------- Login page ---------- */
+.auth-body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(1200px 500px at 80% -10%, rgba(15, 118, 110, 0.14), transparent 60%),
+    radial-gradient(900px 400px at -10% 110%, rgba(245, 158, 11, 0.10), transparent 55%),
+    var(--color-bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 1.9rem 2rem 1.6rem;
+}
+.auth-logo {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 0.9rem;
+  border-radius: 16px;
+}
+.auth-title {
+  text-align: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.auth-sub {
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  margin-bottom: 1.4rem;
+}
+.auth-card .alert { margin-bottom: 1rem; }
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 1rem 0;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--color-border);
+}
+.code-input {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
+  text-transform: uppercase;
+}
