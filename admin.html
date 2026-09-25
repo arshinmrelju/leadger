@@ -74,7 +74,7 @@
 
         <div class="nav-section-title">Management</div>
 
-        <a class="nav-link is-active" data-nav="admin" href="admin.html" data-admin-only>
+        <a class="nav-link is-active" data-nav="admin" href="admin.html">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           Admin
         </a>
@@ -83,7 +83,7 @@
       <div class="sidebar-footer">
         <div id="userChip"></div>
         <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
-          SEVA LEDGER &middot; v0.5.0
+          SEVA LEDGER &middot; v0.6.0
         </div>
       </div>
     </aside>
@@ -110,31 +110,6 @@
           <p class="muted">Loading&hellip;</p>
         </div>
       </main>
-    </div>
-  </div>
-
-  <!-- ===================== Modals ===================== -->
-
-  <!-- Add member by email -->
-  <div class="modal-overlay" id="addMemberModal" role="dialog" aria-modal="true">
-    <div class="modal modal-sm" role="document">
-      <div class="modal-header">
-        <h3>Add a member</h3>
-        <button type="button" class="modal-close" data-close aria-label="Close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <form id="addMemberForm" novalidate>
-          <div class="field">
-            <label for="memberEmail">Email address</label>
-            <input class="input" id="memberEmail" type="email" inputmode="email" autocomplete="off" placeholder="employee@example.com" />
-            <span class="field-hint">When they sign in with this email, they will be added as an employee of this shop.</span>
-          </div>
-          <div class="flex" style="justify-content:flex-end;">
-            <button type="button" class="btn btn-secondary" data-close>Cancel</button>
-            <button type="submit" class="btn btn-primary" id="addMemberBtn">Send invitation</button>
-          </div>
-        </form>
-      </div>
     </div>
   </div>
 

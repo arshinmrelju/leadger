@@ -4,33 +4,28 @@ rules_version = '2';
 // SEVA LEDGER — Cloud Firestore security rules
 // -------------------------------------------------------------
 // SINGLE-SHOP (flat) model. There is no per-shop namespace; this
-// instance IS one shop. Multiple users (owner + staff) access it
-// through role-gated top-level collections.
+// instance IS one shop.
+//
+// Simple trust model: the whole shop opens with one shared code
+// (TRUSTX) which is verified in the BROWSER before an anonymous
+// session is created. Firestore's job here is record integrity,
+// not access tiers:
+//   * Only signed-in (anonymous, code-gated) users touch data.
+//   * Every document is strongly typed and non-forgeable on the
+//     server: createdBy == request.auth.uid, createdAt == request.time,
+//     transactions money stays integer paise with
+//     total == quantity * rate, services must exist and be active,
+//     fields are range-checked.
+//   * Nothing is ever deleted (services archive with active=false).
 //
 // Data model covered here:
-//   settings/general                  shop identity; ownerUid pins the owner
-//   settings/security                 the access code (secret, admin-only)
-//   members/{uid}                     role: ADMIN | EMPLOYEE  (ADMIN = the developer)
-//   pendingMembers/{email}            invitation by email
-//   transactions/{txnId}              sales
-//   services/{serviceId}              service catalog
-//   expenses/{expId}                  spends (read-only this build)
+//   settings/general               shop identity (auto-created on first use)
+//   transactions/{txnId}           sales
+//   services/{serviceId}           service catalog
+//   expenses/{expId}               spends (read-only this build)
 //
-// Core guarantees:
-//   * Anonymous / signed-out users cannot read, list or write data
-//     (except: any signed-in user may GET settings/general once to
-//     detect first-run; nobody can list settings or read the code).
-//   * A user may act only if they are an ACTIVE member.
-//   * ADMIN-only operations are enforced here, never in JS alone.
-//   * Members can only be created for the calling user: as first-run
-//     owner bootstrap, by claiming a matching email invitation, or by
-//     proving the stored access code (comparison happens server-side;
-//     employees never read the code).
-//   * createdAt == request.time and createdBy == request.auth.uid
-//     are enforced, so records are not forgeable.
-//   * The owner can never be demoted or deactivated.
-//   * Transaction money stays integer paise; the server re-checks
-//     total == quantity * rate and every field type/range.
+// The old members/ and settings/security collections are no longer
+// used; the deny-all tail below keeps them unreachable.
 // =============================================================
 
 service cloud.firestore {
@@ -40,47 +35,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function memberRef(uid) {
-      return /databases/$(database)/documents/members/$(uid);
-    }
-
-    function activeMember(uid) {
-      return exists(memberRef(uid))
-        && get(memberRef(uid)).data.active == true;
-    }
-
-    function isAdmin(uid) {
-      return activeMember(uid)
-        && get(memberRef(uid)).data.role == 'ADMIN';
-    }
-
-    function isOwner(uid) {
-      return exists(/databases/$(database)/documents/settings/general)
-        && get(/databases/$(database)/documents/settings/general).data.ownerUid == uid;
-    }
-
-    function validMemberDoc(doc) {
-      return doc.keys().hasOnly([
-            'uid', 'name', 'email', 'photoURL',
-            'role', 'active', 'createdAt',
-            'updatedAt', 'updatedBy', 'addedBy', 'joinCode'
-          ])
-        && doc.uid is string
-        && doc.role in ['ADMIN', 'EMPLOYEE']
-        && doc.active is bool
-        && doc.name is string
-        && doc.name.size() <= 100
-        && doc.email is string
-        && doc.email.size() <= 200
-        && doc.photoURL is string
-        && doc.photoURL.size() <= 1000;
-    }
-
     function validGeneralDoc(doc) {
       return doc.keys().hasOnly([
             'name', 'phone', 'address',
-            'currency', 'ownerUid', 'active',
-            'createdAt', 'createdBy'
+            'currency', 'active', 'createdAt', 'createdBy'
           ])
         && doc.name is string
         && doc.name.size() >= 1
@@ -91,126 +49,31 @@ service cloud.firestore {
         && doc.address.size() <= 300
         && doc.currency is string
         && doc.currency.size() == 3
-        && doc.ownerUid is string
         && doc.active == true;
     }
 
     // ---------------- Settings ----------------
-    // `general` is the shop record: created once on first-run and then
-    // administrator-maintained. `security` carries the access code and
-    // is never readable by employees (the join flow is verified against
-    // it inside the rules engine, which bypasses allow checks).
+    // `general` is the shop record: silently auto-created the first
+    // time any code-signed-in device opens the app (see auth.js
+    // ensureShopRecord). Update is open to any signed-in device — one
+    // shop, one identity.
     match /settings/{docId} {
-      allow get: if signedIn() && (docId != 'security' || isAdmin(request.auth.uid));
-
-      allow list: if signedIn() && activeMember(request.auth.uid);
+      allow get, list: if signedIn();
 
       allow create: if signedIn()
-        && (
-            (docId == 'general'
-             && !exists(/databases/$(database)/documents/settings/general)
-             && validGeneralDoc(request.resource.data)
-             && request.resource.data.ownerUid == request.auth.uid
-             && request.resource.data.createdAt == request.time
-             && request.resource.data.createdBy == request.auth.uid)
-            || (docId == 'security'
-                && isAdmin(request.auth.uid)
-                && request.resource.data.keys().hasOnly(['accessCode', 'updatedAt', 'updatedBy'])
-                && request.resource.data.accessCode.matches('^[A-Z0-9]{8}$')
-                && request.resource.data.updatedAt == request.time
-                && request.resource.data.updatedBy == request.auth.uid)
-          );
-
-      allow update: if signedIn()
-        && (
-            (docId == 'general'
-             && isAdmin(request.auth.uid)
-             && validGeneralDoc(request.resource.data)
-             && request.resource.data.ownerUid == resource.data.ownerUid
-             && request.resource.data.createdAt == resource.data.createdAt
-             && request.resource.data.createdBy == resource.data.createdBy)
-            || (docId == 'security'
-                && isAdmin(request.auth.uid)
-                && request.resource.data.keys().hasOnly(['accessCode', 'updatedAt', 'updatedBy'])
-                && request.resource.data.accessCode.matches('^[A-Z0-9]{8}$')
-                && request.resource.data.updatedAt == request.time
-                && request.resource.data.updatedBy == request.auth.uid)
-          );
-
-      allow delete: if false;
-    }
-
-    // ---------------- Members ----------------
-    match /members/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin(request.auth.uid));
-
-      // Three legal ways to create a member doc:
-      //   A) First-run owner bootstrap (role ADMIN), only when the
-      //      shop has not been set up yet.
-      //   B) Claiming an email invitation (role EMPLOYEE).
-      //   C) Enrolling with the matching access code (EMPLOYEE).
-      allow create: if signedIn()
-        && request.auth.uid == uid
-        && request.resource.data.uid == uid
-        && validMemberDoc(request.resource.data)
+        && docId == 'general'
+        && !exists(/databases/$(database)/documents/settings/general)
+        && validGeneralDoc(request.resource.data)
         && request.resource.data.createdAt == request.time
-        && request.resource.data.active == true
-        && (
-            (request.resource.data.role == 'ADMIN'
-             && !exists(/databases/$(database)/documents/settings/general))
-            || (
-                request.auth.token.email != null
-                && request.resource.data.role == 'EMPLOYEE'
-                && request.resource.data.email == request.auth.token.email.lower()
-                && exists(/databases/$(database)/documents/pendingMembers/$(request.auth.token.email.lower()))
-                && get(/databases/$(database)/documents/pendingMembers/$(request.auth.token.email.lower())).data.email == request.resource.data.email
-              )
-            || (
-                request.resource.data.role == 'EMPLOYEE'
-                && request.resource.data.addedBy == 'access_code'
-                && request.resource.data.joinCode is string
-                && request.resource.data.joinCode.matches('^[A-Z0-9]{8}$')
-                && get(/databases/$(database)/documents/settings/security).data.accessCode == request.resource.data.joinCode
-              )
-          );
+        && request.resource.data.createdBy == request.auth.uid;
 
       allow update: if signedIn()
-        && isAdmin(request.auth.uid)
-        && request.resource.data.uid == resource.data.uid
-        && validMemberDoc(request.resource.data)
+        && docId == 'general'
+        && validGeneralDoc(request.resource.data)
         && request.resource.data.createdAt == resource.data.createdAt
-        && !(isOwner(resource.data.uid) && request.resource.data.role != 'ADMIN')
-        && !(isOwner(resource.data.uid) && request.resource.data.active == false);
+        && request.resource.data.createdBy == resource.data.createdBy;
 
       allow delete: if false;
-    }
-
-    // ---------------- Email invitations ----------------
-    match /pendingMembers/{email} {
-      allow read: if signedIn()
-        && (isAdmin(request.auth.uid)
-            || (request.auth.token.email != null
-                && request.auth.token.email.lower() == email));
-
-      allow create: if signedIn()
-        && isAdmin(request.auth.uid)
-        && request.resource.data.keys().hasOnly(['email', 'invitedBy', 'invitedAt', 'note'])
-        && request.resource.data.email == email
-        && request.resource.data.invitedAt == request.time;
-
-      allow update: if signedIn() && isAdmin(request.auth.uid);
-
-      // Admin revokes, OR the invited user removes it once their
-      // membership is actually created (claim flow).
-      allow delete: if signedIn()
-        && (
-            isAdmin(request.auth.uid)
-            || (
-                request.auth.token.email != null
-                && request.auth.token.email.lower() == email
-                && activeMember(request.auth.uid)
-              )
-          );
     }
 
     // ---------------- Transactions ----------------
@@ -250,9 +113,9 @@ service cloud.firestore {
           && doc.updatedAt == request.time;
       }
 
-      allow read: if signedIn() && activeMember(request.auth.uid);
+      allow read: if signedIn();
 
-      allow create: if signedIn() && activeMember(request.auth.uid)
+      allow create: if signedIn()
         && validTransactionDoc(request.resource.data);
 
       allow update: if false;
@@ -260,10 +123,9 @@ service cloud.firestore {
     }
 
     // ---------------- Services ----------------
-    // Inline quick-add is allowed for any active member so staff can
-    // create services on the fly. Editing/archiving is Developer-only
-    // (`ADMIN` — the developer role); deletion is never allowed, so
-    // "removal" means setting active=false.
+    // Any signed-in (code-gated) device may create, rename, re-price or
+    // archive services. Deletion is never allowed, so "removal" means
+    // setting active=false.
     match /services/{serviceId} {
       function validServiceDoc(doc) {
         return doc.keys().hasOnly([
@@ -303,12 +165,12 @@ service cloud.firestore {
           && doc.updatedBy == request.auth.uid;
       }
 
-      allow read: if signedIn() && activeMember(request.auth.uid);
+      allow read: if signedIn();
 
-      allow create: if signedIn() && activeMember(request.auth.uid)
+      allow create: if signedIn()
         && validServiceDoc(request.resource.data);
 
-      allow update: if signedIn() && isAdmin(request.auth.uid)
+      allow update: if signedIn()
         && validServiceUpdate(request.resource.data);
 
       allow delete: if false;
@@ -331,13 +193,14 @@ service cloud.firestore {
           && doc.note is string && doc.note.size() <= 500;
       }
 
-      allow read: if signedIn() && activeMember(request.auth.uid);
+      allow read: if signedIn();
       allow create: if false;
       allow update: if false;
       allow delete: if false;
     }
 
-    // Everything else is denied by default.
+    // Everything else (members, pendingMembers, settings/security, …)
+    // is denied by default.
     match /{document=**} {
       allow read, write: if false;
     }

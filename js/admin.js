@@ -1,8 +1,8 @@
 /* =========================================================
    SEVA LEDGER — Developer console (admin.html)
    -----------------------------------------------------------------
-   The ADMIN role IS the developer. This page is the management
-   console: members, shop access code, services maintenance and a
+   Everyone who signs in with the shop code has full access, so this
+   console covers the shop's maintenance: the service catalog and a
    full-data browser. The dashboard stays operational-only.
    ========================================================= */
 
@@ -22,41 +22,10 @@ import {
   fetchTransactions,
   fetchExpenses,
 } from "./ledger.js";
-import {
-  getCurrentUser,
-  reportError,
-  ROLES,
-  roleLabel,
-  listMembers,
-  listPendingInvites,
-  inviteMember,
-  setMemberRole,
-  setMemberActive,
-  cancelInvite,
-  getAccessCode,
-  setAccessCode,
-  generateAccessCode,
-} from "./auth.js";
-
-const membersCache = [];
-
-function shield(icon, title, text, actionsHtml) {
-  return (
-    '<div class="state card" style="max-width:520px;margin:2rem auto;padding:2rem;">' +
-    '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    icon +
-    "</svg>" +
-    "<h3>" + escapeHtml(title) + "</h3>" +
-    "<p>" + escapeHtml(text) + "</p>" +
-    (actionsHtml || "") +
-    "</div>"
-  );
-}
+import { reportError } from "./auth.js";
 
 function svg(id) {
   const paths = {
-    members: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
-    code: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     services: '<path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/>',
     data: '<path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/>',
   };
@@ -74,42 +43,16 @@ export async function renderAdminPage(ctx) {
   const mainContent = document.getElementById("mainContent");
   if (!mainContent) return;
 
-  if (!ctx.isAdmin) {
-    mainContent.innerHTML = shield(
-      '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
-      "Developer access only",
-      "This is the developer console. Only accounts with the Developer role can open it.",
-      '<a class="btn btn-secondary" href="dashboard.html">Back to dashboard</a>'
-    );
-    return;
-  }
-
   mainContent.innerHTML =
     '<div class="dash-head">' +
     "<div>" +
     "<h1>Developer console</h1>" +
-    '<p class="small muted">Members, shop access code, services and full data access.</p>' +
+    '<p class="small muted">Services maintenance and full data access.</p>' +
     "</div>" +
     '<span class="pill pill-accent" id="devShopPill">' + escapeHtml(ctx.general ? ctx.general.name || "SEVA LEDGER" : "SEVA LEDGER") + "</span>" +
     "</div>" +
 
-    '<section class="card" id="membersCard">' +
-    '<div class="card-header"><h3>' + svg("members") + "Members</h3>" +
-    '<div class="card-actions"><button type="button" class="btn btn-primary btn-sm" id="openAddMemberBtn">Add member</button></div></div>' +
-    '<div class="card-body" id="membersList"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading members&hellip;</p></div></div>' +
-    "</section>" +
-
-    '<section class="card mt-2" id="codeCard">' +
-    '<div class="card-header"><h3>' + svg("code") + "Shop access code</h3></div>" +
-    '<div class="card-body">' +
-    '<p class="small muted">Staff can sign in with this code on the shop computer instead of an email account.</p>' +
-    '<div class="flex" style="gap:0.6rem;flex-wrap:wrap;align-items:center;">' +
-    '<code id="shopCodeBox" style="font-size:1.3rem;letter-spacing:.12em;">&mdash;</code>' +
-    '<button type="button" class="btn btn-secondary btn-sm" id="codeCopyBtn">Copy</button>' +
-    '<button type="button" class="btn btn-primary btn-sm" id="codeRegenBtn">Set code</button>' +
-    "</div></div></section>" +
-
-    '<section class="card mt-2" id="servicesCard">' +
+    '<section class="card" id="servicesCard">' +
     '<div class="card-header"><h3>' + svg("services") + "Services</h3></div>" +
     '<div class="card-body">' +
     '<div class="rule-row">' +
@@ -153,216 +96,10 @@ export async function renderAdminPage(ctx) {
     '<div class="txn-footer small" id="dataExpFooter">&nbsp;</div>' +
     "</div></section>";
 
-  wireMembersCard();
-  loadMembersList();
-  wireShopCodeBox();
   wireAddService();
   loadServicesList();
   wireDataBrowser();
   loadDataBrowser();
-}
-
-/* =========================================================
-   Members
-   ========================================================= */
-function wireMembersCard() {
-  document.getElementById("openAddMemberBtn").addEventListener("click", () => {
-    document.getElementById("memberEmail").value = "";
-    document.getElementById("addMemberModal").classList.add("is-open");
-    setTimeout(() => document.getElementById("memberEmail").focus(), 60);
-  });
-
-  document.querySelectorAll("#addMemberModal [data-close], #addMemberModal .modal-close").forEach((el) => {
-    el.addEventListener("click", () => el.closest(".modal-overlay").classList.remove("is-open"));
-  });
-
-  document.getElementById("addMemberForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const btn = document.getElementById("addMemberBtn");
-    const email = document.getElementById("memberEmail").value.trim();
-    if (!email) {
-      toast("Enter an email address.", "error");
-      return;
-    }
-    btn.classList.add("is-loading");
-    btn.disabled = true;
-    try {
-      await inviteMember(email);
-      document.getElementById("addMemberModal").classList.remove("is-open");
-      toast("Invitation sent to " + email + ".", "success");
-      loadMembersList();
-    } catch (err) {
-      toast(reportError(err), "error");
-    } finally {
-      btn.classList.remove("is-loading");
-      btn.disabled = false;
-    }
-  });
-}
-
-function memberRow(member) {
-  const isSelf = member.uid === getCurrentUser().uid;
-  const active = member.active !== false;
-  const name = member.name || (isSelf ? "You" : "Member");
-  const email = member.email || "shop access code";
-  const select =
-    '<select class="select input-sm" data-role data-uid="' + escapeHtml(member.uid) + '" ' + (isSelf ? "disabled" : "") + ">" +
-    '<option value="ADMIN"' + (member.role === ROLES.ADMIN ? " selected" : "") + ">Developer</option>" +
-    '<option value="EMPLOYEE"' + (member.role !== ROLES.ADMIN ? " selected" : "") + ">Employee</option>" +
-    "</select>";
-  const toggle =
-    '<button type="button" class="btn btn-sm ' + (active ? "btn-secondary" : "btn-danger-soft") + '" data-active data-uid="' + escapeHtml(member.uid) + '" ' + (isSelf ? "disabled" : "") + ">" +
-    (active ? "Active" : "Disabled") + "</button>";
-  return (
-    '<div class="member-row">' +
-    '<div class="member-info">' +
-    '<div class="member-name">' + escapeHtml(name) + (isSelf ? ' <span class="small muted">(you)</span>' : "") + "</div>" +
-    '<div class="member-email">' + escapeHtml(email) + "</div>" +
-    "</div>" +
-    select +
-    toggle +
-    '<span class="badge ' + (member.role === ROLES.ADMIN ? "badge-accent" : "badge-neutral") + '">' + escapeHtml(roleLabel(member.role)) + "</span>" +
-    "</div>"
-  );
-}
-
-async function loadMembersList() {
-  const list = document.getElementById("membersList");
-  if (!list) return;
-  try {
-    const [members, invites] = await Promise.all([listMembers(), listPendingInvites()]);
-    membersCache.length = 0;
-    membersCache.push(...members);
-    let html = members.map(memberRow).join("");
-    if (invites.length) {
-      html +=
-        '<div class="mt-2"><div class="small muted mb-1">Pending invitations</div>' +
-        invites
-          .map(
-            (inv) =>
-              '<div class="invite-row"><span class="badge badge-warning">Invited</span>' +
-              '<span class="flex" style="flex:1;">' + escapeHtml(inv.email) + "</span>" +
-              '<button type="button" class="btn btn-danger-soft btn-sm" data-cancel-invite="' + escapeHtml(inv.email) + '">Cancel</button></div>'
-          )
-          .join("") +
-        "</div>";
-    }
-    if (!html) {
-      html = '<div class="state"><h3>No members yet</h3><p>The owner is added automatically when the shop is set up.</p></div>';
-    }
-    list.innerHTML = html;
-
-    list.querySelectorAll("[data-role]").forEach((sel) => {
-      sel.addEventListener("change", async () => {
-        try {
-          await setMemberRole(sel.dataset.uid, sel.value);
-          toast("Role updated.", "success");
-          loadMembersList();
-        } catch (err) {
-          toast(reportError(err), "error");
-          sel.value = membersCache.find((m) => m.uid === sel.dataset.uid)?.role || sel.value;
-        }
-      });
-    });
-
-    list.querySelectorAll("[data-active]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const member = membersCache.find((m) => m.uid === btn.dataset.uid);
-        const nextActive = member.active === false;
-        const action = nextActive ? "reactivate" : "disable";
-        const ok = await confirm({
-          title: action === "disable" ? "Disable member" : "Reactivate member",
-          message:
-            action === "disable"
-              ? "This member will immediately lose access to the shop until reactivated."
-              : "This member will regain access to the shop.",
-          confirmText: action === "disable" ? "Disable" : "Reactivate",
-          variant: action === "disable" ? "danger" : "primary",
-        });
-        if (!ok) return;
-        try {
-          await setMemberActive(btn.dataset.uid, nextActive);
-          toast(nextActive ? "Member reactivated." : "Member disabled.", "success");
-          loadMembersList();
-        } catch (err) {
-          toast(reportError(err), "error");
-        }
-      });
-    });
-
-    list.querySelectorAll("[data-cancel-invite]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        try {
-          await cancelInvite(btn.dataset.cancelInvite);
-          toast("Invitation cancelled.", "info");
-          loadMembersList();
-        } catch (err) {
-          toast(reportError(err), "error");
-        }
-      });
-    });
-  } catch (err) {
-    list.innerHTML = shield(
-      '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
-      "Could not load members",
-      reportError(err),
-      '<button type="button" class="btn btn-secondary" onclick="window.location.reload()">Retry</button>'
-    );
-  }
-}
-
-/* =========================================================
-   Shop access code
-   ========================================================= */
-async function wireShopCodeBox() {
-  const box = document.getElementById("shopCodeBox");
-  if (!box) return;
-  const copyBtn = document.getElementById("codeCopyBtn");
-  const regenBtn = document.getElementById("codeRegenBtn");
-  let current = "";
-  try {
-    current = await getAccessCode();
-  } catch (err) {
-    toast(reportError(err), "error");
-  }
-  box.textContent = current || "—";
-  regenBtn.textContent = current ? "Change code" : "Set code";
-
-  const setCode = async (fresh) => {
-    try {
-      current = await setAccessCode(fresh);
-      box.textContent = current;
-      regenBtn.textContent = "Change code";
-      toast("Shop access code set: " + current + ". Save it somewhere safe.", "success");
-    } catch (err) {
-      toast(reportError(err), "error");
-    }
-  };
-
-  regenBtn.addEventListener("click", async () => {
-    const fresh = generateAccessCode();
-    const ok = await confirm({
-      title: "Change shop access code",
-      message: "Staff will use this code to sign in: " + fresh + ". The previous code is switched off immediately.",
-      confirmText: "Use this code",
-      variant: "primary",
-    });
-    if (!ok) return;
-    await setCode(fresh);
-  });
-
-  copyBtn.addEventListener("click", async () => {
-    if (!current) {
-      toast("Set a code first.", "info");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(current);
-      toast("Code copied.", "success");
-    } catch (_) {
-      toast("Select and copy the code above.", "info");
-    }
-  });
 }
 
 /* =========================================================
@@ -514,6 +251,10 @@ async function loadDataBrowser() {
       fetchExpenses({ dateKey, limit: 300 }),
     ]);
 
+    const txnTotal = txns.reduce((sum, t) => sum + t.totalPaise, 0);
+    const paidTotal = txns.reduce((sum, t) => sum + t.collectedPaise, 0);
+    const dueTotal = txns.reduce((sum, t) => sum + t.duePaise, 0);
+
     txnBody.innerHTML = txns.length
       ? txns
           .map(
@@ -535,9 +276,6 @@ async function loadDataBrowser() {
       : '<tr><td colspan="8"><div class="state"><h3>No transactions</h3>' +
         "<p>" + (dateKey ? "Nothing recorded on this day." : "No transactions yet.") + "</p></div></td></tr>";
 
-    const txnTotal = txns.reduce((sum, t) => sum + t.totalPaise, 0);
-    const paidTotal = txns.reduce((sum, t) => sum + t.collectedPaise, 0);
-    const dueTotal = txns.reduce((sum, t) => sum + t.duePaise, 0);
     txnFooter.innerHTML =
       "<strong>" + (txns.length === 1 ? "1 transaction" : txns.length + " transactions") + "</strong>" +
       " &middot; Total " + formatINR(txnTotal) +

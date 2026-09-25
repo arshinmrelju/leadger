@@ -1,16 +1,20 @@
 /* =========================================================
-   SEVA LEDGER — Authentication & authorization
+   SEVA LEDGER — Single-code sign-in
    -----------------------------------------------------------------
-   Single-shop (flat) model. Sign-in (Google / email / access code),
-   auth state listener, protected-page handling, membership resolution
-   and role helpers. Frontend checks here are CONVENIENCE only — every
-   data access is re-validated by firestore.rules server-side.
+   The whole app opens with one shared code (SHOP_CODE, "TRUSTX").
+   Entering it signs the browser in anonymously and grants full access
+   to everything, including the Developer console — there are no
+   accounts, roles or memberships.
+
+   The code check is a CONVENIENCE gate: it happens in the browser.
+   Real record integrity is enforced by firestore.rules (signed-in
+   user, every document typed and non-forgeable: createdBy == uid,
+   total == quantity * rate, service must exist and be active, ...).
    ========================================================= */
 
 import { getFirebridge } from "./firebase.js";
-import { uid, isValidEmail } from "./utils.js";
 
-export const ROLES = { ADMIN: "ADMIN", EMPLOYEE: "EMPLOYEE" };
+export const SHOP_CODE = "TRUSTX";
 
 /* ---------------- Errors ---------------- */
 
@@ -26,24 +30,11 @@ const AUTH_MESSAGES = {
   "not-configured":
     "Firebase is not configured yet. Add your web app config in js/firebase.js.",
   "not-signed-in": "You are not signed in.",
-  "invalid-email": "That email address does not look right.",
-  "user-not-found": "No account was found with this email address.",
-  "wrong-password": "Incorrect password. Please try again.",
-  "invalid-credential": "Email or password is incorrect.",
-  "email-already-in-use": "That email is already registered. Try signing in.",
-  "weak-password": "Password must be at least 6 characters.",
   "network-request-failed": "Network problem. Check your connection and try again.",
-  "popup-closed": "Sign-in window was closed before finishing.",
-  "popup-blocked": "The browser blocked the sign-in popup.",
-  "operation-not-allowed": "This sign-in method is not enabled for this project yet.",
-  "account-exists-with-different-credential": "An account already exists for this email.",
+  "operation-not-allowed":
+    "Anonymous sign-in is not enabled for this Firebase project. Enable it under Authentication → Sign-in method.",
   "too-many-requests": "Too many attempts. Please wait a few minutes and try again.",
-  "code-invalid": "That access code is not recognised.",
-  "code-lookup-failed": "Could not check the access code.",
-  "claim-failed": "Could not link your account. Please try again.",
-  "setup-failed": "Could not set up the shop. Please try again.",
-  "already-setup": "This shop is already set up for another owner.",
-  "member-disabled": "Your account is disabled. Ask an admin to reactivate it.",
+  "code-invalid": "That code is not recognised. Try TRUSTX.",
 };
 
 function friendly(code, fallback) {
@@ -57,22 +48,10 @@ function toAuthError(fbErr) {
   const code = fbErr && fbErr.code ? fbErr.code : "";
   if (code === "CONFIG_REQUIRED" || code === "not-configured") return new AuthError("not-configured", friendly("not-configured"));
   if (code === "not-signed-in") return new AuthError(code, friendly(code));
-  if (code === "permission-denied") return new AuthError("already-setup", friendly("already-setup"));
 
   switch (code) {
-    case "auth/invalid-email": return new AuthError("invalid-email", friendly("invalid-email"));
-    case "auth/user-not-found":
-    case "auth/invalid-login-credentials":
-    case "auth/invalid-credential": return new AuthError("invalid-credential", friendly("invalid-credential"));
-    case "auth/wrong-password": return new AuthError("wrong-password", friendly("wrong-password"));
-    case "auth/email-already-in-use": return new AuthError("email-already-in-use", friendly("email-already-in-use"));
-    case "auth/weak-password": return new AuthError("weak-password", friendly("weak-password"));
     case "auth/network-request-failed": return new AuthError("network-request-failed", friendly("network-request-failed"));
-    case "auth/popup-closed-by-user": return new AuthError("popup-closed", friendly("popup-closed"));
-    case "auth/popup-blocked": return new AuthError("popup-blocked", friendly("popup-blocked"));
     case "auth/operation-not-allowed": return new AuthError("operation-not-allowed", friendly("operation-not-allowed"));
-    case "auth/account-exists-with-different-credential":
-      return new AuthError("account-exists-with-different-credential", friendly("account-exists-with-different-credential"));
     case "auth/too-many-requests": return new AuthError("too-many-requests", friendly("too-many-requests"));
     default: return new AuthError("unknown", friendly("", code));
   }
@@ -124,6 +103,8 @@ function notify(user) {
  * Start the auth state listener (idempotent). Wait for this before
  * reading `getCurrentUser()` — it resolves once the persisted session
  * has been restored (refresh-safe) or confirmed absent.
+ * Does NOT create an anonymous account on its own; that only happens
+ * after the access code is accepted (signInAnonymous).
  */
 export async function initAuth() {
   const b = await bridge();
@@ -143,102 +124,33 @@ export function onAuthStateChange(cb) {
   return () => subscribers.delete(cb);
 }
 
-/* ---------------- Sign-in / sign-out ---------------- */
+/* ---------------- The code ---------------- */
 
-export async function signInWithGoogle() {
-  try {
-    const b = await bridge();
-    await b.authMod.signInWithPopup(b.auth, b.googleProvider);
-    return getCurrentUser();
-  } catch (err) {
-    throw toAuthError(err);
-  }
-}
-
-export async function signInWithEmail(email, password) {
-  try {
-    const b = await bridge();
-    const cred = await b.authMod.signInWithEmailAndPassword(b.auth, String(email).trim(), String(password));
-    return cred.user;
-  } catch (err) {
-    throw toAuthError(err);
-  }
-}
-
-export async function createAccount(email, password, displayName) {
-  try {
-    const b = await bridge();
-    const cred = await b.authMod.createUserWithEmailAndPassword(b.auth, String(email).trim(), String(password));
-    if (displayName) {
-      await b.authMod.updateProfile(cred.user, { displayName: String(displayName).trim() });
-    }
-    return cred.user;
-  } catch (err) {
-    throw toAuthError(err);
-  }
-}
-
-const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-const CODE_LENGTH = 8;
-
-/** Normalize a user-typed code: strip spaces, uppercase. */
+/** Normalize a user-typed code: uppercase, no spaces. */
 export function normalizeCode(input) {
   return String(input || "").toUpperCase().replace(/\s+/g, "").trim();
 }
 
-/** A random 8-char A-Z0-9 access code (e.g. TRUSTX01). */
-export function generateAccessCode() {
-  let code = "";
-  for (let i = 0; i < CODE_LENGTH; i++) {
-    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  }
-  return code;
+/** True if the typed code matches the shop code (case/space tolerant). */
+export function isCorrectCode(input) {
+  return normalizeCode(input) === SHOP_CODE;
 }
 
+/* ---------------- Sign-in / sign-out ---------------- */
+
 /**
- * Access-code sign in ("sign in on the shop computer").
- * The stored code lives in `settings/security` and is ONLY ever compared
- * server-side; clients never read it. Flow: sign in anonymously if
- * needed -> write an EMPLOYEE membership for self carrying the code.
- * Rules re-verify the code against settings/security.
- * A persistent session keeps the device signed in while on the shop Wi-Fi.
+ * Create the persistent anonymous session for this browser. This is the
+ * ONLY sign-in path now. Firestore identities the device by uid; the
+ * anonymous credential is kept so the shop computer stays signed in.
  */
-export async function joinWithAccessCode(code) {
+export async function signInAnonymous() {
   const b = await bridge();
-  const fs = b.firestore;
-  const c = normalizeCode(code);
-  if (!/^[A-Z0-9]{8}$/.test(c)) {
-    throw new AuthError("code-invalid", friendly("code-invalid"));
-  }
-
-  let user = getCurrentUser() || b.auth.currentUser;
-  if (!user) {
-    try {
-      const cred = await b.authMod.signInAnonymously(b.auth);
-      user = cred.user;
-    } catch (err) {
-      throw toAuthError(err);
-    }
-  }
-
+  if (currentUser) return currentUser;
   try {
-    await fs.setDoc(fs.doc(b.db, "members", user.uid), {
-      uid: user.uid,
-      name: user.displayName || "",
-      email: user.email || "",
-      photoURL: user.photoURL || "",
-      role: ROLES.EMPLOYEE,
-      active: true,
-      createdAt: fs.serverTimestamp(),
-      updatedAt: fs.serverTimestamp(),
-      updatedBy: user.uid,
-      addedBy: "access_code",
-      joinCode: c,
-    });
+    const cred = await b.authMod.signInAnonymously(b.auth);
+    return cred.user;
   } catch (err) {
-    if (err instanceof AuthError) throw err;
-    if (err && err.code === "permission-denied") throw new AuthError("code-invalid", friendly("code-invalid"));
-    throw new AuthError("claim-failed", friendly("claim-failed"));
+    throw toAuthError(err);
   }
 }
 
@@ -256,7 +168,7 @@ export async function signOut() {
 }
 
 export function clearSession() {
-  /* Session is fully auth-owned in the single-shop model. */
+  /* Session is fully auth-owned in the single-code model. */
 }
 
 /* ---------------- Protected-page handling ---------------- */
@@ -295,230 +207,51 @@ export function guardPage(redirectTo = "login.html") {
   });
 }
 
-/* ---------------- Membership (single shop) ---------------- */
+/* ---------------- Shop record ---------------- */
 
-/**
- * Resolve this user's situation against the single shop.
- * @returns {Promise<{
- *   state: 'first-run'|'no-access'|'disabled'|'ok',
- *   role: string|null, member: object|null, general: object|null
- * }>}
- */
-export async function resolveMembership(user = currentUser) {
-  if (!user) return { state: "no-access", role: null, member: null, general: null };
+const DEFAULT_SHOP = {
+  name: "SEVA LEDGER",
+  phone: "",
+  address: "",
+  currency: "INR",
+  active: true,
+};
+
+/** The single shop's settings/general record, or null if not created. */
+export async function getGeneral() {
   const b = await bridge();
   const fs = b.firestore;
-  const [memberSnap, generalSnap] = await Promise.all([
-    fs.getDoc(fs.doc(b.db, "members", user.uid)),
-    fs.getDoc(fs.doc(b.db, "settings", "general")),
-  ]);
-
-  const member = memberSnap.exists() ? memberSnap.data() : null;
-  const general = generalSnap.exists() ? generalSnap.data() : null;
-
-  if (!general) return { state: "first-run", role: null, member, general: null };
-  if (!member) return { state: "no-access", role: null, member: null, general };
-  if (member.active === false) return { state: "disabled", role: null, member, general };
-
-  const role = member.role === ROLES.ADMIN ? ROLES.ADMIN : ROLES.EMPLOYEE;
-  return { state: "ok", role, member, general };
+  const snap = await fs.getDoc(fs.doc(b.db, "settings", "general"));
+  return snap.exists() ? snap.data() : null;
 }
-
-export function canAdmin(role) {
-  return role === ROLES.ADMIN;
-}
-
-/** Human label: the ADMIN role is the developer. */
-export function roleLabel(role) {
-  return role === ROLES.ADMIN ? "Developer" : role === ROLES.EMPLOYEE ? "Employee" : "";
-}
-
-/* ---------------- First-run: set up this shop ---------------- */
 
 /**
- * Bootstrap the single shop. Only valid when no settings/general exists
- * yet — the calling user becomes the owner (ADMIN). Rules enforce this
- * atomically; both writes are in one batch.
+ * Silently ensure the shop record exists (first code login on a fresh
+ * project). There is no setup screen: the shop is created with the
+ * default identity. Rules allow this only while settings/general is
+ * absent, so a concurrent first-run cannot double-create it.
  */
-export async function bootstrapShop({ name, phone = "", address = "" }) {
+export async function ensureShopRecord() {
   const b = await bridge();
   const fs = b.firestore;
   const user = getCurrentUser();
   if (!user) throw new AuthError("not-signed-in", friendly("not-signed-in"));
-
-  const batch = fs.writeBatch(b.db);
-  batch.set(fs.doc(b.db, "settings", "general"), {
-    name: String(name).trim(),
-    phone: String(phone).trim(),
-    address: String(address).trim(),
-    currency: "INR",
-    ownerUid: user.uid,
-    active: true,
-    createdAt: fs.serverTimestamp(),
-    createdBy: user.uid,
-  });
-  batch.set(fs.doc(b.db, "members", user.uid), {
-    uid: user.uid,
-    name: user.displayName || "",
-    email: user.email || "",
-    photoURL: user.photoURL || "",
-    role: ROLES.ADMIN,
-    active: true,
-    createdAt: fs.serverTimestamp(),
-    updatedAt: fs.serverTimestamp(),
-    updatedBy: user.uid,
-    addedBy: "self",
-  });
-  try {
-    await batch.commit();
-  } catch (err) {
-    if (err && err.code === "permission-denied") throw new AuthError("already-setup", friendly("already-setup"));
-    throw new AuthError("setup-failed", friendly("setup-failed"));
-  }
-}
-
-/* ---------------- Email invitations (admin adds employee) ---------------- */
-
-/** Send a membership invitation by email -> pendingMembers/{email}. */
-export async function inviteMember(email) {
-  const b = await bridge();
-  const fs = b.firestore;
-  const e = String(email).trim().toLowerCase();
-  if (!e) throw new AuthError("invalid-email", friendly("invalid-email"));
-  if (!isValidEmail(e)) throw new AuthError("invalid-email", friendly("invalid-email"));
-  await fs.setDoc(fs.doc(b.db, "pendingMembers", e), {
-    email: e,
-    invitedBy: getCurrentUser()?.uid || "",
-    invitedAt: fs.serverTimestamp(),
-  });
-  return e;
-}
-
-/**
- * Claim any pending email invitation for the signed-in user.
- * Creates the member doc (EMPLOYEE) and resolves the invitation.
- * @returns {Promise<number>} number of invitations claimed
- */
-export async function claimPendingInvites(user = currentUser) {
-  if (!user || !user.email) return 0;
-  const b = await bridge();
-  const fs = b.firestore;
-  const email = user.email.toLowerCase();
-  const q = fs.query(fs.collection(b.db, "pendingMembers"), fs.where("email", "==", email));
-  const snap = await fs.getDocs(q);
-  let claimed = 0;
-  for (const d of snap.docs) {
-    try {
-      const batch = fs.writeBatch(b.db);
-      batch.set(fs.doc(b.db, "members", user.uid), {
-        uid: user.uid,
-        name: user.displayName || "",
-        email,
-        photoURL: user.photoURL || "",
-        role: ROLES.EMPLOYEE,
-        active: true,
-        createdAt: fs.serverTimestamp(),
-        updatedAt: fs.serverTimestamp(),
-        updatedBy: user.uid,
-        addedBy: "invite",
-      });
-      batch.delete(fs.doc(b.db, "pendingMembers", email));
-      await batch.commit();
-      claimed += 1;
-    } catch (err) {
-      console.warn("[seva-ledger] claim invite failed:", reportError(err));
-    }
-  }
-  return claimed;
-}
-
-/* ---------------- Member management (admin only; rules enforce) ---------------- */
-
-export async function listMembers() {
-  const b = await bridge();
-  const fs = b.firestore;
-  const snap = await fs.getDocs(fs.collection(b.db, "members"));
-  return snap.docs
-    .map((d) => ({ uid: d.id, ...d.data() }))
-    .sort((x, y) => String(x.name || x.email).localeCompare(String(y.name || y.email)));
-}
-
-export async function listPendingInvites() {
-  const b = await bridge();
-  const fs = b.firestore;
-  const snap = await fs.getDocs(fs.collection(b.db, "pendingMembers"));
-  return snap.docs.map((d) => ({ email: d.id, ...d.data() }));
-}
-
-export async function setMemberRole(uid, role) {
-  const b = await bridge();
-  const fs = b.firestore;
-  await fs.updateDoc(fs.doc(b.db, "members", uid), {
-    role: role === ROLES.ADMIN ? ROLES.ADMIN : ROLES.EMPLOYEE,
-    updatedAt: fs.serverTimestamp(),
-    updatedBy: getCurrentUser()?.uid || "",
-  });
-}
-
-export async function setMemberActive(uid, active) {
-  const b = await bridge();
-  const fs = b.firestore;
-  await fs.updateDoc(fs.doc(b.db, "members", uid), {
-    active: active === true,
-    updatedAt: fs.serverTimestamp(),
-    updatedBy: getCurrentUser()?.uid || "",
-  });
-}
-
-export async function cancelInvite(email) {
-  const b = await bridge();
-  const fs = b.firestore;
-  await fs.deleteDoc(fs.doc(b.db, "pendingMembers", email.toLowerCase()));
-}
-
-/* ---------------- Settings ---------------- */
-
-export async function getSettings() {
-  const b = await bridge();
-  const fs = b.firestore;
-  const snap = await fs.getDoc(fs.doc(b.db, "settings", "general"));
-  return snap.exists() ? snap.data() : {};
-}
-
-export async function updateSettings(patch) {
-  const b = await bridge();
-  const fs = b.firestore;
   const ref = fs.doc(b.db, "settings", "general");
-  await fs.setDoc(ref, { currency: "INR", ...patch, updatedAt: fs.serverTimestamp(), updatedBy: getCurrentUser()?.uid || "" }, { merge: true });
-}
-
-/* ---------------- Access code (admin) ---------------- */
-
-/**
- * Set (or change) the shop access code. Writes `settings/security`.
- * Rules ensure only admins can do this and that the code is never
- * readable by employees. The previous code is simply replaced.
- * @returns {Promise<string>} the new code
- */
-export async function setAccessCode(code) {
-  const c = normalizeCode(code);
-  if (!/^[A-Z0-9]{8}$/.test(c)) {
-    throw new AuthError("code-invalid", friendly("code-invalid"));
+  const snap = await fs.getDoc(ref);
+  if (snap.exists()) return snap.data();
+  try {
+    await fs.setDoc(ref, {
+      ...DEFAULT_SHOP,
+      createdAt: fs.serverTimestamp(),
+      createdBy: user.uid,
+    });
+  } catch (err) {
+    if (err && err.code === "permission-denied") {
+      // Lost the race — another device created it first. Re-read.
+      const again = await fs.getDoc(ref);
+      if (again.exists()) return again.data();
+    }
+    throw err;
   }
-  const b = await bridge();
-  const fs = b.firestore;
-  await fs.setDoc(fs.doc(b.db, "settings", "security"), {
-    accessCode: c,
-    updatedAt: fs.serverTimestamp(),
-    updatedBy: getCurrentUser()?.uid || "",
-  });
-  return c;
-}
-
-/** The current access code (admin only; rules enforce read). */
-export async function getAccessCode() {
-  const b = await bridge();
-  const fs = b.firestore;
-  const snap = await fs.getDoc(fs.doc(b.db, "settings", "security"));
-  return snap.exists() ? snap.data().accessCode || "" : "";
+  return (await fs.getDoc(ref)).data();
 }
