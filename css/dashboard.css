@@ -1,93 +1,225 @@
 /* =========================================================
-   TrustX Ledger — Modern Dashboard Styles
+   TrustX Ledger — Dashboard Styles (Receipt & Shop Aesthetic)
+   Brings the authentic paper receipt, Chaayos-style stamp,
+   and warm golden-amber atmosphere of login.html into the dashboard.
    ========================================================= */
 
-/* ---------- Dashboard Header ---------- */
-.dash-head {
+/* ---------- Dashboard Page Background & Atmosphere ---------- */
+body[data-page="dashboard"] {
+  background-color: #f6f0e4;
+  background-image:
+    radial-gradient(ellipse 950px 550px at 60% 12%, rgba(245, 170, 40, 0.40), rgba(245, 170, 40, 0.12) 50%, transparent 75%),
+    radial-gradient(circle 1000px at 20% 90%, rgba(45, 138, 78, 0.08), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* ---------- Receipt Dispenser & Housing at Top ---------- */
+.dash-receipt-wrapper {
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto 2.5rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Ambient glow orb behind dispenser */
+.dash-receipt-wrapper::before {
+  content: "";
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 75%;
+  max-width: 800px;
+  height: 140px;
+  background: radial-gradient(ellipse, rgba(250, 185, 55, 0.45) 0%, rgba(245, 166, 35, 0.16) 50%, transparent 75%);
+  pointer-events: none;
+  z-index: 1;
+  filter: blur(20px);
+}
+
+.receipt-dispenser.dash-dispenser {
+  width: calc(100% + 28px) !important;
+  max-width: calc(100% + 28px) !important;
+  position: relative;
+  z-index: 10;
+  margin-bottom: -10px;
+  filter: drop-shadow(0 12px 24px rgba(150, 105, 40, 0.28));
+}
+
+.dash-dispenser .dispenser-bar {
+  height: 40px;
+  background: linear-gradient(180deg, #ffffff 0%, #fefcf7 15%, #f1e5cf 45%, #d5c19e 75%, #9e8760 100%);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow:
+    inset 0 3px 5px rgba(255, 255, 255, 1),
+    inset 0 -4px 6px rgba(70, 50, 20, 0.35),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+  position: relative;
+}
+
+.dash-dispenser .dispenser-bar::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 30px;
+  right: 30px;
+  height: 4px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,0.95) 50%, rgba(255,255,255,0.2));
+  border-radius: 3px;
+  filter: blur(0.5px);
+}
+
+.dash-dispenser .dispenser-slot {
+  width: calc(100% - 36px);
+  height: 10px;
+  margin: -5px auto 0;
+  background: linear-gradient(180deg, #120d07 0%, #2b2014 100%);
+  border-radius: 5px;
+  box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.95), 0 2px 4px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 2;
+}
+
+/* ---------- The Master Receipt Paper Sheet ---------- */
+.auth-card.receipt-card.dash-receipt-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  background: #fffdf9;
+  position: relative;
+  z-index: 5;
+  border-radius: 0;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+  filter: drop-shadow(0 18px 40px rgba(110, 75, 30, 0.15)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.04));
+  animation: receiptSlideDown 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  margin-bottom: 2rem;
+}
+
+.dash-receipt-inner {
+  padding: 2.2rem 2.5rem 2.2rem;
+  box-shadow: inset 0 10px 14px -6px rgba(70, 45, 15, 0.22);
+  position: relative;
+}
+
+/* ---------- Receipt Header Row & Stamp ---------- */
+.dash-receipt-top-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.25rem;
-  margin-bottom: 1.5rem;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
 }
 
-.dash-head-title-row {
+.receipt-header-left {
+  flex: 1;
+  min-width: 260px;
+}
+
+.dash-header-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1.25rem;
 }
 
-.dash-head h1 {
-  font-size: 1.6rem;
-  font-weight: 850;
-  letter-spacing: -0.02em;
-  color: var(--color-text);
-  line-height: 1.2;
-}
-
-.dash-head p {
-  margin: 0.25rem 0 0;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--color-muted);
-}
-
-/* High-end primary action button */
-.btn-new-sale {
+/* Primary Green Receipt CTA Button */
+.btn-new-sale,
+.btn-new-sale-receipt {
   background: linear-gradient(180deg, #1f7a42 0%, #156133 100%);
   color: #ffffff;
   font-weight: 800;
   font-size: 0.95rem;
-  letter-spacing: 0.03em;
-  padding: 0.72rem 1.4rem;
-  border-radius: 10px;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1.4rem;
   border: none;
+  border-radius: 8px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.55rem;
-  box-shadow: 0 4px 14px rgba(21, 97, 51, 0.28);
+  box-shadow: 0 4px 14px rgba(21, 97, 51, 0.3);
   transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  box-sizing: border-box;
 }
 
-.btn-new-sale:hover {
+.btn-new-sale:hover,
+.btn-new-sale-receipt:hover {
   background: linear-gradient(180deg, #248c4c 0%, #176f3a 100%);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(21, 97, 51, 0.36);
+  box-shadow: 0 6px 18px rgba(21, 97, 51, 0.38);
 }
 
-.btn-new-sale:active {
+.btn-new-sale:active,
+.btn-new-sale-receipt:active {
   transform: translateY(1px);
   box-shadow: 0 2px 8px rgba(21, 97, 51, 0.25);
 }
 
-/* ---------- Stat Grid (Modern Bento Cards) ---------- */
+/* ---------- Receipt Metadata Ticker Row ---------- */
+.dash-receipt-items {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.25rem;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+}
+
+.dash-receipt-items .receipt-item-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dash-receipt-items .receipt-item-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #63503a;
+  text-transform: uppercase;
+}
+
+.dash-receipt-items .receipt-item-val {
+  font-weight: 850;
+  color: #1e1912;
+  font-size: 0.94rem;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- Bento Stat Grid (Receipt Total Box Aesthetic) ---------- */
 .dash-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1.15rem;
-  margin-bottom: 1.6rem;
+  margin-top: 1.25rem;
+  margin-bottom: 1.75rem;
 }
 
 .stat-card {
-  background: #ffffff;
-  border: 1px solid rgba(212, 197, 160, 0.45);
-  border-radius: 16px;
+  background: #faf4e6;
+  border: 1px solid #ebdcc5;
+  border-radius: 10px;
   padding: 1.15rem 1.25rem;
-  box-shadow: 0 2px 10px rgba(90, 70, 30, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px rgba(110, 75, 30, 0.04);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 124px;
+  min-height: 122px;
   position: relative;
   overflow: hidden;
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 28px -4px rgba(90, 70, 30, 0.11), 0 4px 8px rgba(0, 0, 0, 0.03);
-  border-color: rgba(180, 150, 90, 0.55);
+  box-shadow: 0 10px 24px rgba(110, 75, 30, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
+  border-color: #c8b79b;
+  background: #fbf7ee;
 }
 
 /* Card Header (Icon wrap + Label) */
@@ -99,9 +231,9 @@
 }
 
 .stat-icon-wrap {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -110,53 +242,53 @@
 }
 
 .stat-card:hover .stat-icon-wrap {
-  transform: scale(1.06);
+  transform: scale(1.08);
 }
 
 .stat-icon-wrap svg {
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
 }
 
 .stat-label-text {
   font-size: 0.74rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-muted);
+  letter-spacing: 0.08em;
+  color: #63503a;
 }
 
-/* Semantic icon wrap color schemes */
+/* Semantic icon wrap schemes */
 .icon-revenue {
-  background: rgba(45, 138, 78, 0.14);
-  color: #1a753d;
+  background: rgba(45, 138, 78, 0.16);
+  color: #15803d;
 }
 .icon-net {
-  background: rgba(45, 138, 78, 0.14);
+  background: rgba(45, 138, 78, 0.16);
   color: #126332;
 }
 .icon-count {
-  background: rgba(75, 139, 191, 0.14);
+  background: rgba(75, 139, 191, 0.16);
   color: #2b70a3;
 }
 .icon-cash {
-  background: rgba(34, 197, 94, 0.14);
+  background: rgba(34, 197, 94, 0.16);
   color: #15803d;
 }
 .icon-upi {
-  background: rgba(59, 130, 246, 0.14);
+  background: rgba(59, 130, 246, 0.16);
   color: #1d4ed8;
 }
 .icon-card {
-  background: rgba(147, 51, 234, 0.13);
+  background: rgba(147, 51, 234, 0.15);
   color: #7e22ce;
 }
 .icon-due {
-  background: rgba(245, 166, 35, 0.16);
+  background: rgba(245, 166, 35, 0.18);
   color: #b45309;
 }
 .icon-expenses {
-  background: rgba(220, 38, 38, 0.13);
+  background: rgba(220, 38, 38, 0.15);
   color: #dc2626;
 }
 
@@ -168,157 +300,185 @@
 }
 
 .stat-card .stat-value {
-  font-size: 1.75rem;
+  font-size: 1.8rem;
   font-weight: 850;
   letter-spacing: -0.025em;
-  color: var(--color-text);
+  color: #1e1912;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
 .stat-card .stat-value.stat-emphasis {
   font-size: 2.1rem;
-  color: #163624;
+  color: #11381e;
 }
 
 .stat-card .stat-note {
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: #6b573f;
+  font-size: 0.73rem;
+  font-weight: 750;
+  color: #0f632f;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: rgba(245, 240, 230, 0.85);
-  padding: 3px 9px;
+  background: rgba(45, 138, 78, 0.12);
+  padding: 2px 8px;
   border-radius: 99px;
   width: fit-content;
-  border: 1px solid rgba(212, 197, 160, 0.45);
+  border: 1px solid rgba(45, 138, 78, 0.2);
 }
 
 .stat-card .stat-value.text-danger {
   color: #dc2626;
 }
 
-/* Soft luxury card background gradients (No harsh 3px top borders) */
+/* Revenue & Net Highlights (Chaayos green paper accents) */
 .stat-card.stat-revenue {
-  background: linear-gradient(145deg, #f7fdf9 0%, #ffffff 100%);
-  border-color: rgba(45, 138, 78, 0.3);
+  background: linear-gradient(145deg, #f2faef 0%, #faf4e6 100%);
+  border: 1.5px solid #bfdfc8;
+}
+.stat-card.stat-revenue:hover {
+  border-color: #1a743a;
 }
 
 .stat-card.stat-net {
-  background: linear-gradient(145deg, #f5faf6 0%, #ffffff 100%);
-  border-color: rgba(45, 138, 78, 0.28);
+  background: linear-gradient(145deg, #f0f9ed 0%, #faf4e6 100%);
+  border: 1.5px solid #bfdfc8;
+}
+.stat-card.stat-net:hover {
+  border-color: #1a743a;
 }
 
 .stat-card.stat-due {
-  background: linear-gradient(145deg, #fffdf8 0%, #ffffff 100%);
-  border-color: rgba(245, 166, 35, 0.35);
+  background: linear-gradient(145deg, #fdfbf4 0%, #faf4e6 100%);
+  border: 1px solid #ebdcc5;
 }
 
 .stat-card.stat-expenses {
-  background: linear-gradient(145deg, #fffafa 0%, #ffffff 100%);
-  border-color: rgba(220, 38, 38, 0.24);
+  background: linear-gradient(145deg, #fef7f7 0%, #faf4e6 100%);
+  border: 1px solid #f0d5d5;
 }
 
-/* ---------- Two-Column Dashboard Body ---------- */
+/* ---------- Two-Column Lower Section ---------- */
 .dash-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  gap: 1.35rem;
+  gap: 1.5rem;
   align-items: start;
 }
 
-/* Modern Card Styling */
-.card {
-  background: #ffffff;
-  border: 1px solid rgba(212, 197, 160, 0.45);
-  border-radius: 16px;
-  box-shadow: 0 2px 10px rgba(90, 70, 30, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+/* Paper Card Styling */
+.dash-paper-card {
+  background: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid #ebdcc5;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(110, 75, 30, 0.04);
   overflow: hidden;
 }
 
-.card-header {
+.dash-paper-card .card-body {
+  background: #ffffff;
+}
+
+.dash-paper-card .table-wrap {
+  background: #ffffff;
+}
+
+.dash-card-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
-  padding: 1.1rem 1.35rem;
-  border-bottom: 1px solid rgba(212, 197, 160, 0.4);
-  background: #fffdf9;
+  padding: 1rem 1.35rem;
+  border-bottom: 1.5px dashed #dbc9b5;
+  background: #faf4e6;
 }
 
-.card-header h3 {
+.dash-card-header h3 {
   font-size: 1.05rem;
-  font-weight: 800;
+  font-weight: 850;
   letter-spacing: -0.01em;
-  color: var(--color-text);
+  color: #1e1912;
 }
 
-.card-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
+.receipt-pill-btn {
+  background: #fffdf9;
+  border: 1px solid #ebdcc5;
+  color: #63503a;
+  font-weight: 750;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  text-decoration: none;
+  transition: all 0.15s ease;
 }
 
-.card-actions .pill-count {
+.receipt-pill-btn:hover {
+  background: #faf4e6;
+  border-color: #c8b79b;
+  color: #1e1912;
+  text-decoration: none;
+}
+
+.dash-card-header .pill-count {
   font-size: 0.74rem;
-  font-weight: 700;
-  color: var(--color-muted);
-  background: rgba(245, 240, 230, 0.85);
-  border: 1px solid rgba(212, 197, 160, 0.45);
+  font-weight: 750;
+  color: #63503a;
+  background: #ffffff;
+  border: 1px solid #ebdcc5;
   padding: 3px 9px;
   border-radius: 99px;
 }
 
-/* ---------- Recent Transactions Table ---------- */
-.txn-table th {
-  background: #faf4e8;
-  color: #5a4935;
+/* ---------- Recent Transactions Ledger Table ---------- */
+.dash-txn-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dash-txn-table th {
+  background: #faf4e6;
+  color: #63503a;
   font-size: 0.73rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(212, 197, 160, 0.4);
+  letter-spacing: 0.08em;
+  padding: 0.78rem 1rem;
+  border-bottom: 1.5px dashed #dbc9b5;
 }
 
-.txn-table td {
+.dash-txn-table td {
   padding: 0.85rem 1rem;
-  border-bottom: 1px solid rgba(230, 220, 200, 0.45);
+  border-bottom: 1px dashed #ebdcc5;
+  font-size: 0.88rem;
+  color: #1e1912;
   transition: background 0.15s ease;
 }
 
-.txn-table tr:hover td {
-  background: rgba(75, 139, 191, 0.04);
+.dash-txn-table tr:hover td {
+  background: rgba(245, 170, 40, 0.06);
 }
 
-.txn-table .txn-time {
-  color: var(--color-muted);
+.dash-txn-table .txn-time {
+  color: #8a7355;
   font-variant-numeric: tabular-nums;
   font-size: 0.82rem;
-  font-weight: 600;
-}
-
-.txn-table .txn-num {
-  font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 
-.txn-clip {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.dash-txn-table .txn-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: #1e1912;
 }
-.txn-customer .txn-clip { max-width: 180px; font-weight: 700; color: var(--color-text); }
-.txn-service .txn-clip { max-width: 210px; color: var(--color-text-soft); }
 
-.txn-footer {
-  padding: 0.8rem 1.35rem;
-  border-top: 1px solid rgba(212, 197, 160, 0.4);
-  background: #fffdf9;
+.dash-txn-footer {
+  padding: 0.85rem 1.35rem;
+  border-top: 1.5px dashed #dbc9b5;
+  background: #faf4e6;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--color-muted);
+  color: #8a7355;
 }
 
 .badge-method {
@@ -329,12 +489,119 @@
   border-radius: 6px;
   text-transform: uppercase;
 }
-.badge-cash { background: rgba(34, 197, 94, 0.14); color: #15803d; }
-.badge-upi { background: rgba(59, 130, 246, 0.14); color: #1d4ed8; }
-.badge-card { background: rgba(147, 51, 234, 0.13); color: #7e22ce; }
-.badge-due { background: rgba(245, 166, 35, 0.18); color: #b45309; }
+.badge-cash { background: rgba(34, 197, 94, 0.14); color: #15803d; border: 1px solid rgba(34, 197, 94, 0.25); }
+.badge-upi { background: rgba(59, 130, 246, 0.14); color: #1d4ed8; border: 1px solid rgba(59, 130, 246, 0.25); }
+.badge-card { background: rgba(147, 51, 234, 0.13); color: #7e22ce; border: 1px solid rgba(147, 51, 234, 0.25); }
+.badge-due { background: rgba(245, 166, 35, 0.18); color: #b45309; border: 1px solid rgba(245, 166, 35, 0.3); }
 
-/* Empty state in table */
+/* ---------- Quick Services ---------- */
+.dash-card-body {
+  padding: 1.15rem;
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.75rem;
+}
+
+.quick-service {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.95rem 0.5rem 0.85rem;
+  border: 1.5px dashed #c8b79b;
+  border-radius: 10px;
+  background: #faf4e6;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.quick-service:hover {
+  border-color: #1a743a;
+  border-style: solid;
+  background: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(110, 75, 30, 0.12);
+}
+
+.quick-service .qs-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(45, 138, 78, 0.14);
+  color: #15803d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 850;
+  font-size: 0.85rem;
+  border: 1px solid rgba(45, 138, 78, 0.2);
+}
+
+.quick-service .qs-name {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #1e1912;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.quick-service .qs-price {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #0f632f;
+  background: rgba(45, 138, 78, 0.14);
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid rgba(45, 138, 78, 0.2);
+}
+
+/* ---------- Receipt Footer Note & Tear Edge ---------- */
+.dash-footer-note {
+  text-align: center;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  color: #9e8d78;
+  text-transform: uppercase;
+  margin-top: 2.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.dash-receipt-card .receipt-tear-edge {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 12' preserveAspectRatio='none'%3E%3Cpolygon points='0,0 10,12 20,0' fill='%23fffdf9'/%3E%3C/svg%3E");
+  background-size: 16px 14px;
+  background-repeat: repeat-x;
+  pointer-events: none;
+}
+
+#quickAddBtn {
+  background: linear-gradient(180deg, #1f7a42 0%, #156133 100%);
+  color: #ffffff;
+  font-weight: 750;
+  border: none;
+  box-shadow: 0 2px 8px rgba(21, 97, 51, 0.25);
+  border-radius: 7px;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+#quickAddBtn:hover {
+  background: linear-gradient(180deg, #248c4c 0%, #176f3a 100%);
+  box-shadow: 0 4px 12px rgba(21, 97, 51, 0.35);
+  transform: translateY(-1px);
+}
+
+/* Empty state styling */
 .empty-state-modern {
   padding: 2.8rem 1.5rem;
   text-align: center;
@@ -348,8 +615,8 @@
   width: 58px;
   height: 58px;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(75, 139, 191, 0.12), rgba(45, 138, 78, 0.12));
-  border: 2px dashed rgba(212, 197, 160, 0.6);
+  background: rgba(45, 138, 78, 0.1);
+  border: 1.5px dashed rgba(45, 138, 78, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -377,60 +644,168 @@
   line-height: 1.45;
 }
 
-/* ---------- Quick Services ---------- */
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 0.75rem;
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .dash-receipt-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-.quick-service {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.95rem 0.5rem 0.85rem;
-  border: 1px solid rgba(212, 197, 160, 0.45);
-  border-radius: 12px;
-  background: #ffffff;
-  cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+@media (max-width: 860px) {
+  .dash-receipt-inner {
+    padding: 1.5rem 1.25rem 1.5rem;
+  }
+  .dash-receipt-top-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dash-header-actions {
+    justify-content: space-between;
+  }
+  .dash-dispenser {
+    display: none;
+  }
 }
 
-.quick-service:hover {
-  border-color: var(--color-primary);
-  background: linear-gradient(135deg, #f7fbfd 0%, #f2f8f4 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px -2px rgba(80, 50, 15, 0.08);
+/* =========================================================
+   Sidebar — Warm Parchment & Ledger Book Aesthetic
+   Replaces the dark green box with a cohesive warm
+   stationery / vintage shop ledger navigation.
+   ========================================================= */
+
+.sidebar {
+  background: #f5ede0 !important;
+  color: #5c4b37 !important;
+  border-right: 1.5px dashed #dbc9b5 !important;
+  box-shadow: inset -1px 0 0 rgba(219, 201, 181, 0.5), 4px 0 24px rgba(110, 75, 30, 0.06) !important;
 }
 
-.quick-service .qs-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: rgba(75, 139, 191, 0.14);
-  color: #2b70a3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 900;
-  font-size: 0.85rem;
+.sidebar-brand {
+  background: #ede3d3 !important;
+  border-bottom: 1.5px dashed #dbc9b5 !important;
+  padding: 1.15rem 1.15rem !important;
 }
 
-.quick-service .qs-name {
-  font-size: 0.78rem;
-  font-weight: 750;
-  color: var(--color-text);
-  text-align: center;
-  line-height: 1.2;
+.sidebar-brand .brand-logo {
+  box-shadow: 0 3px 10px rgba(110, 75, 30, 0.16);
+  border-radius: 9px;
 }
 
-.quick-service .qs-price {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #1a753d;
-  background: rgba(45, 138, 78, 0.1);
-  padding: 1px 6px;
-  border-radius: 99px;
+.sidebar-brand .brand-name {
+  color: #1e1912 !important;
+  font-weight: 900 !important;
+  font-size: 1.05rem !important;
+  letter-spacing: -0.01em;
+}
+
+.sidebar-brand .brand-sub {
+  color: #8c765c !important;
+  font-weight: 800 !important;
+  font-size: 0.68rem !important;
+  letter-spacing: 0.12em !important;
+}
+
+.nav-section-title {
+  color: #8c765c !important;
+  font-size: 0.68rem !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.12em !important;
+  opacity: 1 !important;
+  padding: 1rem 0.65rem 0.4rem !important;
+}
+
+.nav-link {
+  color: #524230 !important;
+  font-weight: 700 !important;
+  border-radius: 9px !important;
+  margin: 3px 0 !important;
+  padding: 0.62rem 0.75rem !important;
+  transition: all 0.16s ease !important;
+}
+
+.nav-link:hover {
+  background: #ebdcc5 !important;
+  color: #1e1912 !important;
+  transform: translateX(2px);
+}
+
+.nav-link.is-active {
+  background: linear-gradient(180deg, #1f7a42 0%, #156133 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(21, 97, 51, 0.32) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  font-weight: 800 !important;
+  transform: none !important;
+}
+
+.nav-link .nav-icon {
+  color: inherit;
+  opacity: 0.85;
+}
+.nav-link.is-active .nav-icon {
+  opacity: 1;
+}
+
+.nav-link .nav-badge {
+  background: #ebdcc5 !important;
+  color: #63503a !important;
+  border: 1px solid #dbc9b5 !important;
+  font-size: 0.68rem !important;
+  font-weight: 800 !important;
+}
+
+.sidebar-footer {
+  background: #ede3d3 !important;
+  border-top: 1.5px dashed #dbc9b5 !important;
+  padding: 0.95rem 1.1rem !important;
+}
+
+.user-chip {
+  background: #fffdf9 !important;
+  border: 1px dashed #dbc9b5 !important;
+  border-radius: 10px !important;
+  padding: 0.55rem 0.7rem !important;
+  box-shadow: 0 2px 6px rgba(110, 75, 30, 0.04) !important;
+  transition: all 0.15s ease;
+}
+
+.user-chip:hover {
+  border-color: #c8b79b !important;
+  background: #ffffff !important;
+}
+
+.user-avatar {
+  background: #faf4e6 !important;
+  color: #1a753d !important;
+  border: 1.5px solid #d8c6ab !important;
+  font-weight: 850 !important;
+}
+
+.user-chip .user-name {
+  color: #1e1912 !important;
+  font-weight: 800 !important;
+  font-size: 0.88rem !important;
+}
+
+.user-chip .user-sub {
+  color: #8c765c !important;
+  font-weight: 600 !important;
+  font-size: 0.72rem !important;
+}
+
+.user-logout {
+  color: #8c765c !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease;
+}
+
+.user-logout:hover {
+  background: #fde8e6 !important;
+  color: #c0392b !important;
+}
+
+.sidebar-footer-meta {
+  color: #8c765c !important;
+  font-weight: 700 !important;
+  font-size: 0.7rem !important;
 }

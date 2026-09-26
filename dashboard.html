@@ -76,18 +76,13 @@
           <span class="nav-badge">Soon</span>
         </button>
 
-        <div class="nav-section-title">Management</div>
 
-        <a class="nav-link" data-nav="admin" href="admin.html">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Admin
-        </a>
       </nav>
 
       <div class="sidebar-footer">
         <div id="userChip"></div>
         <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
-          TrustX Ledger &middot; v0.9.0
+          TrustX Ledger &middot; v0.10.0
         </div>
       </div>
     </aside>
@@ -188,19 +183,61 @@
 
       document.getElementById("topbarDate").textContent = formatKolkataLong(new Date());
 
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, "0");
+      const month = now.toLocaleString("en-US", { month: "short" }).toUpperCase();
+      const year = now.getFullYear();
+      const receiptDateStr = `${day} ${month} ${year}`;
+
       mainContent.innerHTML =
-        '<section aria-label="Today\'s summary">' +
-        '<div class="dash-head">' +
-        '<div class="dash-head-text">' +
-        '<div class="dash-head-title-row">' +
-        "<h1>Today&rsquo;s Overview</h1>" +
-        "</div>" +
-        '<p id="summarySub">Loading&hellip;</p>' +
-        "</div>" +
-        '<button type="button" class="btn btn-new-sale" id="newTxnBtn">' +
+        '<div class="dash-receipt-wrapper">' +
+        '<!-- Top dispenser slot (Chaayos roll housing) -->' +
+        '<div class="receipt-dispenser dash-dispenser" aria-hidden="true">' +
+        '<div class="dispenser-bar"></div>' +
+        '<div class="dispenser-slot"></div>' +
+        '</div>' +
+        '<!-- The Master Receipt Paper Sheet -->' +
+        '<main class="auth-card receipt-card dash-receipt-card">' +
+        '<div class="receipt-inner dash-receipt-inner">' +
+        '<!-- Top row with header and Chaayos-style green stamp -->' +
+        '<div class="receipt-top-row dash-receipt-top-row">' +
+        '<div class="receipt-header-left">' +
+        '<span class="receipt-status-tag">ACTIVE WORKSPACE &bull; LIVE SHOP LEDGER</span>' +
+        '<h1 class="receipt-title">Today&rsquo;s Overview</h1>' +
+        '<p class="receipt-subtitle" id="summarySub">' + escapeHtml(formatKolkataLong(now)) + ' &bull; Asia/Kolkata</p>' +
+        '</div>' +
+        '<div class="dash-header-actions">' +
+        '<div class="receipt-stamp" title="TrustX Ledger Verified">' +
+        '<span class="receipt-stamp-brand">TrustX</span>' +
+        '<span class="receipt-stamp-sub">VERIFIED</span>' +
+        '</div>' +
+        '<button type="button" class="btn-receipt-pay btn-new-sale-receipt" id="newTxnBtn">' +
         ICON_PLUS +
-        "New transaction</button>" +
-        "</div>" +
+        '<span>NEW TRANSACTION</span>' +
+        '</button>' +
+        '</div>' +
+        '</div>' +
+        '<hr class="receipt-divider" />' +
+        '<!-- Receipt metadata items -->' +
+        '<div class="dash-receipt-items">' +
+        '<div class="receipt-item-row">' +
+        '<span class="receipt-item-label">LEDGER MODE</span>' +
+        '<span class="receipt-item-val">SHOP WORKSPACE</span>' +
+        '</div>' +
+        '<div class="receipt-item-row">' +
+        '<span class="receipt-item-label">SECURITY PROTOCOL</span>' +
+        '<span class="receipt-item-val">DEVICE TRUST TOKEN</span>' +
+        '</div>' +
+        '<div class="receipt-item-row">' +
+        '<span class="receipt-item-label">TIMESTAMP</span>' +
+        '<span class="receipt-item-val" id="receiptTimeDisplay">' + receiptDateStr + '</span>' +
+        '</div>' +
+        '<div class="receipt-item-row">' +
+        '<span class="receipt-item-label">CURRENCY</span>' +
+        '<span class="receipt-item-val">&#x20B9; INR</span>' +
+        '</div>' +
+        '</div>' +
+        '<hr class="receipt-divider" />' +
         '<div class="dash-grid">' +
         statBlock("icon-revenue", trendIc, "Today&rsquo;s revenue", "statRevenue", "stat-revenue", true, "revenueNote") +
         statBlock("icon-count", txnIc, "Transactions", "statCount", "stat-count") +
@@ -210,37 +247,46 @@
         statBlock("icon-due", dueIc, "Due", "statDue", "stat-due") +
         statBlock("icon-expenses", expIc, "Expenses", "statExpenses", "stat-expenses") +
         statBlock("icon-net", netIc, "Net", "statNet", "stat-net", true) +
-        "</div>" +
-        "</section>" +
+        '</div>' +
         '<div class="dash-columns mt-2">' +
-        '<section class="card" aria-label="Recent transactions">' +
-        '<div class="card-header"><h3>Recent transactions</h3>' +
+        '<section class="card dash-paper-card" aria-label="Recent transactions">' +
+        '<div class="card-header dash-card-header">' +
+        '<h3>Recent transactions</h3>' +
         '<div class="card-actions">' +
         '<span class="pill-count" id="recentCount"></span>' +
-        '<a class="btn btn-ghost btn-sm" href="transactions.html">View history</a>' +
-        '<button type="button" class="btn btn-secondary btn-sm" id="refreshBtn" title="Refresh today\'s figures">Refresh</button>' +
-        "</div></div>" +
-        '<div class="table-wrap"><table class="table txn-table">' +
-        "<thead><tr>" +
-        "<th>Time</th><th>Customer</th><th>Service</th><th>Payment</th>" +
+        '<a class="btn btn-ghost btn-sm receipt-pill-btn" href="transactions.html">View history</a>' +
+        '<button type="button" class="btn btn-secondary btn-sm receipt-pill-btn" id="refreshBtn" title="Refresh today\'s figures">Refresh</button>' +
+        '</div></div>' +
+        '<div class="table-wrap"><table class="table txn-table dash-txn-table">' +
+        '<thead><tr>' +
+        '<th>Time</th><th>Customer</th><th>Service</th><th>Payment</th>' +
         '<th class="text-right">Amount</th><th class="text-right">Paid</th>' +
         '<th class="text-right">Due</th>' +
-        "</tr></thead>" +
+        '</tr></thead>' +
         '<tbody id="recentBody">' +
         '<tr><td colspan="7"><div class="state"><span class="spinner" aria-hidden="true"></span>' +
         '<p class="muted">Loading today&rsquo;s transactions&hellip;</p></div></td></tr>' +
-        "</tbody></table></div>" +
-        '<div class="txn-footer small muted" id="recentFooter">&nbsp;</div>' +
-        "</section>" +
-        '<section class="card" aria-label="Quick services">' +
-        '<div class="card-header"><h3>Quick services</h3></div>' +
-        '<div class="card-body">' +
+        '</tbody></table></div>' +
+        '<div class="txn-footer small muted dash-txn-footer" id="recentFooter">&nbsp;</div>' +
+        '</section>' +
+        '<section class="card dash-paper-card" aria-label="Quick services">' +
+        '<div class="card-header dash-card-header"><h3>Quick services</h3></div>' +
+        '<div class="card-body dash-card-body">' +
         '<div class="quick-grid" id="quickGrid">' +
         '<div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading&hellip;</p></div>' +
-        "</div>" +
-        '<p class="small muted mt-2" style="margin-bottom:0;">Tap a service to open a sale with it already filled in.</p>' +
-        "</div></section>" +
-        "</div>";
+        '</div>' +
+        '<p class="small muted mt-2" id="quickGridHint" style="margin-bottom:0;color:#8a7355;font-weight:600;">Tap a service to open a sale with it already filled in.</p>' +
+        '</div></section>' +
+        '</div>' +
+        '<div class="receipt-footer-note dash-footer-note">HAVE A NICE DAY! &bull; TRUSTX LEDGER</div>' +
+        '</div>' +
+        '<!-- Torn bottom serration edge -->' +
+        '<div class="receipt-tear-edge" aria-hidden="true"></div>' +
+        '</main>' +
+        '<div class="auth-footer-caption" style="margin-top:2.2rem;margin-bottom:1.5rem;">' +
+        'TrustX Ledger &bull; Fast, Offline-First Shop Record' +
+        '</div>' +
+        '</div>';
 
       applyHooks();
       loadDashboardData();
@@ -364,9 +410,10 @@
           '<button type="button" class="btn btn-new-sale btn-sm" id="emptyRecordBtn">' + ICON_PLUS + "Record a sale</button>" +
           "</div></td></tr>";
         document.getElementById("emptyRecordBtn").addEventListener("click", () => openSaleForm());
-        footer.innerHTML = "&nbsp;";
+        footer.style.display = "none";
         return;
       }
+      footer.style.display = "";
       const shown = transactions.slice(0, 12);
       body.innerHTML = shown.map(txnRow).join("");
       footer.innerHTML =
@@ -393,6 +440,7 @@
 
     async function loadQuickServices() {
       const grid = document.getElementById("quickGrid");
+      const hint = document.getElementById("quickGridHint");
       if (!grid) return;
       let services = [];
       try {
@@ -400,9 +448,9 @@
       } catch (err) {
         console.warn("[trustx-ledger] services:", err);
       }
-      const list = services.slice(0, 12);
+      const shown = services.slice(0, 12);
       grid.innerHTML =
-        list
+        shown
           .map(
             (s) =>
               '<button type="button" class="quick-service" tabindex="-1" data-id="' + escapeHtml(s.serviceId) + '">' +
@@ -422,6 +470,15 @@
         /* A tap fills the dialog's form — no page change. */
         btn.addEventListener("click", () => openSaleForm({ serviceId: btn.dataset.id }));
       });
+      /* The grid is deliberately short — say so rather than let the rest
+         of the catalog look deleted. Everything is still in the dialog. */
+      if (hint) {
+        const extra = services.length - shown.length;
+        hint.textContent = extra > 0
+          ? "Tap a service to open a sale with it already filled in. " +
+            extra + " more in the record-a-sale dialog."
+          : "Tap a service to open a sale with it already filled in.";
+      }
     }
 
 

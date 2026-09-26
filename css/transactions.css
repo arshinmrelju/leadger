@@ -73,6 +73,176 @@
 .modal-body { max-height: calc(88vh - 7rem); overflow-y: auto; }
 
 /* =========================================================
+   Service picker — searchable, grouped combobox
+   Replaces the old flat <select> in the record-a-sale dialog.
+   ========================================================= */
+
+.svc-pick { position: relative; }
+
+.svc-pick-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.1rem 0.6rem 0.1rem 0.7rem;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.svc-pick-control:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: var(--ring);
+}
+
+.svc-pick-lead { color: var(--color-primary); font-size: 1rem; line-height: 1; }
+
+.svc-pick-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-text);
+  padding: 0.62rem 0;
+}
+
+.svc-pick-input:focus { outline: none; }
+.svc-pick-input::placeholder { color: var(--color-faint); font-weight: 500; }
+
+/* "8 services" — only while the list is open. */
+.svc-pick-count {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.svc-pick.is-open .svc-pick-count { display: inline; }
+.svc-pick:not(.is-open) .svc-pick-count { display: none; }
+
+.svc-pick-clear,
+.svc-pick-caret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+  background: none;
+  border: 0;
+  padding: 0.2rem;
+  line-height: 1;
+}
+
+.svc-pick-caret {
+  transition: transform var(--t-fast) var(--ease);
+  pointer-events: none;
+}
+.svc-pick.is-open .svc-pick-caret { transform: rotate(180deg); color: var(--color-primary); }
+
+.svc-pick-clear { cursor: pointer; border-radius: 99px; }
+.svc-pick-clear:hover { color: var(--color-danger); background: var(--color-danger-soft); }
+.svc-pick-clear[hidden] { display: none; }
+
+/* Pinned to the viewport by js/service-picker.js, because the dialog body
+   scrolls and would otherwise clip an in-flow dropdown. The top/left/width/
+   max-height are set inline; these are the pre-measurement defaults. */
+.svc-pick-menu {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  left: 0;
+  right: auto;
+  width: 100%;
+  max-height: 17rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+/* [hidden] must beat the display rules above. */
+.svc-pick-menu[hidden] { display: none; }
+
+/* Sticky group heading, so the section stays visible while scrolling. */
+.svc-pick-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-muted);
+}
+.svc-pick-group:first-child { border-top: 0; }
+
+.svc-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  /* Touch-friendly target without making the list feel sparse. */
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+
+.svc-pick-row.is-active { background: var(--color-primary-soft); }
+.svc-pick-row.is-selected { border-left-color: var(--color-primary); }
+.svc-pick-row.is-selected.is-active { background: var(--color-primary-soft); }
+
+.svc-pick-tile {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(45, 138, 78, 0.14);
+  border: 1px solid rgba(45, 138, 78, 0.2);
+  color: #15803d;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.svc-pick-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.svc-pick-price {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #0f632f;
+  background: rgba(45, 138, 78, 0.14);
+  border: 1px solid rgba(45, 138, 78, 0.2);
+  border-radius: 99px;
+  padding: 2px 7px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.svc-pick-tick { flex: 0 0 auto; color: var(--color-primary); font-weight: 900; }
+
+.svc-pick-none { padding: 0.9rem 0.75rem; text-align: center; }
+.svc-pick-none .btn { margin-top: 0.6rem; }
+
+/* =========================================================
    History browser
    ========================================================= */
 

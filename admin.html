@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -87,7 +87,7 @@
       <div class="sidebar-footer">
         <div id="userChip"></div>
         <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
-          TrustX Ledger &middot; v0.9.0
+          TrustX Ledger &middot; v0.10.0
         </div>
       </div>
     </aside>
@@ -119,6 +119,10 @@
 
     initAppShell({
       page: "admin",
+      /* Second gate: this console needs its own admin code, not just the
+         shop code. ctx.isAdmin is false until this browser holds an
+         admins/{uid} grant, and the page then shows the unlock card. */
+      requireAdmin: true,
       onReady: async (ctx) => {
         await renderAdminPage(ctx);
       },

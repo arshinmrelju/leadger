@@ -25,12 +25,20 @@ rules_version = '2';
 //     with one deliberate exception: a sale on a still-open business
 //     day can be deleted from the daily ledger. Once a day is closed
 //     its rows are frozen — see match /days and dayOpen() above.
+//   * The Developer console is a SECOND gate. The shop code opens the
+//     ledger; a separate admin code (settings/admin, never readable by
+//     clients) is what mints an admins/{uid} grant. Device management —
+//     revoke, restore and remove — is refused to any device without that
+//     grant, so the shop code alone cannot lock the owner out of their
+//     own browsers. See isAdmin() and match /admins below.
 //
 // Data model covered here:
 //   settings/general               shop identity (auto-created on first use)
 //   settings/security              the access code (server-side only; never client-readable)
-//   enrollments/{nonce}            one-time proof-of-code (single use)
+//   settings/admin                 the admin code (server-side only; never client-readable)
+//   enrollments/{nonce}            one-time proof-of-code, shop or admin scope
 //   devices/{tokenHash}            trusted-device registry (auto-login + revocation)
+//   admins/{uid}                   admin grants for the Developer console
 //   transactions/{txnId}           sales (editable + deletable while the day is open)
 //   services/{serviceId}           service catalog
 //   expenses/{expId}               spends (read-only this build)
@@ -49,6 +57,15 @@ service cloud.firestore {
 
     function unsigned() {
       return request.auth == null;
+    }
+
+    // Admin capability for THIS session. The grant is a document keyed by
+    // uid, so the rules can answer "is this caller an admin?" without ever
+    // knowing which device token it holds — the device doc id is a hash of
+    // a secret the server cannot invert.
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     // A business day is open unless a days/{dateKey} document says
@@ -80,12 +97,13 @@ service cloud.firestore {
     // time any code-signed-in device opens the app (see auth.js
     // ensureShopRecord). Update is open to any signed-in device — one
     // shop, one identity.
-    // `security` carries the access code used for device enrollment.
-    // It is NEVER readable or writable by clients after creation:
-    // only the rules engine compares it to an enrollment attempt, so
-    // the code itself never leaves Firestore's server boundary.
+    // `security` carries the access code used for device enrollment and
+    // `admin` the separate code that unlocks the Developer console.
+    // Neither is EVER readable or writable by clients after creation:
+    // only the rules engine compares them to an enrollment attempt, so
+    // the codes themselves never leave Firestore's server boundary.
     match /settings/{docId} {
-      allow get, list: if signedIn() && docId != 'security';
+      allow get, list: if signedIn() && docId != 'security' && docId != 'admin';
 
       allow create: if signedIn()
         && (
@@ -100,6 +118,12 @@ service cloud.firestore {
                 && request.resource.data.accessCode.matches('^[A-Z0-9]{4,12}$')
                 && request.resource.data.createdAt == request.time
                 && request.resource.data.createdBy == request.auth.uid)
+            || (docId == 'admin'
+                && !exists(/databases/$(database)/documents/settings/admin)
+                && request.resource.data.keys().hasOnly(['adminCode', 'createdAt', 'createdBy'])
+                && request.resource.data.adminCode.matches('^[A-Z0-9]{6,24}$')
+                && request.resource.data.createdAt == request.time
+                && request.resource.data.createdBy == request.auth.uid)
           );
 
       allow update: if signedIn()
@@ -112,26 +136,42 @@ service cloud.firestore {
     }
 
     // ---------------- Device enrollment (proof-of-code, single use) ----------------
-    // First-time devices prove possession of the access code by writing
-    // a one-time enrollment nonce. The rules compare the submitted
-    // `verifiedCode` against settings/security.accessCode server-side.
-    // The client then creates the actual `devices` document keyed to
-    // this enrollment, marks it `used`, and deletes it. The code is
-    // never persisted anywhere a client can read.
+    // A first-time device proves possession of a code by writing a one-time
+    // enrollment nonce. `scope` says which door it is knocking on:
+    //   'shop'  -> settings/security.accessCode  (opens the ledger)
+    //   'admin' -> settings/admin.adminCode       (unlocks the console)
+    // The rules compare the submitted `verifiedCode` against the matching
+    // settings doc server-side, so neither code is ever persisted anywhere a
+    // client can read. The client then mints the capability document
+    // (devices/<hash> for shop, admins/<uid> for admin), marks the nonce
+    // `used`, and the proof is spent.
     match /enrollments/{nonce} {
+      function shopProof(doc) {
+        return doc.scope == 'shop'
+          && exists(/databases/$(database)/documents/settings/security)
+          && doc.verifiedCode
+               == get(/databases/$(database)/documents/settings/security).data.accessCode;
+      }
+
+      function adminProof(doc) {
+        return doc.scope == 'admin'
+          && exists(/databases/$(database)/documents/settings/admin)
+          && doc.verifiedCode
+               == get(/databases/$(database)/documents/settings/admin).data.adminCode;
+      }
+
       allow create: if signedIn()
         && nonce.matches('^[a-f0-9]{32}$')
-        && request.resource.data.keys().hasOnly(['verifiedCode', 'createdAt', 'createdBy', 'used'])
+        && request.resource.data.keys().hasOnly(['scope', 'verifiedCode', 'createdAt', 'createdBy', 'used'])
+        && request.resource.data.scope in ['shop', 'admin']
         && request.resource.data.createdAt == request.time
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.used == false
-        && exists(/databases/$(database)/documents/settings/security)
-        && get(/databases/$(database)/documents/settings/security).data.accessCode
-             == request.resource.data.verifiedCode;
+        && (shopProof(request.resource.data) || adminProof(request.resource.data));
 
       allow get, list: if false;
 
-      // Only the owner flips `used` after the device doc exists.
+      // Only the owner flips `used` after the capability doc exists.
       allow update: if signedIn()
         && request.auth.uid == resource.data.createdBy
         && request.resource.data.keys().hasOnly(['used', 'deviceHash'])
@@ -142,6 +182,41 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == resource.data.createdBy;
     }
 
+    // ---------------- Admin grants (Developer console) ----------------
+    // The shop code opens the ledger; THIS document is what opens the
+    // console. It is keyed by uid so `isAdmin()` above is a single
+    // `exists()` check, and it can only be created by presenting the admin
+    // code as an unused enrollment proof — the client cannot assert it.
+    match /admins/{uid} {
+      function validAdminDoc(doc) {
+        return doc.keys().hasOnly(['uid', 'deviceHash', 'enrollmentId', 'createdAt', 'createdBy'])
+          && doc.uid is string && doc.uid == uid && doc.uid == request.auth.uid
+          && doc.deviceHash is string && doc.deviceHash.matches('^[a-f0-9]{64}$')
+          && doc.enrollmentId is string && doc.enrollmentId.matches('^[a-f0-9]{32}$')
+          && exists(/databases/$(database)/documents/enrollments/$(doc.enrollmentId))
+          && get(/databases/$(database)/documents/enrollments/$(doc.enrollmentId)).data.scope == 'admin'
+          && get(/databases/$(database)/documents/enrollments/$(doc.enrollmentId)).data.used == false
+          && get(/databases/$(database)/documents/enrollments/$(doc.enrollmentId)).data.createdBy == request.auth.uid
+          && doc.createdAt == request.time
+          && doc.createdBy == request.auth.uid;
+      }
+
+      // A device may always read its own grant (that is the gate check);
+      // only admins may enumerate who else has one.
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if isAdmin();
+
+      allow create: if signedIn() && validAdminDoc(request.resource.data);
+
+      // A grant is permanent for that browser: revoking admin means
+      // removing the doc, never editing it.
+      allow update: if false;
+
+      // An admin can revoke any browser's admin rights; a browser may
+      // always drop its own (that is how you lock a console out again).
+      allow delete: if signedIn() && (isAdmin() || request.auth.uid == uid);
+    }
+
     // ---------------- Trusted devices ----------------
     // A recognized browser holds a 256-bit random token whose SHA-256
     // is this document id. The id is UNGUESSABLE (2^256), so it acts as
@@ -150,8 +225,10 @@ service cloud.firestore {
     // listing is reserved for signed-in devices. An ACTIVE
     // devices/<tokenHash> doc enables automatic sign-in without the
     // access code; revocation (active = false) or removal forces
-    // verification again. The network/client fields are coarse
-    // metadata only (no IP, no fingerprinting).
+    // verification again. Only an admin grant may revoke, restore or
+    // remove a device (see the update/delete rules below). The
+    // network/client fields are coarse metadata only (no IP, no
+    // fingerprinting).
     match /devices/{tokenHash} {
       function validDeviceCreateDoc(doc) {
         return doc.keys().hasOnly([
@@ -180,6 +257,14 @@ service cloud.firestore {
           && doc.lastUsedAt == request.time;
       }
 
+      function validNetwork(net) {
+        return net is map
+          && net.keys().hasOnly(['type', 'saveData', 'online'])
+          && net.type is string && net.type.size() <= 20
+          && net.saveData is bool
+          && net.online is bool;
+      }
+
       allow read: if signedIn();
       // Capability read: the 64-hex doc id is the sha256 of a 256-bit
       // random token held only by the trusted browser, so knowing the
@@ -190,30 +275,37 @@ service cloud.firestore {
         && validDeviceCreateDoc(request.resource.data)
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.used == false;
 
+      // Managing the trust registry is a console-only power: it decides
+      // who can open the shop at all, so it sits behind isAdmin() rather
+      // than behind the shop code every device already holds.
       allow update: if signedIn()
         && (
-            // Any signed-in device may revoke (active true -> false).
-            (request.resource.data.active == false
+            // An admin revokes a browser (active true -> false).
+            (isAdmin()
+             && request.resource.data.active == false
              && resource.data.active == true
              && request.resource.data.keys().hasOnly(['active']))
+            ||
+            // An admin brings a revoked browser back.
+            (isAdmin()
+             && request.resource.data.active == true
+             && resource.data.active == false
+             && request.resource.data.keys().hasOnly(['active', 'lastUsedAt', 'lastUsedNetwork'])
+             && request.resource.data.lastUsedAt == request.time
+             && validNetwork(request.resource.data.lastUsedNetwork))
             ||
             // The owning device maintains heartbeat / rename / restore.
             (request.auth.uid == resource.data.createdBy
              && request.resource.data.keys().hasOnly(['lastUsedAt', 'lastUsedNetwork', 'label', 'active'])
              && request.resource.data.lastUsedAt == request.time
-             && request.resource.data.lastUsedNetwork is map
-             && request.resource.data.lastUsedNetwork.keys().hasOnly(['type', 'saveData', 'online'])
-             && request.resource.data.lastUsedNetwork.type is string
-             && request.resource.data.lastUsedNetwork.type.size() <= 20
-             && request.resource.data.lastUsedNetwork.saveData is bool
-             && request.resource.data.lastUsedNetwork.online is bool
+             && validNetwork(request.resource.data.lastUsedNetwork)
              && request.resource.data.label is string && request.resource.data.label.size() >= 1 && request.resource.data.label.size() <= 80
              && request.resource.data.active is bool)
           );
 
-      // Full removal (cleanup). The audit-friendly path is revoke
-      // (active = false) which any signed-in device can do above.
-      allow delete: if signedIn();
+      // Full removal (cleanup), console only. The audit-friendly path is
+      // revoke (active = false) above.
+      allow delete: if isAdmin();
     }
 
     // ---------------- Transactions ----------------

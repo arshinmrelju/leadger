@@ -1,9 +1,12 @@
 ﻿/* =========================================================
    TrustX Ledger — Developer console (admin.html)
    -----------------------------------------------------------------
-   Everyone who signs in with the shop code has full access, so this
-   console covers the shop's maintenance: the service catalog and a
-   full-data browser. The dashboard stays operational-only.
+   Not linked from the public navigation and gated by its own admin
+   code: this browser must hold an admins/{uid} grant (see auth.js /
+   firestore.rules) before any of this renders. Behind the gate the
+   console covers the shop's maintenance — the service catalog, the
+   trust registry and a full-data browser. The dashboard stays
+   operational-only.
    ========================================================= */
 
 import { toast, confirm, setLoading } from "./app.js";
@@ -19,16 +22,20 @@ import {
 import {
   fetchServices,
   createService,
+  seedDefaultServices,
   updateService,
   fetchTransactions,
   fetchExpenses,
 } from "./ledger.js";
+import { findMissingCatalogServices, SERVICE_CATALOG } from "./service-catalog.js";
 import {
   reportError,
   listTrustedDevices,
+  listAdminGrants,
   revokeDevice,
   restoreDevice,
   removeDevice,
+  grantAdminAccess,
 } from "./auth.js";
 
 function svg(id) {
@@ -46,11 +53,73 @@ function svg(id) {
 }
 
 /* =========================================================
+   The admin-code gate
+   ========================================================= */
+function renderAdminGate(mainContent) {
+  mainContent.innerHTML =
+    '<div class="state card" style="max-width:460px;margin:2rem auto;padding:2rem;">' +
+    '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>' +
+    "<h3>Developer console is locked</h3>" +
+    '<p class="small muted">This console is kept out of the shop&rsquo;s daily screens. ' +
+    "Enter the admin code to manage services, trusted devices and all data.</p>" +
+    '<div class="field" style="text-align:left;">' +
+    '<label class="small muted" for="adminCodeInput">Admin code</label>' +
+    '<input class="input" id="adminCodeInput" type="password" autocomplete="off" ' +
+    'autocapitalize="characters" spellcheck="false" placeholder="ADMIN CODE" />' +
+    "</div>" +
+    '<div class="flex" style="gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;">' +
+    '<button type="button" class="btn btn-primary" id="adminUnlockBtn">Unlock console</button>' +
+    '<a class="btn btn-secondary" href="dashboard.html">Back to dashboard</a>' +
+    "</div></div>";
+
+  const input = document.getElementById("adminCodeInput");
+  const btn = document.getElementById("adminUnlockBtn");
+
+  const submit = async () => {
+    if (!input.value.trim()) {
+      toast("Enter the admin code.", "error");
+      input.focus();
+      return;
+    }
+    setLoading(btn, true);
+    try {
+      await grantAdminAccess(input.value);
+      /* The grant now lives server-side, so a reload picks it up and the
+         console renders for real. */
+      window.location.reload();
+    } catch (err) {
+      toast(reportError(err), "error");
+      input.value = "";
+      setLoading(btn, false);
+      input.focus();
+    }
+  };
+
+  btn.addEventListener("click", submit);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submit();
+    }
+  });
+  input.focus();
+}
+
+/* =========================================================
    Page
    ========================================================= */
 export async function renderAdminPage(ctx) {
   const mainContent = document.getElementById("mainContent");
   if (!mainContent) return;
+
+  /* Second gate: the shop code opens the ledger, the admin code opens
+     this console. Without a grant we show the unlock card instead of the
+     console — the rules would refuse the device management anyway. */
+  if (!ctx.isAdmin) {
+    renderAdminGate(mainContent);
+    return;
+  }
 
   thisDeviceHash = ctx.trust ? ctx.trust.tokenHash : null;
 
@@ -58,13 +127,16 @@ export async function renderAdminPage(ctx) {
     '<div class="dash-head">' +
     "<div>" +
     "<h1>Developer console</h1>" +
-    '<p class="small muted">Services maintenance and full data access.</p>' +
+    '<p class="small muted">Admin-only: services maintenance, trusted devices and full data access.</p>' +
     "</div>" +
     '<span class="pill pill-accent" id="devShopPill">' + escapeHtml(ctx.general ? ctx.general.name || "TrustX Ledger" : "TrustX Ledger") + "</span>" +
     "</div>" +
 
     '<section class="card" id="servicesCard">' +
-    '<div class="card-header"><h3>' + svg("services") + "Services</h3></div>" +
+    '<div class="card-header"><h3>' + svg("services") + "Services</h3>" +
+    '<div class="card-actions">' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="seedSvcBtn" title="Add the default service list (printing, certificates, online work, photos)">Add default services</button>' +
+    "</div></div>" +
     '<div class="card-body">' +
     '<div class="rule-row">' +
     '<div class="field" style="margin:0;flex:1;"><input class="input" id="addSvcName" type="text" maxlength="80" placeholder="New service name" /></div>' +
@@ -73,6 +145,7 @@ export async function renderAdminPage(ctx) {
     '<button type="button" class="btn btn-secondary btn-sm" id="addSvcClear">Clear</button>' +
     '<button type="button" class="btn btn-primary btn-sm" id="addSvcSave">Add service</button>' +
     "</div></div>" +
+    '<p class="small muted" id="seedSvcNote" style="margin:.75rem 0 .25rem;">The default list is added automatically the first time a device opens the app &mdash; printing, DTP, certificates, online applications and photos. Every service starts at &curren;0, so set your rate on the row below. The button only adds whatever is still missing.</p>' +
     '<div id="servicesList"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading services&hellip;</p></div></div>' +
     "</div></section>" +
 
@@ -82,7 +155,7 @@ export async function renderAdminPage(ctx) {
     '<button type="button" class="btn btn-sm btn-secondary" id="devicesRefreshBtn">Refresh</button>' +
     "</div></div>" +
     '<div class="card-body">' +
-    '<p class="small muted" style="margin:0 0 .75rem;">These browsers open the ledger without the shop code. Revoke any device you do not recognise; the next time it opens the app it will ask for the code again.</p>' +
+    '<p class="small muted" style="margin:0 0 .75rem;">These browsers open the ledger without the shop code. Only an admin can revoke, restore or remove them, so the shop code alone can never lock you out of your own shop. Revoke any device you do not recognise; the next time it opens the app it will ask for the code again.</p>' +
     '<div id="devicesList"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading devices&hellip;</p></div></div>' +
     "</div></section>" +
 
@@ -118,6 +191,7 @@ export async function renderAdminPage(ctx) {
     "</div></section>";
 
   wireAddService();
+  wireSeedDefaults();
   loadServicesList();
   wireDataBrowser();
   loadDataBrowser();
@@ -133,6 +207,85 @@ function wireAddService() {
     document.getElementById("addSvcName").value = "";
     document.getElementById("addSvcPrice").value = "";
   });
+}
+
+/**
+ * Re-run the default catalog seed. The shell already does this on every
+ * protected page, so this button is a repair tool: it reports how much is
+ * still missing, never duplicates a service, and disables itself once the
+ * catalog covers the list.
+ */
+function wireSeedDefaults() {
+  const btn = document.getElementById("seedSvcBtn");
+  if (!btn) return;
+
+  btn.addEventListener("click", async () => {
+    let missing = [];
+    try {
+      const existing = await fetchServices({ includeInactive: true });
+      missing = findMissingCatalogServices(existing);
+    } catch (err) {
+      toast(reportError(err), "error");
+      return;
+    }
+
+    if (!missing.length) {
+      toast("Your catalog already covers the default list.", "info");
+      return;
+    }
+
+    const preview = missing
+      .map((m) => escapeHtml(m.name))
+      .join(", ");
+    const ok = await confirm({
+      title: "Add default services",
+      message:
+        '<p class="small">This adds ' + missing.length + " of " + SERVICE_CATALOG.length +
+        " default services at &curren;0, in counter order. You can rename, re-price or archive any of them afterwards.</p>" +
+        '<p class="small muted" style="margin-bottom:0;">' + preview + "</p>",
+      confirmText: "Add " + missing.length,
+      variant: "primary",
+    });
+    if (!ok) return;
+
+    setLoading(btn, true);
+    btn.textContent = "Adding…";
+    try {
+      /* 25 sequential writes is a visible wait on a slow connection, so
+         report progress rather than leaving the button inert. */
+      const { created } = await seedDefaultServices({
+        onProgress: ({ done, total }) => {
+          btn.textContent = "Adding " + done + "/" + total + "…";
+        },
+      });
+      toast(
+        created.length
+          ? created.length + " services added. Set your rates in the list below."
+          : "Nothing to add.",
+        "success",
+      );
+    } catch (err) {
+      toast(reportError(err), "error");
+    } finally {
+      /* Stay inert until the refreshed list has recomputed the count. */
+      setLoading(btn, true);
+      loadServicesList();
+    }
+  });
+}
+
+/** Keep the seed button honest about how many defaults are still missing. */
+function updateSeedButton(services) {
+  const btn = document.getElementById("seedSvcBtn");
+  if (!btn) return;
+  const missing = findMissingCatalogServices(services);
+  btn.textContent = missing.length
+    ? "Add " + missing.length + " default service" + (missing.length === 1 ? "" : "s")
+    : "Defaults added";
+  btn.title = missing.length
+    ? "Add the " + missing.length + " default service(s) not in your catalog yet"
+    : "Your catalog already covers the default list";
+  setLoading(btn, missing.length === 0);
 }
 
 async function saveNewService() {
@@ -183,9 +336,10 @@ async function loadServicesList() {
   if (!list) return;
   try {
     const services = await fetchServices({ includeInactive: true });
+    updateSeedButton(services);
     list.innerHTML =
       services.map(serviceRow).join("") ||
-      '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No services yet.</p></div>';
+      '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No services yet &mdash; the default list seeds itself on the next sign-in, or use the button above.</p></div>';
 
     services.forEach((s) => {
       const nameInput = list.querySelector('[data-svc-name="' + CSS.escape(s.serviceId) + '"]');
@@ -224,6 +378,14 @@ async function loadServicesList() {
       });
     });
   } catch (err) {
+    /* The seed button holds its loading state across a refresh so it cannot
+       be double-clicked mid-seed — so release it here, where we know the
+       count could not be recomputed. */
+    const seedBtn = document.getElementById("seedSvcBtn");
+    if (seedBtn) {
+      setLoading(seedBtn, false);
+      seedBtn.textContent = "Add default services";
+    }
     list.innerHTML = ' <div class="state"><p class="muted">' + escapeHtml(reportError(err)) + "</p></div>";
   }
 }
@@ -311,8 +473,9 @@ function networkSummary(d) {
   return bits.join(" &middot; ");
 }
 
-function deviceRow(d) {
+function deviceRow(d, adminUids) {
   const isThis = d.tokenHash === thisDeviceHash;
+  const isAdmin = Array.isArray(adminUids) && adminUids.includes(d.uid);
   const label = String(d.label || "Untitled device").trim() || "Untitled device";
   const ua = (d.client && d.client.ua) || "";
   const subBits = [ua, networkSummary(d)].filter(Boolean);
@@ -321,6 +484,7 @@ function deviceRow(d) {
     '<div class="dev-main">' +
     '<div class="dev-title">' + escapeHtml(label) +
     (isThis ? ' <span class="badge badge-accent">This browser</span>' : "") +
+    (isAdmin ? ' <span class="badge badge-neutral">Admin</span>' : "") +
     "</div>" +
     '<div class="dev-sub">' + escapeHtml(subBits.join(" &middot; ")) + "</div>" +
     '<div class="dev-sub small muted">Trusted ' + fmtTs(d.createdAt || d.lastUsedAt) +
@@ -343,8 +507,16 @@ async function loadTrustedDevices() {
   if (!list) return;
   try {
     const devices = await listTrustedDevices();
+    /* Best effort: the rules only allow this list to admins, and we are
+       already behind the admin gate — but never let it break the list. */
+    let adminUids = [];
+    try {
+      adminUids = await listAdminGrants();
+    } catch (err) {
+      console.warn("[trustx-ledger] admin grants list unavailable:", err);
+    }
     list.innerHTML = devices.length
-      ? devices.map(deviceRow).join("")
+      ? devices.map((d) => deviceRow(d, adminUids)).join("")
       : '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No trusted devices yet. The first browser to enter the shop code appears here.</p></div>';
   } catch (err) {
     console.error("[trustx-ledger] devices:", err);

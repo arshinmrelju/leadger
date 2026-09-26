@@ -41,13 +41,13 @@
   --color-info-soft: #dceefa;
 
   /* ── Shell / chrome ────────────────────────────────────── */
-  /* Sidebar: deep forest green (like the tropical foliage) */
-  --color-sidebar-bg: #1a3a2a;
-  --color-sidebar-text: #9dbfa8;
-  --color-sidebar-text-active: #f5f0e8;
+  /* Sidebar: deep forest leather green (Chaayos/TrustX shop aesthetic) */
+  --color-sidebar-bg: #132b1e;
+  --color-sidebar-text: #a0c2ab;
+  --color-sidebar-text-active: #ffffff;
   --color-sidebar-hover: rgba(255, 255, 255, 0.08);
-  /* Topbar: warm cream */
-  --color-topbar-bg: #fffdf7;
+  /* Topbar: warm receipt paper cream */
+  --color-topbar-bg: #fffdf9;
 
   /* ── Typography ────────────────────────────────────────── */
   /* Nunito: friendly, rounded, warm — matches illustration style */
@@ -197,7 +197,7 @@ hr {
   align-items: center;
   gap: 0.7rem;
   padding: 1rem 1.1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.12);
 }
 
 .sidebar-brand .brand-logo {
@@ -211,17 +211,18 @@ hr {
   line-height: 1.15;
 }
 .sidebar-brand .brand-name {
-  font-size: 1.02rem;
-  font-weight: 700;
+  font-size: 1.05rem;
+  font-weight: 850;
   color: var(--color-sidebar-text-active);
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
 }
 .sidebar-brand .brand-sub {
-  font-size: 0.72rem;
-  color: var(--color-sidebar-text);
-  opacity: 0.8;
+  font-size: 0.7rem;
+  color: #a0c2ab;
+  opacity: 0.9;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
+  font-weight: 800;
 }
 
 .sidebar-nav {
@@ -266,9 +267,10 @@ hr {
 }
 
 .nav-link.is-active {
-  background: linear-gradient(135deg, var(--color-primary), #3a9e6b);
-  color: var(--color-sidebar-text-active);
-  box-shadow: 0 2px 8px rgba(75, 139, 191, 0.35);
+  background: linear-gradient(135deg, #1f7a42 0%, #156133 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 12px rgba(21, 97, 51, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .nav-link .nav-icon {
@@ -290,7 +292,7 @@ hr {
 
 .sidebar-footer {
   padding: 0.8rem 1.1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
   font-size: 0.72rem;
   color: var(--color-sidebar-text);
   opacity: 0.85;
@@ -323,12 +325,15 @@ hr {
   gap: 1rem;
   padding: 0 1.5rem;
   background: var(--color-topbar-bg);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1.5px dashed #dbc9b5;
+  box-shadow: 0 2px 10px rgba(110, 75, 30, 0.03);
 }
 
 .topbar-title {
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-size: 1.08rem;
+  font-weight: 850;
+  color: #1e1912;
+  letter-spacing: -0.01em;
   margin-right: auto;
   white-space: nowrap;
   overflow: hidden;
@@ -364,7 +369,7 @@ hr {
   border-radius: 50%;
   flex: none;
 }
-.pill-neutral { background: var(--color-bg); color: var(--color-muted); border-color: var(--color-border-strong); }
+.pill-neutral { background: #faf4e6; color: #63503a; border-color: #ebdcc5; font-weight: 750; }
 .pill-success { background: var(--color-success-soft); color: #166534; }
 .pill-warning { background: var(--color-warning-soft); color: #92400e; }
 .pill-danger { background: var(--color-danger-soft); color: #991b1b; }

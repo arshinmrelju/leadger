@@ -31,6 +31,7 @@ import {
   isNetworkError,
 } from "./ledger.js";
 import { reportError } from "./auth.js";
+import { createServicePicker, serviceTile } from "./service-picker.js";
 
 const ICON_PLUS =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
@@ -38,6 +39,7 @@ const ICON_PLUS =
 /* ---------------- State ---------------- */
 
 let overlay = null;
+let picker = null;
 let services = [];
 let selectedService = null;
 let paymentMethod = "cash";
@@ -69,8 +71,10 @@ function saleFormMarkup() {
     '<div class="alert alert-error is-hidden" id="formMsg" role="alert"><span data-form-msg></span></div>' +
 
     '<div class="field">' +
-    '<label for="serviceSelect">Service *</label>' +
-    '<select class="select" id="serviceSelect" required></select>' +
+    '<label for="servicePick">Service *</label>' +
+    /* The search/grouped listbox is built by js/service-picker.js and
+       mounted into this host. */
+    '<div id="servicePickHost"></div>' +
     '<div class="flex-between">' +
     '<span class="field-hint">Picks the default rate. You can override it below.</span>' +
     '<button type="button" class="btn btn-ghost btn-sm" id="addServiceToggle">' +
@@ -151,6 +155,20 @@ function buildOverlay() {
     "</div>" +
     "</div></div>";
   document.body.appendChild(el);
+  picker = createServicePicker(el.querySelector("#servicePickHost"), {
+    inputId: "servicePick",
+    onSelect: (service) => {
+      selectedService = service;
+      /* `el`, not the module-level overlay: the module is only assigned
+         after this factory returns. */
+      el.querySelector("#rateInput").value = service ? paiseToInput(service.pricePaise) : "";
+      hideFormMsg();
+      updateTotal();
+    },
+    /* "No match in your catalog" offers to add what was typed — the
+       search box is then the fastest way to invent a new service. */
+    onCreate: (query) => openAddServiceBox(query),
+  });
   wire(el);
   return el;
 }
@@ -193,24 +211,11 @@ function wire(root) {
   const addBox = root.querySelector("#addServiceBox");
 
   root.querySelector("#addServiceToggle").addEventListener("click", () => {
-    addBox.classList.toggle("is-hidden");
-    if (!addBox.classList.contains("is-hidden")) {
-      setTimeout(() => root.querySelector("#newServiceName").focus(), 40);
-    }
+    if (addBox.classList.contains("is-hidden")) openAddServiceBox();
+    else closeAddServiceBox();
   });
   root.querySelector("#addServiceCancel").addEventListener("click", closeAddServiceBox);
   root.querySelector("#addServiceSave").addEventListener("click", saveNewService);
-
-  root.querySelector("#serviceSelect").addEventListener("change", (e) => {
-    const id = e.target.value;
-    if (!id) {
-      selectedService = null;
-      root.querySelector("#rateInput").value = "";
-    } else {
-      pickService(id);
-    }
-    updateTotal();
-  });
 
   root.querySelector("#qtyInput").addEventListener("input", updateTotal);
   root.querySelector("#rateInput").addEventListener("input", updateTotal);
@@ -240,6 +245,17 @@ function closeAddServiceBox() {
   if (box) box.classList.add("is-hidden");
 }
 
+/** Open the add-service box, optionally pre-filled from a picker search. */
+function openAddServiceBox(prefill = "") {
+  const box = overlay && overlay.querySelector("#addServiceBox");
+  if (!box) return;
+  const nameInput = overlay.querySelector("#newServiceName");
+  box.classList.remove("is-hidden");
+  if (prefill) nameInput.value = String(prefill).slice(0, 80);
+  /* The rate field is the part a human must fill in, so start there. */
+  setTimeout(() => overlay.querySelector("#newServiceRate").focus(), 40);
+}
+
 function showFormMsg(message) {
   const box = overlay && overlay.querySelector("#formMsg");
   if (!box) return;
@@ -262,36 +278,14 @@ async function refreshServices() {
     services = [];
   }
   if (!overlay) return;
-  renderServiceSelect();
+  picker.setServices(services);
   renderQuickGrid();
 }
 
-function renderServiceSelect() {
-  const sel = overlay.querySelector("#serviceSelect");
-  sel.innerHTML =
-    '<option value="">Select a service&hellip;</option>' +
-    services
-      .map(
-        (s) =>
-          '<option value="' +
-          escapeHtml(s.serviceId) +
-          '">' +
-          escapeHtml(s.name) +
-          (s.pricePaise > 0 ? " \u00B7 " + formatINR(s.pricePaise) : "") +
-          "</option>"
-      )
-      .join("");
-}
-
+/* The tile logic now lives with the picker, so a service looks the same
+   in the search list and on the quick tiles. */
 function quickCode(s) {
-  const fromName = (s.name || "")
-    .replace(/[^a-zA-Z0-9\s]/g, "")
-    .trim()
-    .split(/\s+/)
-    .map((w) => w[0] || "")
-    .join("")
-    .toUpperCase();
-  return (s.code || fromName || "SV").slice(0, 2);
+  return serviceTile(s);
 }
 
 function renderQuickGrid() {
@@ -299,9 +293,10 @@ function renderQuickGrid() {
   const hint = overlay && overlay.querySelector("#saleQuickHint");
   if (!grid) return;
 
+  const shown = services.slice(0, 16);
+
   grid.innerHTML =
-    services
-      .slice(0, 16)
+    shown
       .map(
         (s) =>
           '<button type="button" class="quick-service" tabindex="-1" data-id="' +
@@ -319,26 +314,32 @@ function renderQuickGrid() {
           "</button>"
       )
       .join("") ||
-    '<div class="state" style="padding:0.75rem 0;"><p class="muted" style="margin:0;">No services yet — use \u201CAdd service\u201D above to create your first one.</p></div>';
+    '<div class="state" style="padding:0.75rem 0;"><p class="muted" style="margin:0;">No services yet \u2014 use \u201CAdd service\u201D above to create your first one.</p></div>';
 
   grid.querySelectorAll(".quick-service").forEach((btn) => {
     btn.addEventListener("click", () => pickService(btn.dataset.id));
   });
 
   if (hint) {
-    hint.textContent = services.length
-      ? "Tap a service to fill the form."
-      : "No services yet \u2014 use \u201CAdd service\u201D above to create your first one.";
+    if (!services.length) {
+      hint.textContent = "No services yet \u2014 use \u201CAdd service\u201D above to create your first one.";
+      return;
+    }
+    /* The grid is capped for the modal's height; the select above always
+       holds the whole catalog, so point there when the tail is hidden. */
+    const extra = services.length - shown.length;
+    hint.textContent = extra > 0
+      ? "Tap a service to fill the form. " + extra + " more in the dropdown above."
+      : "Tap a service to fill the form.";
   }
 }
 
 function pickService(id) {
-  if (!overlay) return;
-  const svc = services.find((s) => s.serviceId === id);
-  if (!svc) return;
-  selectedService = svc;
-  overlay.querySelector("#serviceSelect").value = id;
-  overlay.querySelector("#rateInput").value = paiseToInput(svc.pricePaise);
+  if (!overlay || !picker) return;
+  if (!services.some((s) => s.serviceId === id)) return;
+  /* The picker's onSelect owns the rate and the total, so a quick tile
+     behaves exactly like typing the name in the search box. */
+  picker.setValue(id);
   overlay.querySelector("#qtyInput").value = "1";
   hideFormMsg();
   updateTotal();
@@ -451,6 +452,9 @@ async function onSave(event) {
 /** Clear the entry fields, keeping the chosen service and method. */
 function resetForm() {
   if (!overlay) return;
+  /* The picker's own state is left alone: it and `selectedService` are only
+     ever changed together through onSelect, and the services have not been
+     re-read yet at this point. */
   overlay.querySelector("#qtyInput").value = "1";
   overlay.querySelector("#rateInput").value = selectedService ? paiseToInput(selectedService.pricePaise) : "";
   overlay.querySelector("#customerInput").value = "";

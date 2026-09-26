@@ -1,10 +1,13 @@
 /* =========================================================
    TrustX Ledger — Protected-page shell bootstrap
    -----------------------------------------------------------------
-   Shared by dashboard.html, transactions.html and admin.html. Owns:
+   Shared by dashboard.html, transactions.html, ledger.html and
+   admin.html. Owns:
      - auth guard + session-loss redirect
      - trusted-device gate (revocation enforced even with a session)
-     - user chip + shop name + date pill
+      - optional admin-grant check for the Developer console
+      - default service catalog seed (so quick entry is never empty)
+      - user chip + shop name + date pill
      - Kolkata day rollover
      - Ctrl/Cmd+N "new transaction" shortcut
    Pages call initAppShell(...) and receive a rendering context once
@@ -13,6 +16,7 @@
 
 import { toast, confirm } from "./app.js";
 import { escapeHtml, formatKolkataLong, todayKolkata, debounce } from "./utils.js";
+import { ensureCatalogSeeded } from "./ledger.js";
 import {
   requireAuth,
   guardPage,
@@ -23,6 +27,7 @@ import {
   getGeneral,
   checkTrustedDevice,
   updateDeviceLastUsed,
+  checkAdminAccess,
   reportError,
 } from "./auth.js";
 
@@ -146,8 +151,10 @@ function registerGlobalKeys() {
  * @param {string} [opts.page]   page name for the active nav (auto-detected otherwise)
  * @param {Function} opts.onReady  async (ctx) => render the page
  * @param {Function} [opts.onDayChange]  called when the Kolkata business day rolls over
+ * @param {boolean} [opts.requireAdmin]  also resolve the Developer-console
+ *        admin grant into ctx.isAdmin (one extra read, console only)
  */
-export async function initAppShell({ onReady, onDayChange } = {}) {
+export async function initAppShell({ onReady, onDayChange, requireAdmin = false } = {}) {
   const user = await requireAuth();
   if (!user) return; // redirect handled inside requireAuth
 
@@ -171,6 +178,14 @@ export async function initAppShell({ onReady, onDayChange } = {}) {
     /* Every signed-in device shares the shop; create its record once. */
     const general = (await ensureShopRecord()) || (await getGeneral());
 
+    /* A shop that has never sold anything still needs its counter's
+       services, so the default catalog is seeded here — before the first
+       render, which is what stops the quick-service grids from painting
+       empty. It is a no-op (one read) once the catalog is in place, and
+       it never throws: a shop whose catalog read fails still gets a
+       working page. */
+    await ensureCatalogSeeded();
+
     renderShopName(general);
     wireConnection(typeof onDayChange === "function" ? onDayChange : null);
 
@@ -182,7 +197,9 @@ export async function initAppShell({ onReady, onDayChange } = {}) {
     const ctx = {
       user: real,
       general,
-      isAdmin: true,
+      /* True only for a browser holding an admins/{uid} grant. Pages that
+         do not ask for it never pay for the read. */
+      isAdmin: requireAdmin ? await checkAdminAccess() : false,
       trust,
     };
     await onReady(ctx);

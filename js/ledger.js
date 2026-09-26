@@ -3,7 +3,7 @@
    -----------------------------------------------------------------
    Flat single-shop collections:
      transactions/{txnId}   sales recorded on a business day
-     services/{serviceId}   quick-service catalog
+      services/{serviceId}   quick-service catalog (seed list in service-catalog.js)
      expenses/{expId}       spends recorded on a business day
    All money is integer paise. Dates are Asia/Kolkata `YYYY-MM-DD`.
    Reads only touch TODAY's rows — never the whole store.
@@ -20,6 +20,7 @@ import {
   isPaymentMethod,
   methodLabel,
 } from "./utils.js";
+import { findMissingCatalogServices } from "./service-catalog.js";
 
 function toSafe(value) {
   const n = typeof value === "number" ? value : Number(value);
@@ -194,9 +195,25 @@ export async function fetchServices({ includeInactive = false } = {}) {
 
 /**
  * Create a service on the fly for quick entry. Safe integer paise.
+ *
+ * `code` and `sortOrder` are optional: quick entry leaves them at their
+ * neutral defaults, while the catalog seed passes the two-letter tile
+ * code and the group ordering band. Both fields are already part of the
+ * `services` schema the rules validate, so seeding needs no rule change.
+ *
+ * `serviceId` is optional for the same reason — a hand-added service gets
+ * a random id, while a seeded one gets the deterministic id from the
+ * catalog so two devices cannot both create it.
+ *
+ * @param {object} opts
+ * @param {string} opts.name
+ * @param {string|number} opts.price  rupees (stored as integer paise)
+ * @param {string} [opts.code]        short tile code, <= 12 characters
+ * @param {number} [opts.sortOrder]   ordering band
+ * @param {string} [opts.serviceId]   explicit document id
  * @returns {Promise<{serviceId, name, pricePaise}>}
  */
-export async function createService({ name, price }) {
+export async function createService({ name, price, code = "", sortOrder = 0, serviceId } = {}) {
   const b = await getFirebridge();
   const fs = b.firestore;
   const cleanName = String(name || "").trim();
@@ -207,22 +224,107 @@ export async function createService({ name, price }) {
   if (pricePaise === null) {
     throw new Error("Enter a valid rate for the service.");
   }
+  const cleanCode = String(code == null ? "" : code).trim();
+  if (cleanCode.length > 12) {
+    throw new Error("Service code must be 12 characters or fewer.");
+  }
+  /* An id becomes a Firestore document path, so a slash would silently
+     write somewhere else entirely. */
+  const explicitId = String(serviceId == null ? "" : serviceId).trim();
+  if (explicitId.length > 120 || explicitId.includes("/")) {
+    throw new Error("That service id is not valid.");
+  }
   const user = b.auth.currentUser;
-  const serviceId = uid("svc");
+  const id = explicitId || uid("svc");
   const doc = {
-    serviceId,
+    serviceId: id,
     name: cleanName,
-    code: "",
+    code: cleanCode,
     pricePaise,
     active: true,
-    sortOrder: 0,
+    sortOrder: toSafe(sortOrder),
     createdAt: fs.serverTimestamp(),
     createdBy: user ? user.uid : "",
     updatedAt: fs.serverTimestamp(),
     updatedBy: user ? user.uid : "",
   };
-  await fs.setDoc(fs.doc(b.db, "services", serviceId), doc);
-  return { serviceId, name: cleanName, pricePaise };
+  await fs.setDoc(fs.doc(b.db, "services", id), doc);
+  return { serviceId: id, name: cleanName, pricePaise };
+}
+
+/**
+ * Write the default catalog entries (js/service-catalog.js) the shop does
+ * not have yet. Safe to re-run and safe to run on several devices at
+ * once: entries are matched by name OR by their deterministic seed id,
+ * and a write that loses the race comes back permission-denied, which is
+ * counted as "already there" rather than treated as a failure.
+ *
+ * Writes run one at a time on purpose — this runs on a shop counter
+ * connection, and Firestore's offline queue is happier with a sequential
+ * burst than a parallel one. A failure part-way leaves the earlier
+ * services written, and the next run picks up exactly the rest.
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.onProgress] called as ({done, total}) per write
+ * @returns {Promise<{created: object[], skipped: number, denied: number}>}
+ */
+export async function seedDefaultServices({ onProgress } = {}) {
+  const existing = await fetchServices({ includeInactive: true });
+  const missing = findMissingCatalogServices(existing);
+  if (!missing.length) return { created: [], skipped: existing.length, denied: 0 };
+
+  const created = [];
+  let denied = 0;
+  for (const entry of missing) {
+    try {
+      created.push(
+        await createService({
+          serviceId: entry.seedId,
+          name: entry.name,
+          price: entry.price,
+          code: entry.code,
+          sortOrder: entry.sortOrder,
+        })
+      );
+    } catch (err) {
+      /* Another device created this exact document first. The rules
+         refuse the overwrite (an update must keep createdAt/createdBy),
+         so a denial here means "already seeded", not a failure. */
+      if (err && err.code === "permission-denied") denied += 1;
+      else throw err;
+    }
+    if (typeof onProgress === "function") {
+      onProgress({ done: created.length + denied, total: missing.length });
+    }
+  }
+  return { created, skipped: existing.length, denied };
+}
+
+/**
+ * Make sure the shop has the default catalog. Called by the
+ * protected-page shell before the first render, so a fresh shop finds the
+ * services already on its dashboard instead of an empty grid.
+ *
+ * Best effort by design: this is convenience, not ledger data, so a
+ * failure is logged and swallowed rather than taking the page down — the
+ * Developer console can still seed by hand.
+ *
+ * @returns {Promise<{created: number, skipped: boolean, denied: number}>}
+ */
+export async function ensureCatalogSeeded() {
+  try {
+    const { created, denied } = await seedDefaultServices();
+    if (created.length || denied) {
+      console.info(
+        `[trustx-ledger] default services seeded: ${created.length} added` +
+        (denied ? `, ${denied} already present` : "")
+      );
+    }
+    return { created: created.length, skipped: false, denied };
+  } catch (err) {
+    console.warn("[trustx-ledger] default services could not be seeded:", err);
+    return { created: 0, skipped: true, denied: 0 };
+  }
 }
 
 /**

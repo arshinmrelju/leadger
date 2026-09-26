@@ -3,18 +3,26 @@
    -----------------------------------------------------------------
    The whole app opens with one shared code (SHOP_CODE, "TRUSTX").
    Entering it signs the browser in anonymously and grants full access
-   to everything, including the Developer console — there are no
-   accounts, roles or memberships.
+   to the ledger itself — there are no accounts, roles or memberships.
 
-   The code check is a CONVENIENCE gate: it happens in the browser.
-   Real record integrity is enforced by firestore.rules (signed-in
-   user, every document typed and non-forgeable: createdBy == uid,
-   total == quantity * rate, service must exist and be active, ...).
+   The Developer console (admin.html) sits behind a SECOND code
+   (ADMIN_CODE). It is not linked from the public navigation and the
+   shop code alone cannot open it: a browser must additionally present
+   the admin code, which the rules exchange for an `admins/{uid}`
+   grant. That grant is what the rules check before allowing device
+   management.
+
+   Both code checks are CONVENIENCE gates for the UI. Real record
+   integrity is enforced by firestore.rules (signed-in user, every
+   document typed and non-forgeable: createdBy == uid,
+   total == quantity * rate, service must exist and be active, admin
+   grants require an unused admin-scope enrollment, ...).
    ========================================================= */
 
 import { getFirebridge } from "./firebase.js";
 
 export const SHOP_CODE = "TRUSTX";
+export const ADMIN_CODE = "TRUSTXADMIN";
 
 /* ---------------- Errors ---------------- */
 
@@ -35,6 +43,10 @@ const AUTH_MESSAGES = {
     "Anonymous sign-in is not enabled for this Firebase project. Enable it under Authentication → Sign-in method.",
   "too-many-requests": "Too many attempts. Please wait a few minutes and try again.",
   "code-invalid": "That code is not recognised. Check with the shop administrator.",
+  "admin-code-invalid": "That admin code is not recognised.",
+  "admin-grant-failed": "Could not unlock the developer console. Please try again.",
+  "admin-not-trusted":
+    "This browser is not a trusted device yet. Sign in with the shop code first, then unlock the console.",
   "enrollment-failed": "Could not register this device. Please try again.",
   "device-store-unavailable":
     "This browser cannot store a trusted-device credential, so every sign-in will require the code.",
@@ -142,6 +154,11 @@ export function normalizeCode(input) {
 /** True if the typed code matches the shop code (case/space tolerant). */
 export function isCorrectCode(input) {
   return normalizeCode(input) === SHOP_CODE;
+}
+
+/** True if the typed code matches the Developer-console admin code. */
+export function isCorrectAdminCode(input) {
+  return normalizeCode(input) === ADMIN_CODE;
 }
 
 /* ---------------- Sign-in / sign-out ---------------- */
@@ -273,11 +290,22 @@ export async function ensureShopRecord() {
      with getDoc(): the rules deny that read and it would fail with
      permission-denied on every sign-in. The create rule only allows the
      write while the doc is absent, so "denied" simply means another
-     device already seeded it. */
+     device already seeded it. Same story for the admin code. */
   const securityRef = fs.doc(b.db, "settings", "security");
   try {
     await fs.setDoc(securityRef, {
       accessCode: SHOP_CODE,
+      createdAt: fs.serverTimestamp(),
+      createdBy: user.uid,
+    });
+  } catch (err) {
+    if (!err || err.code !== "permission-denied") throw err;
+  }
+
+  const adminRef = fs.doc(b.db, "settings", "admin");
+  try {
+    await fs.setDoc(adminRef, {
+      adminCode: ADMIN_CODE,
       createdAt: fs.serverTimestamp(),
       createdBy: user.uid,
     });
@@ -480,6 +508,7 @@ export async function enrollDevice({ label } = {}) {
   /* One-time proof-of-code; the rules compare against settings/security. */
   try {
     await fs.setDoc(fs.doc(b.db, "enrollments", nonce), {
+      scope: "shop",
       verifiedCode: SHOP_CODE,
       createdAt: fs.serverTimestamp(),
       createdBy: user.uid,
@@ -603,14 +632,14 @@ export async function listTrustedDevices() {
     });
 }
 
-/** Revoke a device's trust (any signed-in device may). */
+/** Revoke a device's trust (admin grant required; rules enforce). */
 export async function revokeDevice(tokenHash) {
   const b = await bridge();
   const fs = b.firestore;
   await fs.updateDoc(fs.doc(b.db, "devices", tokenHash), { active: false });
 }
 
-/** Reactivate a device (owner only; rules enforce). */
+/** Reactivate a device (admin grant required; rules enforce). */
 export async function restoreDevice(tokenHash) {
   const b = await bridge();
   const fs = b.firestore;
@@ -622,9 +651,127 @@ export async function restoreDevice(tokenHash) {
   });
 }
 
-/** Permanently remove a device record. */
+/** Permanently remove a device record (admin grant required). */
 export async function removeDevice(tokenHash) {
   const b = await bridge();
   const fs = b.firestore;
   await fs.deleteDoc(fs.doc(b.db, "devices", tokenHash));
+}
+
+/* =========================================================
+   Admin access (the Developer console gate)
+   -----------------------------------------------------------------
+   The console is not reachable from the public navigation and needs a
+   second code. Presenting it writes an admin-scope enrollment proof,
+   which the rules verify against settings/admin, and only then mints
+   `admins/{uid}` — the document isAdmin() checks before allowing any
+   device management. The grant lives server-side, so it survives cache
+   clears and applies to this browser (uid), not just this page.
+   ========================================================= */
+
+/** Does THIS browser hold an admin grant? */
+export async function checkAdminAccess() {
+  try {
+    const b = await bridge();
+    const fs = b.firestore;
+    const user = getCurrentUser();
+    if (!user) return false;
+    const snap = await fs.getDoc(fs.doc(b.db, "admins", user.uid));
+    return snap.exists() === true;
+  } catch (err) {
+    /* Offline or rules denied: fail closed — the console stays shut. */
+    console.warn("[trustx-ledger] admin grant check failed:", err);
+    return false;
+  }
+}
+
+/** uids that hold an admin grant (rules allow this list to admins only). */
+export async function listAdminGrants() {
+  const b = await bridge();
+  const fs = b.firestore;
+  const snap = await fs.getDocs(fs.collection(b.db, "admins"));
+  return snap.docs.map((d) => d.id);
+}
+
+/**
+ * Exchange the admin code for a grant on this browser.
+ * Throws AuthError("admin-code-invalid") when the rules reject the proof.
+ */
+export async function grantAdminAccess(code) {
+  const typed = normalizeCode(code);
+  if (!typed) {
+    throw new AuthError("admin-code-invalid", friendly("admin-code-invalid"));
+  }
+
+  const user = await signInAnonymous();
+  const b = await bridge();
+  const fs = b.firestore;
+
+  await ensureShopRecord();
+
+  /* The grant is bound to this browser's device token, so the console is
+     opened by a device the owner can see and revoke. */
+  const token = await loadDeviceCredential();
+  if (!token) {
+    throw new AuthError("admin-not-trusted", friendly("admin-not-trusted"));
+  }
+  const tokenHash = await hashToken(token);
+  const nonce = nonceHex();
+
+  /* One-time proof of the ADMIN code; the rules compare it to
+     settings/admin.adminCode, so a wrong code is refused server-side. */
+  try {
+    await fs.setDoc(fs.doc(b.db, "enrollments", nonce), {
+      scope: "admin",
+      verifiedCode: typed,
+      createdAt: fs.serverTimestamp(),
+      createdBy: user.uid,
+      used: false,
+    });
+  } catch (err) {
+    if (err && err.code === "permission-denied") {
+      throw new AuthError("admin-code-invalid", friendly("admin-code-invalid"));
+    }
+    throw new AuthError("admin-grant-failed", friendly("admin-grant-failed"));
+  }
+
+  try {
+    await fs.setDoc(fs.doc(b.db, "admins", user.uid), {
+      uid: user.uid,
+      deviceHash: tokenHash,
+      enrollmentId: nonce,
+      createdAt: fs.serverTimestamp(),
+      createdBy: user.uid,
+    });
+  } catch (err) {
+    console.error("[trustx-ledger] admin grant rejected:", err);
+    throw new AuthError("admin-grant-failed", friendly("admin-grant-failed"));
+  }
+
+  /* Burn the one-time proof. */
+  try {
+    await fs.updateDoc(fs.doc(b.db, "enrollments", nonce), {
+      used: true,
+      deviceHash: tokenHash,
+    });
+  } catch (err) {
+    console.warn("[trustx-ledger] admin enrollment mark-used failed:", err);
+  }
+
+  return true;
+}
+
+/** Drop this browser's own admin grant (the console locks again). */
+export async function revokeAdminAccess() {
+  const user = getCurrentUser();
+  if (!user) return false;
+  const b = await bridge();
+  const fs = b.firestore;
+  try {
+    await fs.deleteDoc(fs.doc(b.db, "admins", user.uid));
+    return true;
+  } catch (err) {
+    if (err && err.code === "permission-denied") return false;
+    throw err;
+  }
 }
