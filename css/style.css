@@ -254,6 +254,7 @@ hr {
   font-size: 0.94rem;
   font-weight: 500;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
@@ -261,6 +262,7 @@ hr {
 .nav-link:hover {
   background: var(--color-sidebar-hover);
   color: var(--color-sidebar-text-active);
+  text-decoration: none;
 }
 
 .nav-link.is-active {
@@ -394,10 +396,13 @@ hr {
   line-height: 1.2;
   cursor: pointer;
   white-space: nowrap;
+  text-decoration: none;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
     color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
   user-select: none;
 }
+
+.btn:hover { text-decoration: none; }
 
 .btn:active { transform: translateY(1px); }
 
