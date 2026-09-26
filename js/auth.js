@@ -65,6 +65,11 @@ export function reportError(err) {
   if (err instanceof AuthError) return err.message;
   if (err && typeof err.message === "string") {
     if (/^auth\//.test(err.message)) return toAuthError(err).message;
+    /* Firestore's raw "Missing or insufficient permissions." is never
+       actionable for the shop user — the rules are the shop's own. */
+    if (err.code === "permission-denied" || /insufficient permissions/i.test(err.message)) {
+      return "The ledger rejected that request. Make sure the latest firestore.rules are deployed, then try again.";
+    }
     return err.message;
   }
   return "Something went wrong. Please try again.";
@@ -263,23 +268,21 @@ export async function ensureShopRecord() {
     general = again.exists() ? again.data() : general;
   }
 
-  /* Seed the access code once (server verifies enrollment against it). */
+  /* Seed the access code once (server verifies enrollment against it).
+     settings/security is never client-readable, so we must NOT probe it
+     with getDoc(): the rules deny that read and it would fail with
+     permission-denied on every sign-in. The create rule only allows the
+     write while the doc is absent, so "denied" simply means another
+     device already seeded it. */
   const securityRef = fs.doc(b.db, "settings", "security");
-  const securitySnap = await fs.getDoc(securityRef);
-  if (!securitySnap.exists()) {
-    try {
-      await fs.setDoc(securityRef, {
-        accessCode: SHOP_CODE,
-        createdAt: fs.serverTimestamp(),
-        createdBy: user.uid,
-      });
-    } catch (err) {
-      if (err && err.code === "permission-denied") {
-        // Already seeded by another device.
-      } else {
-        throw err;
-      }
-    }
+  try {
+    await fs.setDoc(securityRef, {
+      accessCode: SHOP_CODE,
+      createdAt: fs.serverTimestamp(),
+      createdBy: user.uid,
+    });
+  } catch (err) {
+    if (!err || err.code !== "permission-denied") throw err;
   }
 
   return general;
@@ -408,24 +411,34 @@ export async function hashToken(token) {
 
 function shortUA(userAgent) {
   const ua = typeof userAgent === "string" ? userAgent : "";
-  const pick = (browser, version) => {
-    const m = ua.match(browser);
-    return m
-      ? (browser[0].toUpperCase() + browser.slice(1)).replace("/", " ") + (m[1] ? " " + m[1] : "")
-      : null;
+  /* `pattern` locates the version digits, `name` is the display label.
+     Note: a RegExp has no indexed properties, so the label must be a
+     real string here — never derive it from `pattern`. */
+  const pick = (pattern, name) => {
+    const m = ua.match(pattern);
+    return m ? name + (m[1] ? " " + m[1] : "") : null;
   };
+  /* iOS also contains "Mac OS X", so the phone tokens must be tested
+     before the desktop one. */
   const os =
-    /Windows NT 10/.test(ua) ? "Windows"
+    /iPhone|iPad|iPod/.test(ua) ? "iOS"
+    : /Android/.test(ua) ? "Android"
+    : /Windows NT 10/.test(ua) ? "Windows"
     : /Windows/.test(ua) ? "Windows"
     : /Mac OS X/.test(ua) ? "macOS"
-    : /iPhone/.test(ua) || /iPad/.test(ua) ? "iOS"
-    : /Android/.test(ua) ? "Android"
     : /CrOS/.test(ua) ? "ChromeOS"
     : /Linux/.test(ua) ? "Linux"
     : "Unknown OS";
+  /* Chromium-based browsers all carry "Chrome/", so the more specific
+     tokens must be tested first or everything reads as Chrome. */
   const browser =
-    pick(/Edg\/([\d]+)/, 1) || pick(/Chrome\/([\d]+)/, 1) ||
-    pick(/Firefox\/([\d]+)/, 1) || pick(/Safari\/([\d]+)/, 1) || "Browser";
+    pick(/Edg(?:A|iOS)?\/([\d]+)/, "Edge") ||
+    pick(/OPR\/([\d]+)/, "Opera") ||
+    pick(/Firefox\/([\d]+)/, "Firefox") ||
+    pick(/Chrome\/([\d]+)/, "Chrome") ||
+    pick(/Version\/([\d.]+).*Safari/, "Safari") ||
+    (/Safari/.test(ua) ? "Safari" : null) ||
+    "Browser";
   return (os + " · " + browser).slice(0, 100);
 }
 
@@ -487,19 +500,27 @@ export async function enrollDevice({ label } = {}) {
   const network = collectNetwork();
   const now = fs.serverTimestamp();
 
-  await fs.setDoc(deviceRef, {
-    tokenHash,
-    uid: user.uid,
-    label: String(label || defaultDeviceLabel()).trim().slice(0, 80) || defaultDeviceLabel(),
-    client,
-    network,
-    createdAt: now,
-    createdBy: user.uid,
-    lastUsedAt: now,
-    lastUsedNetwork: network,
-    active: true,
-    enrollmentId: nonce,
-  });
+  try {
+    await fs.setDoc(deviceRef, {
+      tokenHash,
+      uid: user.uid,
+      label: String(label || defaultDeviceLabel()).trim().slice(0, 80) || defaultDeviceLabel(),
+      client,
+      network,
+      createdAt: now,
+      createdBy: user.uid,
+      lastUsedAt: now,
+      lastUsedNetwork: network,
+      active: true,
+      enrollmentId: nonce,
+    });
+  } catch (err) {
+    /* Never let a raw Firestore message ("Missing or insufficient
+       permissions.") reach the login screen — the rules rejected the
+       registry write for one of our own reasons. */
+    console.error("[seva-ledger] device registration rejected:", err);
+    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
+  }
 
   /* Burn the one-time enrollment. */
   try {
