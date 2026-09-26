@@ -69,7 +69,7 @@ received and are excluded).
 │   ├── style.css         Design tokens + core components
 │   ├── forms.css         Inputs, selects, chips, auth page
 │   ├── dashboard.css     Stat cards, quick grids, entry panel
-│   ├── transactions.css  Transaction entry (segmented payment, hide, totals)
+│   ├── transactions.css  Sale modal, history browser, totals
 │   ├── admin.css         Developer console rows/actions
 │   └── responsive.css    Desktop-first, mobile fallback
 ├── js/
@@ -77,7 +77,8 @@ received and are excluded).
 │   ├── auth.js           Code sign-in, trusted-device enrollment/check, shop bootstrap
 │   ├── ledger.js         Transactions/services reads + writes + day summary
 │   ├── admin.js          Developer console rendering
-│   ├── shell.js          Shared protected-page bootstrap (chip, sync, keys)
+│   ├── shell.js          Shared protected-page bootstrap (chip, date, keys)
+│   ├── sale-form.js      Shared "Record a sale" modal (openSaleForm/onSaleRecorded)
 │   ├── app.js            Shared init, toasts, modals, shell behavior, errors
 │   └── utils.js          Money (paise), dates (Asia/Kolkata), validation
 ├── tests/
@@ -234,10 +235,10 @@ hardening pass.
   `sanitizeQuantity`). Floating point is never used for totals.
 - Dates always resolve to `Asia/Kolkata` (`kolkataDateKey`, `todayKolkata`).
 - UI helpers live in `js/app.js`:
-  `toast(msg, type)`, `confirm({...})`, `setSyncState(state)`,
+  `toast(msg, type)`, `confirm({...})`,
   `setLoading(button, bool)`.
 - Logged-in pages bootstrap through `js/shell.js` `initAppShell({ page,
-  onReady, onDayChange })` — renders the user chip, sync pill, day rollover,
+  onReady, onDayChange })` — renders the user chip, day rollover,
   global keys, and ensures the shop record exists.
 - The Developer console lives in `js/admin.js`:
   `renderAdminPage(ctx)` — service maintenance and the all-data browser.
@@ -296,7 +297,7 @@ hardening pass.
 
 1. ✅ Foundation: structure, shell, design system, Firebase wiring
 2. ✅ Single-code sign-in: one shared code, anonymous auth, full access, shop record bootstrap
-3. ✅ Today's dashboard: live Firestore figures, recent transactions, sync status, quick services
+3. ✅ Today's dashboard: live Firestore figures, recent transactions, quick services
 4. 🔄 Transaction system: record-sale page, inline services, payment
    methods, offline queue, dashboard wiring, flat single-shop data model.
    *Remaining:* daily ledger (date filters, edit, due→paid, CSV).

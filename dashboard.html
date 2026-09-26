@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/forms.css" />
   <link rel="stylesheet" href="css/dashboard.css" />
+  <link rel="stylesheet" href="css/transactions.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
@@ -82,7 +83,7 @@
       <div class="sidebar-footer">
         <div id="userChip"></div>
         <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
-          SEVA LEDGER &middot; v0.7.0
+          SEVA LEDGER &middot; v0.8.0
         </div>
       </div>
     </aside>
@@ -97,10 +98,6 @@
         <div class="topbar-title">Dashboard</div>
         <span class="pill pill-neutral" id="topbarShop" style="display:none;"></span>
         <span class="pill pill-neutral" id="topbarDate" aria-live="off"></span>
-        <span class="pill pill-neutral" id="syncPill">
-          <span class="dot dot-neutral"></span>
-          <span data-sync-label>Checking&hellip;</span>
-        </span>
       </header>
 
       <main class="content" id="mainContent">
@@ -116,7 +113,7 @@
   <!-- ===================== Modals ===================== -->
 
   <script type="module">
-    import { setLoading, setSyncState } from "./js/app.js";
+    import { setLoading } from "./js/app.js";
     import {
       formatINR,
       formatKolkataLong,
@@ -127,6 +124,7 @@
     import { fetchTodaySummary, fetchServices, isNetworkError } from "./js/ledger.js";
     import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
+    import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
 
     const mainContent = document.getElementById("mainContent");
 
@@ -158,14 +156,14 @@
       return (
         '<div class="stat-card ' + (className || "") + '">' +
         '<div class="stat-label">' + labelHtml + "</div>" +
-        '<div class="stat-value' + (emphasis ? " stat-emphasis" : "") + '" id="' + valueId + '">â‚¹0</div>' +
+        '<div class="stat-value' + (emphasis ? " stat-emphasis" : "") + '" id="' + valueId + '">&nbsp;</div>' +
         (noteId ? '<div class="stat-note" id="' + noteId + '">&nbsp;</div>' : "") +
         "</div>"
       );
     }
 
     /* =========================================================
-       Dashboard â€” today's figures + recent transactions.
+       Dashboard — today's figures + recent transactions.
        Reads real Firestore data (transactions + expenses for today's
        Asia/Kolkata date only). No mock rows.
        ========================================================= */
@@ -188,7 +186,9 @@
         "<h1>Today&rsquo;s figures</h1>" +
         '<p class="small muted" id="summarySub">Loading&hellip;</p>' +
         "</div>" +
-        '<a class="btn btn-primary btn-lg" href="transactions.html">' + ICON_PLUS + "New transaction</a>" +
+        '<button type="button" class="btn btn-primary btn-lg" id="newTxnBtn">' +
+        ICON_PLUS +
+        "New transaction</button>" +
         "</div>" +
         '<div class="dash-grid">' +
         statBlock(trendIc + "Today&rsquo;s revenue", "statRevenue", "stat-revenue", true, "revenueNote") +
@@ -206,6 +206,7 @@
         '<div class="card-header"><h3>Recent transactions</h3>' +
         '<div class="card-actions">' +
         '<span class="small muted" id="recentCount"></span>' +
+        '<a class="btn btn-ghost btn-sm" href="transactions.html">View history</a>' +
         '<button type="button" class="btn btn-secondary btn-sm" id="refreshBtn" title="Refresh today\'s figures">Refresh</button>' +
         "</div></div>" +
         '<div class="table-wrap"><table class="table txn-table">' +
@@ -226,7 +227,7 @@
         '<div class="quick-grid" id="quickGrid">' +
         '<div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading&hellip;</p></div>' +
         "</div>" +
-        '<p class="small muted mt-2" style="margin-bottom:0;">Tap a service to jump into a quick sale.</p>' +
+        '<p class="small muted mt-2" style="margin-bottom:0;">Tap a service to open a sale with it already filled in.</p>' +
         "</div></section>" +
         "</div>";
 
@@ -236,6 +237,10 @@
     }
 
     function applyHooks() {
+      /* Sales are recorded in a dialog, so the dashboard never navigates
+         away and the figures behind it stay loaded. */
+      document.getElementById("newTxnBtn").addEventListener("click", () => openSaleForm());
+
       document.getElementById("refreshBtn").addEventListener("click", () => {
         const btn = document.getElementById("refreshBtn");
         setLoading(btn, true);
@@ -254,7 +259,6 @@
         renderStats(summary);
         renderRecent(summary.transactions);
         if (sub) sub.textContent = formatKolkataLong(new Date()) + " \u00B7 Asia/Kolkata";
-        setSyncState(navigator.onLine ? "online" : "offline");
       } catch (err) {
         console.error("[seva-ledger] dashboard load:", err);
         if (sub) sub.textContent = "Could not load today's figures. Check your connection.";
@@ -274,7 +278,6 @@
             "</div></td></tr>";
         }
         if (footer) footer.innerHTML = "&nbsp;";
-        setSyncState(isNetworkError(err) ? "offline" : "online");
       }
     }
 
@@ -345,8 +348,9 @@
           '<path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>' +
           "<h3>No transactions today</h3>" +
           "<p>Sales you record during the day will appear here.</p>" +
-          '<a class="btn btn-primary" href="transactions.html">' + ICON_PLUS + "Record a sale</a>" +
+          '<button type="button" class="btn btn-primary" id="emptyRecordBtn">' + ICON_PLUS + "Record a sale</button>" +
           "</div></td></tr>";
+        document.getElementById("emptyRecordBtn").addEventListener("click", () => openSaleForm());
         footer.innerHTML = "&nbsp;";
         return;
       }
@@ -354,7 +358,8 @@
       body.innerHTML = shown.map(txnRow).join("");
       footer.innerHTML =
         transactions.length > 12
-          ? "Showing the most recent " + shown.length + " of " + transactions.length + ". The full daily ledger arrives in a later build."
+          ? "Showing the most recent " + shown.length + " of " + transactions.length + ". " +
+            '<a href="transactions.html">View the full history</a>.'
           : transactions.length === 1
           ? "1 transaction today."
           : transactions.length + " transactions today.";
@@ -395,14 +400,14 @@
           )
           .join("") ||
         '<div class="state" style="padding:1rem 0;">' +
-        '<p class="muted" style="margin:0 0 0.9rem;">No services yet. Add them from the Transactions page.</p>' +
-        '<a class="btn btn-primary btn-sm" href="transactions.html">Add services</a>' +
+        '<p class="muted" style="margin:0 0 0.9rem;">No services yet. Add them from the record-a-sale dialog.</p>' +
+        '<button type="button" class="btn btn-primary btn-sm" id="quickAddBtn">Add services</button>' +
         "</div>";
+      const addBtn = document.getElementById("quickAddBtn");
+      if (addBtn) addBtn.addEventListener("click", () => openSaleForm());
       grid.querySelectorAll(".quick-service").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          sessionStorage.setItem("seva.preselectService", btn.dataset.id);
-          window.location.href = "transactions.html";
-        });
+        /* A tap fills the dialog's form — no page change. */
+        btn.addEventListener("click", () => openSaleForm({ serviceId: btn.dataset.id }));
       });
     }
 
@@ -413,6 +418,8 @@
     initAppShell({
       page: "dashboard",
       onReady: async () => {
+        /* A sale saved in the dialog updates the figures in place. */
+        onSaleRecorded(() => loadDashboardData());
         await renderDashboard();
       },
       onDayChange: () => {

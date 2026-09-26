@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>New transaction &middot; SEVA LEDGER</title>
-  <meta name="description" content="Record a sale in SEVA LEDGER" />
+  <title>Transaction history &middot; SEVA LEDGER</title>
+  <meta name="description" content="Full transaction history for SEVA LEDGER" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/forms.css" />
@@ -83,7 +83,7 @@
       <div class="sidebar-footer">
         <div id="userChip"></div>
         <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
-          SEVA LEDGER &middot; v0.7.0
+          SEVA LEDGER &middot; v0.8.0
         </div>
       </div>
     </aside>
@@ -98,10 +98,6 @@
         <div class="topbar-title">Transactions</div>
         <span class="pill pill-neutral" id="topbarShop" style="display:none;"></span>
         <span class="pill pill-neutral" id="topbarDate" aria-live="off"></span>
-        <span class="pill pill-neutral" id="syncPill">
-          <span class="dot dot-neutral"></span>
-          <span data-sync-label>Checking&hellip;</span>
-        </span>
       </header>
 
       <main class="content" id="mainContent">
@@ -115,447 +111,271 @@
   </div>
 
   <script type="module">
-    import { toast, setLoading, setSyncState } from "./js/app.js";
+    import { setLoading } from "./js/app.js";
     import {
       formatINR,
-      paiseToInput,
+      formatDateKey,
       formatKolkataLong,
       formatKolkataTime,
       escapeHtml,
       todayKolkata,
-      sanitizeQuantity,
-      rateToPaise,
-      computeTotalPaise,
+      kolkataDateKey,
+      isValidDateKey,
       isPaymentMethod,
-      methodLabel,
     } from "./js/utils.js";
-    import {
-      fetchTodaySummary,
-      fetchServices,
-      createService,
-      createTransaction,
-      flushPendingWrites,
-      isNetworkError,
-    } from "./js/ledger.js";
+    import { fetchTransactions, isNetworkError } from "./js/ledger.js";
     import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
+    import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
 
     const mainContent = document.getElementById("mainContent");
 
     const ICON_PLUS =
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 
-    let services = [];
-    let selectedService = null;
-    let paymentMethod = "cash";
-    let saving = false;
-    let waitingSync = false;
+    /* How many rows to pull per read. "All time" is a single ordered
+       query, so this is the window over the whole ledger. */
+    const LIMIT = 500;
+
+    /* =========================================================
+       Filter state
+       ========================================================= */
+    let scope = "all";                 // "all" | "day"
+    let dateKey = todayKolkata();
+    let query = "";
+    let method = "";
+    let lastRows = [];                 // last server read, re-filtered on the client
+
+    function statBlock(label, valueId, className) {
+      return (
+        '<div class="stat-card ' + (className || "") + '">' +
+        '<div class="stat-label">' + label + "</div>" +
+        '<div class="stat-value" id="' + valueId + '">' + formatINR(0) + "</div>" +
+        "</div>"
+      );
+    }
 
     /* =========================================================
        Render the page body (runs once the shell approves access)
        ========================================================= */
     async function renderPage() {
-      const day = formatKolkataLong(new Date()) + " &middot; Asia/Kolkata";
+      document.getElementById("topbarDate").textContent = formatKolkataLong(new Date());
+
       mainContent.innerHTML =
-        '<section aria-label="New transaction">' +
-        "<div class=\"dash-head\"><div><h1>New transaction</h1>" +
-        '<p class="small muted">' + day + "</p></div>" +
-        '<a class="btn btn-secondary" href="dashboard.html">Back to dashboard</a></div>' +
-        '<div class="txn-wrap">' +
-        "<!-- Form -->" +
-        '<section class="card" aria-label="Record a sale">' +
-        '<div class="card-header"><h3>Record a sale</h3></div>' +
+        '<div class="dash-head">' +
+        "<div>" +
+        "<h1>Transaction history</h1>" +
+        '<p class="small muted" id="histSub">Every sale recorded in this ledger, newest first.</p>' +
+        "</div>" +
+        '<button type="button" class="btn btn-primary btn-lg" id="newTxnBtn">' +
+        ICON_PLUS +
+        "New transaction</button>" +
+        "</div>" +
+
+        /* Totals for whatever the filters currently match. */
+        '<div class="dash-grid">' +
+        statBlock("Transactions", "histCount") +
+        statBlock("Total billed", "histTotal") +
+        statBlock("Collected", "histPaid", "stat-cash") +
+        statBlock("Outstanding", "histDue", "stat-due") +
+        "</div>" +
+
+        '<section class="card" aria-label="Transaction history">' +
         '<div class="card-body">' +
-        '<form id="txnForm" novalidate>' +
-        '<div class="alert alert-error is-hidden" id="formMsg" role="alert"><span data-form-msg></span></div>' +
-
-        '<div class="field">' +
-        '<div class="flex-between mb-1"><label for="serviceSelect" style="margin:0;">Service *</label>' +
-        '<button type="button" class="btn btn-ghost btn-sm" id="addServiceToggle">' + ICON_PLUS + " Add service</button></div>" +
-        '<select class="select" id="serviceSelect" required></select>' +
-        '<span class="field-hint">Picks the default rate. You can override it below.</span>' +
+        '<div class="hist-bar">' +
+        '<div class="field field-search">' +
+        '<label for="histSearch">Search</label>' +
+        '<input class="input" id="histSearch" type="search" autocomplete="off" placeholder="Customer or service" />' +
+        "</div>" +
+        '<div class="field field-date">' +
+        '<label for="histDate">Day</label>' +
+        '<input class="input" id="histDate" type="date" value="' + escapeHtml(dateKey) + '" />' +
+        "</div>" +
+        '<div class="field field-method">' +
+        '<label for="histMethod">Payment</label>' +
+        '<select class="select" id="histMethod">' +
+        '<option value="">All methods</option>' +
+        '<option value="cash">Cash</option>' +
+        '<option value="upi">UPI</option>' +
+        '<option value="card">Card</option>' +
+        '<option value="due">Due</option>' +
+        "</select></div>" +
+        '<div class="hist-actions">' +
+        '<button type="button" class="btn btn-secondary" id="histTodayBtn">Today</button>' +
+        '<button type="button" class="btn btn-secondary" id="histAllBtn">All time</button>' +
+        '<button type="button" class="btn btn-secondary" id="histResetBtn">Clear</button>' +
+        '<button type="button" class="btn btn-primary" id="histRefreshBtn">Refresh</button>' +
+        "</div>" +
+        "</div>" +
         "</div>" +
 
-        '<div class="field is-hidden" id="addServiceBox">' +
-        '<div class="card" style="background:var(--color-bg);box-shadow:none;">' +
-        '<div class="card-body" style="padding:0.85rem 1rem;">' +
-        '<div class="small muted mb-1" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Add a service</div>' +
-        '<div class="form-row">' +
-        '<div class="field" style="margin:0;"><label for="newServiceName">Service name</label>' +
-        '<input class="input" id="newServiceName" type="text" maxlength="80" placeholder="e.g. Passport" /></div>' +
-        '<div class="field" style="margin:0;"><label for="newServiceRate">Rate (&#x20B9;)</label>' +
-        '<input class="input" id="newServiceRate" type="text" inputmode="decimal" placeholder="e.g. 150" /></div>' +
-        "</div>" +
-        '<div class="flex" style="justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">' +
-        '<button type="button" class="btn btn-secondary btn-sm" id="addServiceCancel">Cancel</button>' +
-        '<button type="button" class="btn btn-primary btn-sm" id="addServiceSave">Add service</button>' +
-        "</div></div></div></div>" +
-
-        '<div class="form-row">' +
-        '<div class="field"><label for="qtyInput">Quantity</label>' +
-        '<input class="input" id="qtyInput" type="number" inputmode="numeric" min="1" max="100000" step="1" value="1" placeholder="1" /></div>' +
-        '<div class="field"><label for="rateInput">Rate (&#x20B9;)</label>' +
-        '<input class="input" id="rateInput" type="text" inputmode="decimal" value="" placeholder="0.00" /></div>' +
-        "</div>" +
-
-        '<div class="field">' +
-        '<label>Payment method</label>' +
-        '<div class="seg-row" id="methodRow" role="group" aria-label="Payment method">' +
-        '<button type="button" class="seg-btn seg-cash is-active" data-method="cash">Cash</button>' +
-        '<button type="button" class="seg-btn seg-upi" data-method="upi">UPI</button>' +
-        '<button type="button" class="seg-btn seg-card" data-method="card">Card</button>' +
-        '<button type="button" class="seg-btn seg-due" data-method="due">Due</button>' +
-        "</div>" +
-        "<span class=\"field-hint\" id=\"methodHint\">Recorded as paid.</span>" +
-        "</div>" +
-
-        '<div class="field"><label for="customerInput">Customer <span class="small muted">(optional)</span></label>' +
-        '<input class="input" id="customerInput" type="text" maxlength="120" autocomplete="off" placeholder="Customer name" /></div>' +
-
-        '<div class="entry-total" aria-live="polite">' +
-        '<span class="entry-total-label">Total</span>' +
-        '<span class="entry-total-value" id="totalPreview">' + formatINR(0) + "</span>" +
-        "</div>" +
-
-        '<button type="submit" class="btn btn-primary btn-lg btn-block mt-1" id="saveBtn">' +
-        ICON_PLUS + "Save transaction" +
-        "</button>" +
-        "</form>" +
-        "</div>" +
-        "</section>" +
-
-        "<!-- Right column -->" +
-        '<div>' +
-        '<section class="card" aria-label="Quick services">' +
-        '<div class="card-header"><h3>Quick services</h3></div>' +
-        '<div class="card-body">' +
-        '<div class="quick-grid" id="quickGrid">' +
-        '<div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading&hellip;</p></div>' +
-        "</div>" +
-        '<p class="small muted mt-1" id="quickHint" style="margin-bottom:0;">Tap a service to start a sale.</p>' +
-        "</div></section>" +
-
-        '<section class="card mt-2" aria-label="Today\'s transactions">' +
-        '<div class="card-header"><h3>Today&rsquo;s transactions</h3>' +
-        '<div class="card-actions">' +
-        '<span class="small muted" id="todayCount"></span>' +
-        '<button type="button" class="btn btn-secondary btn-sm" id="todayRefreshBtn" title="Refresh today\'s entries">Refresh</button>' +
-        "</div></div>" +
-        '<div class="table-wrap"><table class="table txn-table">' +
+        '<div class="table-wrap"><table class="table txn-table hist-table">' +
         "<thead><tr>" +
-        "<th>Time</th><th>Customer</th><th>Service</th><th>Payment</th>" +
-        '<th class="text-right">Amount</th>' +
+        "<th>Time</th><th>Customer</th><th>Service</th>" +
+        '<th class="text-right">Qty</th><th class="text-right">Rate</th>' +
+        "<th>Payment</th>" +
+        '<th class="text-right">Amount</th><th class="text-right">Paid</th><th class="text-right">Due</th>' +
         "</tr></thead>" +
-        '<tbody id="todayBody">' +
-        '<tr><td colspan="5"><div class="state"><span class="spinner" aria-hidden="true"></span>' +
-        '<p class="muted">Loading&hellip;</p></div></td></tr>' +
+        '<tbody id="histBody">' +
+        '<tr><td colspan="9"><div class="state"><span class="spinner" aria-hidden="true"></span>' +
+        "<p class=\"muted\">Loading the ledger&hellip;</p></div></td></tr>" +
         "</tbody></table></div>" +
-        '<div class="txn-footer small muted" id="todayFooter">&nbsp;</div>' +
-        "</section>" +
-        "</div>" +
-        "</div>" +
+        '<div class="txn-footer small muted" id="histFooter">&nbsp;</div>' +
         "</section>";
 
-      wireForm();
-      await Promise.all([loadServices(), reloadToday()]);
+      wire();
+      await reload();
     }
 
     /* =========================================================
-       Form wiring
+       Wiring
        ========================================================= */
-    function wireForm() {
-      const addBox = document.getElementById("addServiceBox");
-      const addToggle = document.getElementById("addServiceToggle");
+    function wire() {
+      document.getElementById("newTxnBtn").addEventListener("click", () => openSaleForm());
 
-      addToggle.addEventListener("click", () => {
-        addBox.classList.toggle("is-hidden");
-        if (!addBox.classList.contains("is-hidden")) {
-          setTimeout(() => document.getElementById("newServiceName").focus(), 40);
-        }
+      const search = document.getElementById("histSearch");
+      search.addEventListener("input", () => {
+        query = search.value.trim().toLowerCase();
+        /* Filtering is client-side over the loaded window, so re-render
+           from cache instead of re-querying on every keystroke. */
+        renderHistory(lastRows);
       });
-      document.getElementById("addServiceCancel").addEventListener("click", () => {
-        addBox.classList.add("is-hidden");
-      });
-      document.getElementById("addServiceSave").addEventListener("click", saveNewService);
 
-      document.getElementById("serviceSelect").addEventListener("change", (e) => {
-        const id = e.target.value;
-        if (!id) {
-          selectedService = null;
-          document.getElementById("rateInput").value = "";
+      document.getElementById("histDate").addEventListener("change", (e) => {
+        const value = e.target.value;
+        if (isValidDateKey(value)) {
+          dateKey = value;
+          scope = "day";
+          syncScopeButtons();
+          reload();
         } else {
-          pickService(id);
+          e.target.value = dateKey;
         }
-        updateTotal();
       });
 
-      document.getElementById("qtyInput").addEventListener("input", updateTotal);
-      document.getElementById("rateInput").addEventListener("input", updateTotal);
-
-      document.querySelectorAll("#methodRow .seg-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          paymentMethod = btn.dataset.method;
-          document.querySelectorAll("#methodRow .seg-btn").forEach((b) => b.classList.toggle("is-active", b === btn));
-          updateTotal();
-        });
+      document.getElementById("histMethod").addEventListener("change", (e) => {
+        const value = e.target.value;
+        method = isPaymentMethod(value) ? value : "";
+        e.target.value = method;
+        renderHistory(lastRows);
       });
 
-      document.getElementById("todayRefreshBtn").addEventListener("click", () => {
-        const btn = document.getElementById("todayRefreshBtn");
+      document.getElementById("histTodayBtn").addEventListener("click", () => {
+        scope = "day";
+        dateKey = todayKolkata();
+        document.getElementById("histDate").value = dateKey;
+        syncScopeButtons();
+        reload();
+      });
+
+      document.getElementById("histAllBtn").addEventListener("click", () => {
+        scope = "all";
+        syncScopeButtons();
+        reload();
+      });
+
+      document.getElementById("histResetBtn").addEventListener("click", () => {
+        scope = "all";
+        query = "";
+        method = "";
+        document.getElementById("histSearch").value = "";
+        document.getElementById("histMethod").value = "";
+        syncScopeButtons();
+        reload();
+      });
+
+      document.getElementById("histRefreshBtn").addEventListener("click", () => {
+        const btn = document.getElementById("histRefreshBtn");
         setLoading(btn, true);
-        reloadToday().finally(() => setLoading(btn, false));
-      });
-
-      document.getElementById("txnForm").addEventListener("submit", onSave);
-
-      window.addEventListener("seva:new-txn", () => {
-        focusFirstField();
+        reload().finally(() => setLoading(btn, false));
       });
     }
 
-    function focusFirstField() {
-      const sel = document.getElementById("serviceSelect");
-      if (sel) {
-        sel.focus();
-        sel.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-    }
-
-    function showFormMsg(message, type = "error") {
-      const box = document.getElementById("formMsg");
-      if (!box) return;
-      box.classList.remove("is-hidden");
-      box.className = "alert alert-" + (type === "error" ? "error" : "warning") + " is-visible";
-      box.querySelector("[data-form-msg]").textContent = message;
-    }
-    function hideFormMsg() {
-      const box = document.getElementById("formMsg");
-      if (box) box.classList.add("is-hidden");
+    function syncScopeButtons() {
+      document.getElementById("histTodayBtn").className =
+        "btn " + (scope === "day" ? "btn-primary" : "btn-secondary");
+      document.getElementById("histAllBtn").className =
+        "btn " + (scope === "all" ? "btn-primary" : "btn-secondary");
     }
 
     /* =========================================================
-       Services
+       Data
        ========================================================= */
-    async function loadServices() {
+
+    async function reload() {
+      const body = document.getElementById("histBody");
+      const footer = document.getElementById("histFooter");
+      if (!body) return;
+
+      const dateFilter = scope === "day" ? dateKey : null;
       try {
-        services = await fetchServices();
+        lastRows = await fetchTransactions({ dateKey: dateFilter, limit: LIMIT });
+        renderHistory(lastRows);
       } catch (err) {
-        console.warn("[seva-ledger] services:", err);
-        services = [];
-      }
-      renderServiceSelect();
-      renderQuickGrid();
-
-      /* Pre-select when the dashboard forwarded a service. */
-      const preselect = sessionStorage.getItem("seva.preselectService");
-      if (preselect) {
-        sessionStorage.removeItem("seva.preselectService");
-        if (services.some((s) => s.serviceId === preselect)) {
-          pickService(preselect);
-        }
-      }
-      document.getElementById("quickHint").textContent = services.length
-        ? "Tap a service to start a sale."
-        : "No services yet — use \u201CAdd service\u201D above to create your first one.";
-    }
-
-    function renderServiceSelect() {
-      const sel = document.getElementById("serviceSelect");
-      const opts =
-        '<option value="">Select a service&hellip;</option>' +
-        services
-          .map(
-            (s) =>
-              '<option value="' + escapeHtml(s.serviceId) + '">' +
-              escapeHtml(s.name) +
-              (s.pricePaise > 0 ? " \u00B7 " + formatINR(s.pricePaise) : "") +
-              "</option>"
-          )
-          .join("");
-      sel.innerHTML = opts;
-    }
-
-    function quickCode(s) {
-      const fromName = (s.name || "")
-        .replace(/[^a-zA-Z0-9\s]/g, "")
-        .trim()
-        .split(/\s+/)
-        .map((w) => w[0] || "")
-        .join("")
-        .toUpperCase();
-      return (s.code || fromName || "SV").slice(0, 2);
-    }
-
-    function renderQuickGrid() {
-      const grid = document.getElementById("quickGrid");
-      if (!grid) return;
-      grid.innerHTML =
-        services
-          .slice(0, 16)
-          .map(
-            (s) =>
-              '<button type="button" class="quick-service" tabindex="-1" data-id="' + escapeHtml(s.serviceId) + '">' +
-              '<span class="qs-icon">' + escapeHtml(quickCode(s)) + "</span>" +
-              '<span class="qs-name">' + escapeHtml(s.name) + "</span>" +
-              '<span class="qs-price">' + (s.pricePaise >= 0 ? formatINR(s.pricePaise) : "&nbsp;") + "</span>" +
-              "</button>"
-          )
-          .join("") ||
-        '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No services yet.</p></div>';
-      grid.querySelectorAll(".quick-service").forEach((btn) => {
-        btn.addEventListener("click", () => pickService(btn.dataset.id));
-      });
-    }
-
-    function pickService(id) {
-      const svc = services.find((s) => s.serviceId === id);
-      if (!svc) return;
-      selectedService = svc;
-      document.getElementById("serviceSelect").value = id;
-      document.getElementById("rateInput").value = paiseToInput(svc.pricePaise);
-      document.getElementById("qtyInput").value = "1";
-      hideFormMsg();
-      updateTotal();
-      document.getElementById("qtyInput").focus();
-    }
-
-    async function saveNewService() {
-      const name = document.getElementById("newServiceName").value.trim();
-      const rate = document.getElementById("newServiceRate").value;
-      const btn = document.getElementById("addServiceSave");
-      if (!name) {
-        toast("Enter a service name.", "error");
-        return;
-      }
-      if (rateToPaise(rate) === null) {
-        toast("Enter a valid rate.", "error");
-        return;
-      }
-      setLoading(btn, true);
-      try {
-        const created = await createService({ name, price: rate });
-        await loadServices();
-        document.getElementById("addServiceBox").classList.add("is-hidden");
-        pickService(created.serviceId);
-        toast('Service "' + created.name + '" added.', "success");
-      } catch (err) {
-        toast(reportError(err), "error");
-      } finally {
-        setLoading(btn, false);
+        console.error("[seva-ledger] history load:", err);
+        lastRows = [];
+        renderTotals([]);
+        body.innerHTML =
+          '<tr><td colspan="9"><div class="state is-error">' +
+          '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>' +
+          "<h3>Could not load the history</h3>" +
+          "<p>" +
+          escapeHtml(
+            isNetworkError(err)
+              ? "You appear to be offline. Entries will sync automatically when you reconnect."
+              : reportError(err)
+          ) +
+          "</p>" +
+          '<button type="button" class="btn btn-secondary" onclick="window.location.reload()">Retry</button>' +
+          "</div></td></tr>";
+        if (footer) footer.innerHTML = "&nbsp;";
       }
     }
 
-    /* =========================================================
-       Live total + validation preview
-       ========================================================= */
-    function updateTotal() {
-      const qty = sanitizeQuantity(document.getElementById("qtyInput").value);
-      const ratePaise = rateToPaise(document.getElementById("rateInput").value);
-      const total = computeTotalPaise(qty, ratePaise);
-      const preview = document.getElementById("totalPreview");
-      const hint = document.getElementById("methodHint");
+    /* ---------- Client-side narrowing + rendering ---------- */
 
-      if (total === null || qty === null || ratePaise === null) {
-        preview.textContent = formatINR(0);
-        if (hint) hint.textContent = "Enter a valid quantity and rate.";
-        return;
-      }
-      preview.textContent = formatINR(total);
-      if (hint) {
-        hint.textContent =
-          paymentMethod === "due"
-            ? "Recorded as pending \u2014 it will count as due until paid."
-            : "Recorded as paid (" + methodLabel(paymentMethod) + ").";
-      }
-    }
-
-    /* =========================================================
-       Save
-       ========================================================= */
-    async function onSave(event) {
-      event.preventDefault();
-      if (saving) return; // double-submit guard
-      hideFormMsg();
-
-      const qty = sanitizeQuantity(document.getElementById("qtyInput").value);
-      const ratePaise = rateToPaise(document.getElementById("rateInput").value);
-      const total = computeTotalPaise(qty, ratePaise);
-      const customer = document.getElementById("customerInput").value.trim();
-
-      if (!selectedService) return showFormMsg("Choose a service for this sale.");
-      if (qty === null) return showFormMsg("Quantity must be a whole number greater than 0.");
-      if (ratePaise === null) return showFormMsg("Enter a valid rate (\u20B90 or more, up to \u20B91,00,000).");
-      if (total === null) return showFormMsg("The total is out of the allowed range.");
-      if (!isPaymentMethod(paymentMethod)) return showFormMsg("Choose a payment method.");
-
-      saving = true;
-      const btn = document.getElementById("saveBtn");
-      setLoading(btn, true);
-      try {
-        const result = await createTransaction({
-          serviceId: selectedService.serviceId,
-          serviceName: selectedService.name,
-          quantity: qty,
-          rate: ratePaise / 100, // paise -> rupees input for createTransaction
-          paymentMethod,
-          customerName: customer,
-          dateKey: todayKolkata(),
-        });
-
-        if (navigator.onLine) {
-          toast("Transaction saved \u2014 " + formatINR(result.totalPaise) + ".", "success");
-        } else {
-          toast("Saved offline \u2014 " + formatINR(result.totalPaise) + ". Will sync automatically.", "success", 5200);
-          if (!waitingSync) scheduleSyncConfirmation();
-        }
-
-        clearForm();
-        reloadToday();
-      } catch (err) {
-        console.error("[seva-ledger] save:", err);
-        showFormMsg(isNetworkError(err) ? "Could not save right now. Check your connection and try again." : reportError(err));
-      } finally {
-        saving = false;
-        setLoading(btn, false);
-      }
-    }
-
-    function clearForm() {
-      document.getElementById("qtyInput").value = "1";
-      document.getElementById("rateInput").value = selectedService ? paiseToInput(selectedService.pricePaise) : "";
-      document.getElementById("customerInput").value = "";
-      updateTotal();
-      document.getElementById("qtyInput").focus();
-    }
-
-    function scheduleSyncConfirmation() {
-      waitingSync = true;
-      window.addEventListener(
-        "online",
-        async () => {
-          try {
-            await flushPendingWrites();
-            setSyncState("online");
-            toast("Changes synced.", "success");
-            reloadToday();
-          } catch (_) {
-            /* still offline; try again next time */
-          } finally {
-            waitingSync = false;
-          }
-        },
-        { once: true }
+    function matches(t) {
+      if (method && t.paymentMethod !== method) return false;
+      if (!query) return true;
+      return (
+        String(t.customerName || "").toLowerCase().includes(query) ||
+        String(t.serviceName || "").toLowerCase().includes(query)
       );
     }
 
-    /* =========================================================
-       Today's transactions
-       ========================================================= */
+    function totalsOf(rows) {
+      return rows.reduce(
+        (acc, t) => {
+          acc.total += t.totalPaise;
+          acc.paid += t.collectedPaise;
+          acc.due += t.duePaise;
+          return acc;
+        },
+        { total: 0, paid: 0, due: 0 }
+      );
+    }
+
+    function renderTotals(rows) {
+      const s = totalsOf(rows);
+      const set = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      };
+      set("histCount", String(rows.length));
+      set("histTotal", formatINR(s.total));
+      set("histPaid", formatINR(s.paid));
+      set("histDue", formatINR(s.due));
+      const dueEl = document.getElementById("histDue");
+      if (dueEl) dueEl.classList.toggle("text-danger", s.due > 0);
+    }
+
     function methodChips(t) {
-      return '<span class="badge badge-method badge-' + t.paymentMethod + '">' +
+      return (
+        '<span class="badge badge-method badge-' + escapeHtml(t.paymentMethod) + '">' +
         escapeHtml(t.methodLabel) +
         (t.status === "pending" ? ' <span class="badge badge-warning" style="margin-left:2px;">Pending</span>' : "") +
-        "</span>";
+        "</span>"
+      );
     }
 
     function txnRow(t) {
@@ -566,57 +386,113 @@
         '<td class="txn-time">' + escapeHtml(formatKolkataTime(t.createdAt)) + "</td>" +
         '<td class="txn-customer"><div class="txn-clip">' + escapeHtml(customer) + "</div></td>" +
         '<td class="txn-service"><div class="txn-clip">' + escapeHtml(t.serviceName) + qtyInfo + "</div></td>" +
+        '<td class="text-right txn-num">' + escapeHtml(String(t.quantity)) + "</td>" +
+        '<td class="text-right txn-num">' + formatINR(t.ratePaise) + "</td>" +
         "<td>" + methodChips(t) + "</td>" +
         '<td class="text-right txn-num">' + formatINR(t.totalPaise) + "</td>" +
+        '<td class="text-right txn-num">' + formatINR(t.collectedPaise) + "</td>" +
+        '<td class="text-right txn-num">' +
+        (t.duePaise > 0 ? '<span class="text-danger">' + formatINR(t.duePaise) + "</span>" : '<span class="muted">' + formatINR(0) + "</span>") +
+        "</td>" +
         "</tr>"
       );
     }
 
-    async function reloadToday() {
-      const body = document.getElementById("todayBody");
-      const footer = document.getElementById("todayFooter");
-      const count = document.getElementById("todayCount");
-      try {
-        const summary = await fetchTodaySummary(todayKolkata());
-        if (!body || !footer) return;
-        if (!summary.transactions.length) {
-          body.innerHTML =
-            '<tr><td colspan="5"><div class="state">' +
-            '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-            '<path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>' +
-            "<h3>No transactions today</h3>" +
-            "<p>Sales you record during the day will appear here.</p>" +
-            "</div></td></tr>";
-          footer.innerHTML = "&nbsp;";
-          if (count) count.textContent = "";
-        } else {
-          body.innerHTML = summary.transactions.map(txnRow).join("");
-          footer.innerHTML =
-            summary.transactions.length === 1
-              ? "1 transaction today."
-              : summary.transactions.length + " transactions today.";
-          if (count) {
-            count.textContent = summary.transactions.length === 1 ? "1 today" : summary.transactions.length + " today";
-          }
+    /* Rows arrive newest-first, so each day's block is already in order. */
+    function groupByDay(rows) {
+      const groups = [];
+      let current = null;
+      for (const t of rows) {
+        const key = t.dateKey || "";
+        if (!current || current.dateKey !== key) {
+          current = { dateKey: key, rows: [] };
+          groups.push(current);
         }
-      } catch (err) {
-        console.error("[seva-ledger] today list:", err);
-        if (body) {
-          body.innerHTML =
-            '<tr><td colspan="5"><div class="state is-error">' +
-            '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>' +
-            "<h3>Could not load today</h3>" +
-            "<p>" +
-            escapeHtml(
-              isNetworkError(err)
-                ? "You appear to be offline. Entries will sync automatically."
-                : reportError(err)
-            ) +
-            "</p>" +
-            "</div></td></tr>";
-        }
-        if (footer) footer.innerHTML = "&nbsp;";
+        current.rows.push(t);
       }
+      return groups;
+    }
+
+    function dayLabel(key) {
+      const today = todayKolkata();
+      if (key === today) return "Today \u00B7 " + formatDateKey(key);
+      /* Subtract a fixed 24h so the comparison stays in the shop's
+         timezone rather than the browser's local calendar. */
+      if (key === kolkataDateKey(new Date(Date.now() - 86400000))) {
+        return "Yesterday \u00B7 " + formatDateKey(key);
+      }
+      return formatDateKey(key);
+    }
+
+    function renderHistory(rows) {
+      const body = document.getElementById("histBody");
+      const footer = document.getElementById("histFooter");
+      const sub = document.getElementById("histSub");
+      if (!body || !footer) return;
+
+      const filtered = (rows || []).filter(matches);
+      renderTotals(filtered);
+
+      if (sub) {
+        sub.textContent =
+          scope === "day"
+            ? "Sales recorded on " + formatDateKey(dateKey) + "."
+            : "Every sale recorded in this ledger, newest first.";
+      }
+
+      if (!filtered.length) {
+        body.innerHTML =
+          '<tr><td colspan="9"><div class="state">' +
+          '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>' +
+          "<h3>" + (rows && rows.length ? "Nothing matches these filters" : "No transactions yet") + "</h3>" +
+          "<p>" +
+          (rows && rows.length
+            ? "Try a different day, payment method or search term."
+            : "Sales you record will appear here, grouped by day.") +
+          "</p>" +
+          (rows && rows.length
+            ? ""
+            : '<button type="button" class="btn btn-primary" id="histEmptyBtn">' + ICON_PLUS + "Record a sale</button>") +
+          "</div></td></tr>";
+        const emptyBtn = document.getElementById("histEmptyBtn");
+        if (emptyBtn) emptyBtn.addEventListener("click", () => openSaleForm());
+        footer.innerHTML = "&nbsp;";
+        return;
+      }
+
+      const groups = groupByDay(filtered);
+      const grand = totalsOf(filtered);
+
+      body.innerHTML =
+        groups
+          .map((g) => {
+            const s = totalsOf(g.rows);
+            return (
+              '<tr class="txn-group"><td colspan="9">' +
+              '<div class="hist-day">' + escapeHtml(dayLabel(g.dateKey)) + "</div>" +
+              '<div class="hist-day-totals">' +
+              "<span>" + g.rows.length + (g.rows.length === 1 ? " sale" : " sales") + "</span>" +
+              "<span>Total <b>" + formatINR(s.total) + "</b></span>" +
+              "<span>Collected <b>" + formatINR(s.paid) + "</b></span>" +
+              (s.due > 0 ? "<span>Due <b>" + formatINR(s.due) + "</b></span>" : "") +
+              "</div></td></tr>" +
+              g.rows.map(txnRow).join("")
+            );
+          })
+          .join("") +
+        '<tr class="table-total"><td colspan="6"><strong>Total (' + filtered.length + ")</strong></td>" +
+        '<td class="text-right txn-num"><strong>' + formatINR(grand.total) + "</strong></td>" +
+        '<td class="text-right txn-num"><strong>' + formatINR(grand.paid) + "</strong></td>" +
+        '<td class="text-right txn-num"><strong>' + formatINR(grand.due) + "</strong></td></tr>";
+
+      const scopeText = scope === "day" ? formatDateKey(dateKey) : "all time";
+      const capped = rows.length >= LIMIT;
+      footer.innerHTML =
+        "<strong>" +
+        (filtered.length === 1 ? "1 transaction" : filtered.length + " transactions") +
+        "</strong> &middot; " +
+        scopeText +
+        (capped ? " &middot; showing the " + LIMIT + " most recent" : "");
     }
 
     /* =========================================================
@@ -625,7 +501,21 @@
     initAppShell({
       page: "transactions",
       onReady: renderPage,
-      onDayChange: () => reloadToday(),
+      onDayChange: () => {
+        /* Keep a pinned day in sync with the rollover; "all time" needs no reload. */
+        if (scope === "day") {
+          dateKey = todayKolkata();
+          const input = document.getElementById("histDate");
+          if (input) input.value = dateKey;
+          reload();
+        }
+      },
+    });
+
+    /* A sale saved in the dialog lands in today's history immediately. */
+    onSaleRecorded(() => {
+      if (scope === "all") reload();
+      else renderHistory(lastRows);
     });
   </script>
 </body>

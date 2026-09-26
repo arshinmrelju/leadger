@@ -4,14 +4,14 @@
    Shared by dashboard.html, transactions.html and admin.html. Owns:
      - auth guard + session-loss redirect
      - trusted-device gate (revocation enforced even with a session)
-     - user chip + shop name + date + sync pill
-     - online/offline listeners and Kolkata day rollover
+     - user chip + shop name + date pill
+     - Kolkata day rollover
      - Ctrl/Cmd+N "new transaction" shortcut
    Pages call initAppShell(...) and receive a rendering context once
    the trusted-device session is active.
    ========================================================= */
 
-import { toast, confirm, setSyncState } from "./app.js";
+import { toast, confirm } from "./app.js";
 import { escapeHtml, formatKolkataLong, todayKolkata, debounce } from "./utils.js";
 import {
   requireAuth,
@@ -110,13 +110,6 @@ function wireConnection(onDayChange) {
   const datePill = document.getElementById("topbarDate");
   if (datePill) datePill.textContent = formatKolkataLong(new Date());
 
-  const apply = () => {
-    setSyncState(navigator.onLine ? "online" : "offline");
-  };
-  apply();
-  window.addEventListener("online", apply);
-  window.addEventListener("offline", apply);
-
   /* Roll the day over when the business day changes (Kolkata). */
   let lastDayKey = todayKolkata();
   setInterval(() => {
@@ -139,12 +132,9 @@ function registerGlobalKeys() {
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && (event.key === "n" || event.key === "N")) {
       event.preventDefault();
-      const isTxnPage = /transactions\.html$/i.test(window.location.pathname);
-      if (isTxnPage) {
-        window.dispatchEvent(new CustomEvent("seva:new-txn"));
-      } else {
-        window.location.href = "transactions.html";
-      }
+      /* The record-a-sale dialog listens for this and opens itself, so
+         the shortcut works the same on every page. */
+      window.dispatchEvent(new CustomEvent("seva:new-txn"));
     }
   });
 }
@@ -182,7 +172,6 @@ export async function initAppShell({ onReady, onDayChange } = {}) {
 
     renderShopName(general);
     wireConnection(typeof onDayChange === "function" ? onDayChange : null);
-    setSyncState(navigator.onLine ? "online" : "offline");
 
     /* Fire-and-forget heartbeat so the admin device list stays fresh. */
     const beat = debounce(() => updateDeviceLastUsed(trust.tokenHash), 400);

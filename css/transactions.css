@@ -1,5 +1,5 @@
 /* =========================================================
-   SEVA LEDGER — Transaction entry
+   SEVA LEDGER — Transaction entry + history
    ========================================================= */
 
 .txn-wrap {
@@ -39,14 +39,91 @@
 .seg-btn.seg-card.is-active { background: #ede9fe; border-color: #7c3aed; color: #6d28d9; }
 .seg-btn.seg-due.is-active { background: var(--color-warning-soft); border-color: var(--color-warning); color: #92400e; }
 
-/* ---- Generic hide (add-service box etc.) ---- */
-.is-hidden { display: none !important; }
-
 /* ---- Form message ---- */
 #formMsg { margin-bottom: 1rem; }
 
 /* ---- Live total strip ---- */
-#txnForm .entry-total { margin-top: 0.25rem; }
+#saleForm .entry-total { margin-top: 0.25rem; }
 
-/* ---- Today's mini list ---- */
-#todayBody .txn-num { font-variant-numeric: tabular-nums; }
+/* =========================================================
+   Record-a-sale dialog
+   ========================================================= */
+
+/* Inline "Add a service" panel nested inside the dialog body. */
+.sale-inline-card {
+  background: var(--color-bg);
+  box-shadow: none;
+  margin-bottom: 1rem;
+}
+.sale-inline-card .field:last-of-type { margin-bottom: 0.75rem; }
+
+.sale-subhead {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sale-quick {
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* The dialog is tall on short screens; keep the body scrollable. */
+.modal-body { max-height: calc(88vh - 7rem); overflow-y: auto; }
+
+/* =========================================================
+   History browser
+   ========================================================= */
+
+.hist-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.hist-bar .field { margin-bottom: 0; }
+.hist-bar .field-search { flex: 1 1 220px; }
+.hist-bar .field-date { width: 165px; }
+.hist-bar .field-method { width: 150px; }
+.hist-bar .hist-actions { display: flex; gap: 0.5rem; margin-left: auto; }
+
+.hist-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Day separator inside the history table. */
+.txn-group td {
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border-strong);
+  border-bottom: 1px solid var(--color-border);
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  white-space: normal;
+}
+
+.txn-group .hist-day {
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-soft);
+}
+
+.txn-group .hist-day-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.txn-group .hist-day-totals b {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+/* Grand total row at the foot of the history table. */
+.txn-table .table-total td { font-weight: 700; background: var(--color-bg); }

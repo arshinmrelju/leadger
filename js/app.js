@@ -9,11 +9,10 @@ import {
   formatKolkataLong,
   formatINR,
 } from "./utils.js";
-import { isConfigured, initFirebase } from "./firebase.js";
 
 export const APP = {
   name: "SEVA LEDGER",
-  version: "0.7.0",
+  version: "0.8.0",
   currency: "INR",
   currencySymbol: "\u20B9",
   timezone: "Asia/Kolkata",
@@ -156,29 +155,6 @@ export function setLoading(buttonEl, loading) {
   buttonEl.disabled = loading;
 }
 
-/* ---------------- Sync / connectivity pill ---------------- */
-
-export function setSyncState(state) {
-  const pill = document.getElementById("syncPill");
-  if (!pill) return;
-  const dot = pill.querySelector(".dot");
-  const label = pill.querySelector("[data-sync-label]");
-  if (!label || !dot) return;
-
-  pill.className = "pill";
-  const map = {
-    setup: ["pill-neutral", "dot-neutral", "Firebase setup needed"],
-    connecting: ["pill-warning", "dot-warning", "Connecting\u2026"],
-    online: ["pill-success", "dot-success", "Online \u2014 Synced"],
-    offline: ["pill-warning", "dot-warning", "Offline \u2014 changes will sync automatically"],
-    syncing: ["pill-warning", "dot-warning", "Syncing\u2026"],
-  };
-  const [pillCls, dotCls, text] = map[state] || map.connecting;
-  pill.classList.add(pillCls);
-  dot.className = `dot ${dotCls}`;
-  label.textContent = text;
-}
-
 /* ---------------- Shell behavior ---------------- */
 
 function initShell() {
@@ -221,19 +197,6 @@ function initShell() {
   /* Today's date (India timezone) in the top bar */
   const datePill = document.getElementById("topbarDate");
   if (datePill) datePill.textContent = formatKolkataLong(new Date());
-
-  /* Firebase status */
-  if (!isConfigured()) {
-    setSyncState("setup");
-  } else {
-    setSyncState("connecting");
-    initFirebase().then((fb) => {
-      if (fb) setSyncState("online");
-    }).catch((err) => {
-      console.error("Firebase initialization failed:", err);
-      setSyncState("setup");
-    });
-  }
 }
 
 /* ---------------- Global keys ---------------- */
