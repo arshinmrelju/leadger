@@ -1,5 +1,5 @@
 /* =========================================================
-   SEVA LEDGER — Responsive layout
+   TrustX Ledger — Responsive layout
    ========================================================= */
 
 .sidebar-backdrop.is-open {
@@ -39,7 +39,7 @@
   .stat-card .stat-value { font-size: 1.3rem; }
   .stat-card .stat-value.stat-emphasis { font-size: 1.5rem; }
   .dash-head { flex-direction: column; align-items: stretch; text-align: left; }
-  .dash-head .btn-lg { width: 100%; }
+  .dash-head .btn-lg, .dash-head .btn-new-sale { width: 100%; justify-content: center; }
   .txn-table { min-width: 640px; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   .form-row, .form-row-3, .form-row-4 { grid-template-columns: 1fr; }
@@ -52,7 +52,8 @@
     max-height: 88vh;
     overflow-y: auto;
   }
-  .auth-card { padding: 1.5rem 1.25rem 1.25rem; }
+  .auth-card:not(.receipt-card) { padding: 1.5rem 1.25rem 1.25rem; }
+  .auth-card.receipt-card .receipt-inner { padding: 1.25rem 1.2rem 0.8rem; }
 }
 
 @media (max-width: 480px) {

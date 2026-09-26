@@ -1,5 +1,5 @@
-/* =========================================================
-   SEVA LEDGER — Developer console (admin.html)
+﻿/* =========================================================
+   TrustX Ledger — Developer console (admin.html)
    -----------------------------------------------------------------
    Everyone who signs in with the shop code has full access, so this
    console covers the shop's maintenance: the service catalog and a
@@ -60,7 +60,7 @@ export async function renderAdminPage(ctx) {
     "<h1>Developer console</h1>" +
     '<p class="small muted">Services maintenance and full data access.</p>' +
     "</div>" +
-    '<span class="pill pill-accent" id="devShopPill">' + escapeHtml(ctx.general ? ctx.general.name || "SEVA LEDGER" : "SEVA LEDGER") + "</span>" +
+    '<span class="pill pill-accent" id="devShopPill">' + escapeHtml(ctx.general ? ctx.general.name || "TrustX Ledger" : "TrustX Ledger") + "</span>" +
     "</div>" +
 
     '<section class="card" id="servicesCard">' +
@@ -347,7 +347,7 @@ async function loadTrustedDevices() {
       ? devices.map(deviceRow).join("")
       : '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No trusted devices yet. The first browser to enter the shop code appears here.</p></div>';
   } catch (err) {
-    console.error("[seva-ledger] devices:", err);
+    console.error("[trustx-ledger] devices:", err);
     list.innerHTML = '<div class="state is-error"><p class="muted">' + escapeHtml(reportError(err)) + "</p></div>";
   }
 }
@@ -447,7 +447,7 @@ async function loadDataBrowser() {
     expFooter.innerHTML = "<strong>Total expenses " + formatINR(expTotal) + "</strong>" +
       (dateKey ? " &middot; " + escapeHtml(dateKey) : " &middot; most recent first");
   } catch (err) {
-    console.error("[seva-ledger] all-data:", err);
+    console.error("[trustx-ledger] all-data:", err);
     txnBody.innerHTML =
       '<tr><td colspan="8"><div class="state is-error"><h3>Could not load data</h3><p>' + escapeHtml(reportError(err)) + "</p></div></td></tr>";
     expBody.innerHTML = "";

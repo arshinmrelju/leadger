@@ -1,5 +1,5 @@
-/* =========================================================
-   SEVA LEDGER — Firebase bootstrap
+﻿/* =========================================================
+   TrustX Ledger — Firebase bootstrap
    -----------------------------------------------------------------
    SECURITY NOTE
    The object below is the *public* Firebase client configuration.
@@ -79,7 +79,7 @@ export function initFirebase() {
       await authMod.setPersistence(auth, authMod.browserLocalPersistence);
     } catch (err) {
       /* Local persistence is a convenience; failure is not fatal. */
-      console.warn("[seva-ledger] Auth persistence unavailable:", err);
+      console.warn("[trustx-ledger] Auth persistence unavailable:", err);
     }
 
     let db;
@@ -91,7 +91,7 @@ export function initFirebase() {
       });
     } catch (err) {
       /* e.g. private-browsing mode without IndexedDB support. */
-      console.warn("[seva-ledger] Firestore IndexedDB persistence unavailable, using in-memory cache:", err);
+      console.warn("[trustx-ledger] Firestore IndexedDB persistence unavailable, using in-memory cache:", err);
       db = firestoreMod.getFirestore(app);
     }
 
@@ -123,5 +123,5 @@ export function getFirebridge() {
 
 /* Warm up now when a real config is present; no-op otherwise. */
 initFirebase().catch((err) => {
-  console.warn("[seva-ledger] Firebase init deferred:", err);
+  console.warn("[trustx-ledger] Firebase init deferred:", err);
 });

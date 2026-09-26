@@ -21,16 +21,20 @@ rules_version = '2';
 //     transactions money stays integer paise with
 //     total == quantity * rate, services must exist and be active,
 //     fields are range-checked.
-//   * Nothing is ever deleted (services archive with active=false).
+//   * Nothing is ever deleted (services archive with active=false),
+//     with one deliberate exception: a sale on a still-open business
+//     day can be deleted from the daily ledger. Once a day is closed
+//     its rows are frozen — see match /days and dayOpen() above.
 //
 // Data model covered here:
 //   settings/general               shop identity (auto-created on first use)
 //   settings/security              the access code (server-side only; never client-readable)
 //   enrollments/{nonce}            one-time proof-of-code (single use)
 //   devices/{tokenHash}            trusted-device registry (auto-login + revocation)
-//   transactions/{txnId}           sales
+//   transactions/{txnId}           sales (editable + deletable while the day is open)
 //   services/{serviceId}           service catalog
 //   expenses/{expId}               spends (read-only this build)
+//   days/{dateKey}                 closed business days (absent = open)
 //
 // The old members/ and pendingMembers/ collections are no longer
 // used; the deny-all tail below keeps them unreachable.
@@ -45,6 +49,13 @@ service cloud.firestore {
 
     function unsigned() {
       return request.auth == null;
+    }
+
+    // A business day is open unless a days/{dateKey} document says
+    // otherwise. This is what the daily ledger consults before letting
+    // anyone edit, settle or delete a sale.
+    function dayOpen(dateKey) {
+      return !exists(/databases/$(database)/documents/days/$(dateKey));
     }
 
     function validGeneralDoc(doc) {
@@ -208,8 +219,14 @@ service cloud.firestore {
     // ---------------- Transactions ----------------
     // Single-method sales. Money is integer paise; `rate` is paise per
     // unit, `total` = quantity x rate, `dateKey` is the Asia/Kolkata
-    // business-day key, `createdAt` orders the day. Editing/deletion
-    // arrive with the daily-ledger build.
+    // business-day key, `createdAt` orders the day.
+    //
+    // Editing (daily ledger) is deliberately narrow: the descriptive
+    // fields may move, but txnId / serviceId / createdAt / createdBy /
+    // dateKey are pinned. Pinning dateKey is what makes the day-close
+    // gate sound — a sale can never be re-dated onto a closed day, nor
+    // pulled off one. `total` is re-derived from quantity x rate on
+    // every write, so money is never client-asserted.
     match /transactions/{txnId} {
       function validTransactionDoc(doc) {
         return doc.keys().hasOnly([
@@ -233,7 +250,7 @@ service cloud.firestore {
           && doc.customerId is string && doc.customerId.size() <= 200
           && doc.customerName is string && doc.customerName.size() <= 120
           && doc.status in ['paid', 'pending']
-          && ((doc.paymentMethod == 'due' && doc.status == 'pending')
+          && ((doc.paymentMethod == 'due' && doc.status in ['pending', 'paid'])
               || (doc.paymentMethod != 'due' && doc.status == 'paid'))
           && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
           && doc.createdBy == request.auth.uid
@@ -242,13 +259,57 @@ service cloud.firestore {
           && doc.updatedAt == request.time;
       }
 
+      // The editable surface of a sale. Everything here is re-validated
+      // against the live service doc so an edit cannot leave a row whose
+      // serviceName disagrees with the catalog.
+      function validTransactionEdit(before, after) {
+        return after.keys().hasAll([
+              'txnId', 'serviceId', 'serviceName', 'quantity',
+              'rate', 'total', 'paymentMethod', 'customerId',
+              'customerName', 'status', 'dateKey',
+              'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+            ])
+          && after.txnId == before.txnId
+          && after.serviceId == before.serviceId
+          && after.dateKey == before.dateKey
+          && after.createdAt == before.createdAt
+          && after.createdBy == before.createdBy
+          && after.customerId == before.customerId
+          && after.serviceId is string && after.serviceId.size() >= 1
+          && exists(/databases/$(database)/documents/services/$(after.serviceId))
+          && get(/databases/$(database)/documents/services/$(after.serviceId)).data.active == true
+          && after.serviceName is string && after.serviceName.size() >= 1 && after.serviceName.size() <= 80
+          && after.serviceName == get(/databases/$(database)/documents/services/$(after.serviceId)).data.name
+          && after.quantity is int && after.quantity >= 1 && after.quantity <= 100000
+          && after.rate is number && after.rate >= 0 && after.rate <= 10000000
+          && after.total is number && after.total >= 0 && after.total <= 100000000000
+          && after.total == after.quantity * after.rate
+          && after.paymentMethod in ['cash', 'upi', 'card', 'due']
+          && after.customerName is string && after.customerName.size() <= 120
+          && after.status in ['paid', 'pending']
+          && ((after.paymentMethod == 'due' && after.status in ['pending', 'paid'])
+              || (after.paymentMethod != 'due' && after.status == 'paid'))
+          && after.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && after.updatedBy == request.auth.uid
+          && after.updatedAt == request.time;
+      }
+
       allow read: if signedIn();
 
       allow create: if signedIn()
         && validTransactionDoc(request.resource.data);
 
-      allow update: if false;
-      allow delete: if false;
+      // Editing or settling a sale is only possible while the business
+      // day is still open, and only by a signed-in device.
+      allow update: if signedIn()
+        && dayOpen(resource.data.dateKey)
+        && validTransactionEdit(resource.data, request.resource.data);
+
+      // Deleting is likewise confined to an open day. There is no
+      // per-user ownership check because every signed-in device is the
+      // same shop — see the trust model above.
+      allow delete: if signedIn()
+        && dayOpen(resource.data.dateKey);
     }
 
     // ---------------- Services ----------------
@@ -324,6 +385,31 @@ service cloud.firestore {
 
       allow read: if signedIn();
       allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ---------------- Business days ----------------
+    // days/{dateKey} is the close-day register. A document only exists
+    // for a day that has been closed; every other day is open because
+    // `exists()` is false. The close-day action itself ships in a later
+    // part — what matters here is that the transaction rules above
+    // already respect a closed day, so nothing that lands in a closed
+    // day can afterwards be edited or deleted.
+    match /days/{dateKey} {
+      function validDayDoc(doc) {
+        return doc.keys().hasOnly(['dateKey', 'closed', 'closedAt', 'closedBy'])
+          && doc.dateKey is string
+          && doc.dateKey == dateKey
+          && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && doc.closed == true
+          && doc.closedAt == request.time
+          && doc.closedBy == request.auth.uid;
+      }
+
+      allow read: if signedIn();
+      allow create: if signedIn() && validDayDoc(request.resource.data);
+      // A closed day is permanent: nothing may re-open or re-date it.
       allow update: if false;
       allow delete: if false;
     }

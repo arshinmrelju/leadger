@@ -1,4 +1,4 @@
-# SEVA LEDGER
+﻿# TrustX Ledger
 
 A lightweight, production-oriented digital service shop ledger for a small
 Indian digital-service / Akshaya-style shop. The employee works in a desktop
@@ -8,13 +8,39 @@ websites he already uses in other tabs.
 
 | | |
 |---|---|
-| **App** | SEVA LEDGER |
+| **App** | TrustX Ledger |
 | **Currency** | Indian Rupee (`₹`) |
 | **Primary timezone** | `Asia/Kolkata` (database date keys are `YYYY-MM-DD` in Kolkata time) |
 | **Stack** | HTML5 · CSS3 · Vanilla JS (ES6+) · Firebase (Auth, Cloud Firestore, Hosting) |
 | **Offline** | Firestore IndexedDB persistence (multi-tab) — data survives internet loss and syncs automatically |
 
 ## Current status
+
+**Daily ledger (v0.9.0).** `ledger.html` is the shop's day book. It opens on
+today's `Asia/Kolkata` business day and shows one row per sale — time,
+service, quantity, rate, total, payment, customer, status — with running
+totals for transactions, revenue, cash, UPI, card and due underneath.
+
+- **Date navigation:** a date picker, previous/next day, and a **Today**
+  button. Following a day to the next one is a single indexed read scoped by
+  `dateKey`, so the ledger never downloads history it is not showing.
+- **Search and filters** (service/customer text, payment method, status) run
+  client-side over the rows already in memory. The search box is debounced at
+  250 ms, so typing never turns into a Firestore request per keystroke.
+- **Edit, delete, and mark-due-as-paid** are available to any signed-in
+  device while the business day is still open. Edits refresh `updatedAt` /
+  `updatedBy`; the rules re-derive `total` from `quantity × rate` and pin
+  `txnId`, `serviceId`, `createdAt`, `createdBy` and `dateKey` so a sale can
+  never be silently re-dated or have its service name drift from the catalog.
+- **Closed days are read-only.** When a `days/{dateKey}` document exists the
+  page shows a "day is closed" notice, disables the row actions, and the rules
+  reject the write server-side regardless of what the UI allows.
+- **Pagination is prepared** with cursor paging (`orderBy createdAt DESC,
+  __name__ DESC` + `startAfter`), so a busy day degrades into "Load more"
+  instead of a silent truncation. The transaction count in the footer comes
+  from a count aggregate, so it is right even while only one page is loaded.
+- **Responsive:** a desktop table that becomes one card per sale below
+  760 px, using the same markup.
 
 **Trusted-device login (v0.7.0).** One shared code opens the whole app. The
 first time a browser enters the code it becomes a **trusted device**: it
@@ -30,17 +56,19 @@ browser) and:
 
 - **Services**: add, rename, re-price, archive/restore the catalog.
 - **All data**: transactions (per day or most recent) with totals, plus the
-  expenses list — a read-only back-office view.
+  expenses list — a read-only back-office view. The interactive day book now
+  lives in `ledger.html`; this panel is unchanged.
 
-The dashboard and the record-a-sale page (`/transactions`) stay operational,
-backed by the offline queue.
+The dashboard, the record-a-sale dialog and the daily ledger stay
+operational, backed by the offline queue.
 
 Everything is still the **transactional build** under the hood: record-a-sale,
-live dashboard, offline queue, integer-paise money, `Asia/Kolkata` date keys.
+live dashboard, daily ledger, offline queue, integer-paise money,
+`Asia/Kolkata` date keys.
 
-Performance: only today's rows are ever queried (one indexed read), kept
-sorted by `createdAt` DESC; no long-lived listeners on the dashboard —
-one-shot reads, a refresh button, and online/offline events.
+Performance: only the rows for the day on screen are ever queried (one
+indexed read per page), kept sorted by `createdAt` DESC; no long-lived
+listeners — one-shot reads, a refresh button, and online/offline events.
 
 Money is **integer paise**; `dateKey` is the `YYYY-MM-DD` Asia/Kolkata
 business day; `createdAt` is the Firestore timestamp used for ordering.
@@ -50,11 +78,14 @@ received and are excluded).
 > **Deploy required:** run `firebase deploy --only firestore` first — the
 > rules now add the trust registry (`settings/security`, `enrollments/**`,
 > `devices/**`) and allow the auto-login gate to read a device doc by its
-> unguessable hash id before any session exists. The composite index behind
-> today's list (`dateKey` ASC + `createdAt` DESC) is unchanged. Existing
-> `members/`, `pendingMembers/` and old `settings/security` documents are no
-> longer used (denied by the rules) but can stay in place. Every already
-> enrolled browser re-verifies once with the code after this deploy.
+> unguessable hash id before any session exists. v0.9.0 additionally opens
+> `transactions` to validated `update`/`delete` while the day is open, adds
+> the read-only `days/{dateKey}` close register, and extends the composite
+> index behind the ledger's cursor paging (`dateKey` ASC + `createdAt` DESC
+> + `__name__` DESC). Existing `members/`, `pendingMembers/` and old
+> `settings/security` documents are no longer used (denied by the rules) but
+> can stay in place. Every already enrolled browser re-verifies once with the
+> code after the trust-registry deploy.
 
 ## Project structure
 
@@ -63,26 +94,29 @@ received and are excluded).
 ├── index.html            Entry point (trusted-device gate / auth routing)
 ├── login.html            Shop-code sign in (enrolls this browser as trusted)
 ├── dashboard.html        App shell, today's figures, quick services
-├── transactions.html     Record a sale (new transaction entry + today's list)
+├── ledger.html           Daily ledger (one business day, editable, day totals)
+├── transactions.html     Transaction history (all time or a single day)
 ├── admin.html            Developer console (services, trusted devices, all data)
 ├── css/
 │   ├── style.css         Design tokens + core components
 │   ├── forms.css         Inputs, selects, chips, auth page
 │   ├── dashboard.css     Stat cards, quick grids, entry panel
 │   ├── transactions.css  Sale modal, history browser, totals
+│   ├── ledger.css        Ledger toolbar, table, mobile card transform
 │   ├── admin.css         Developer console rows/actions
 │   └── responsive.css    Desktop-first, mobile fallback
 ├── js/
 │   ├── firebase.js       Firebase config, lazy SDK load, offline persistence
 │   ├── auth.js           Code sign-in, trusted-device enrollment/check, shop bootstrap
-│   ├── ledger.js         Transactions/services reads + writes + day summary
+│   ├── ledger.js         Transactions/services reads + writes + day queries
+│   ├── day-ledger.js     Pure day-view logic (date shift, filter, totals) — no Firebase
 │   ├── admin.js          Developer console rendering
 │   ├── shell.js          Shared protected-page bootstrap (chip, date, keys)
 │   ├── sale-form.js      Shared "Record a sale" modal (openSaleForm/onSaleRecorded)
 │   ├── app.js            Shared init, toasts, modals, shell behavior, errors
 │   └── utils.js          Money (paise), dates (Asia/Kolkata), validation
 ├── tests/
-│   └── ledger.mjs        Node test suite for money/validation helpers
+│   └── ledger.mjs        Node test suite for money/validation/day-view helpers
 ├── package.json          Scripts (npm test), no runtime deps
 ├── assets/
 │   ├── logo.svg
@@ -108,15 +142,24 @@ All collections are top-level — there is no `shops/` path:
 | `settings/security` | **never readable or writable by clients** | seeded with the default code on first use; enrollment rules compare against it server-side |
 | `enrollments/{nonce}` | denied | one-time proof-of-code (single use, owner-burn) during first-time device setup |
 | `devices/{tokenHash}` | signed-in devices (list); unauthenticated GET **by unguessable hash id** (the auto-login gate) | enrollment creates; owner heartbeats/renames/restores; any signed-in device may revoke or remove |
-| `transactions/{txnId}` | code-signed-in devices | signed-in, server-validated (`createdBy == uid`, money checks) |
+| `transactions/{txnId}` | code-signed-in devices | create: signed-in, server-validated (`createdBy == uid`, money checks). update/delete: signed-in **and the day is still open** |
 | `services/{serviceId}` | code-signed-in devices | signed-in; `delete` always denied (archive via `active=false`) |
 | `expenses/{expId}` | code-signed-in devices | (writing arrives in a later build) |
+| `days/{dateKey}` | code-signed-in devices | absent document = day is **open**; a present document is a closed day, written once and never updated or deleted |
 
 A transaction document: `serviceId`, `serviceName`, `quantity`,
 `rate` (paise/unit), `total` (`quantity * rate` — re-verified server-side),
 `paymentMethod` (`cash`/`upi`/`card`/`due`), `status` (`paid`/`pending`,
 derived from method), `customerId`/`customerName` (customer name optional),
 `dateKey`, `createdAt`/`updatedAt`, `createdBy`/`updatedBy`.
+
+On an edit the rules pin `txnId`, `serviceId`, `customerId`, `dateKey`,
+`createdAt` and `createdBy` to the stored row, so only the descriptive
+fields move. That is what makes a sale impossible to re-date onto a
+different business day, and it is why the editor offers a **service picker**
+rather than a free-text name: `serviceName` must equal the live
+`services/{serviceId}.name`, so typed names would only ever be rejected.
+`updatedAt`/`updatedBy` are always rewritten.
 
 ## Run locally
 
@@ -137,7 +180,7 @@ Then open <http://localhost:3000/> (or the printed port).
 ## Connect Firebase
 
 1. Create a project at <https://console.firebase.google.com>.
-2. **Add app → Web app** and register a nickname (e.g. `seva-ledger`).
+2. **Add app → Web app** and register a nickname (e.g. `trustx-ledger`).
 3. Open **Project settings → Your apps** and copy the `firebaseConfig` block.
 4. Edit `js/firebase.js` and replace **every** `YOUR_*` placeholder
    (`apiKey`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`).
@@ -215,8 +258,9 @@ attempt against it, so approval happens on the server, not in page scripts.
 
 ## Tests
 
-Pure money/validation helpers (`js/utils.js`) are unit-tested with Node's
-built-in runner — no installs needed:
+Pure money/validation helpers (`js/utils.js`) and the pure day-view helpers
+(`js/day-ledger.js`) are unit-tested with Node's built-in runner — no
+installs needed:
 
 ```bash
 npm test
@@ -224,8 +268,14 @@ npm test
 node --test tests/ledger.mjs
 ```
 
+`day-ledger.js` is deliberately kept free of any Firebase import so the
+daily-ledger behaviour is testable in Node: date shifting across month,
+year and leap-day boundaries, the search/payment/status narrowing, the
+per-method day totals, cursor-page merging, and the Asia/Kolkata entry
+time.
+
 A Firestore emulator rules suite (signed-in-only access with per-document
-validation, money integrity, no-delete guarantees) is planned for a later
+validation, money integrity, day-close enforcement) is planned for a later
 hardening pass.
 
 ## Design system quick reference
@@ -234,6 +284,13 @@ hardening pass.
   (`toPaise`, `formatINR`, `rateToPaise`, `computeTotalPaise`,
   `sanitizeQuantity`). Floating point is never used for totals.
 - Dates always resolve to `Asia/Kolkata` (`kolkataDateKey`, `todayKolkata`).
+- Day-view helpers live in `js/day-ledger.js` (no Firebase import):
+  `shiftDateKey`, `dayHeading`, `formatEntryTime`, `filterDayRows`,
+  `dayTotals`, `mergeDayPage`, `sortDayRows`.
+- Day-scoped reads/writes live in `js/ledger.js`:
+  `fetchDayPage({ dateKey, pageSize, cursor })`, `countDayTransactions`,
+  `fetchDayState`, `updateTransaction`, `markTransactionPaid`,
+  `deleteTransaction`.
 - UI helpers live in `js/app.js`:
   `toast(msg, type)`, `confirm({...})`,
   `setLoading(button, bool)`.
@@ -298,14 +355,19 @@ hardening pass.
 1. ✅ Foundation: structure, shell, design system, Firebase wiring
 2. ✅ Single-code sign-in: one shared code, anonymous auth, full access, shop record bootstrap
 3. ✅ Today's dashboard: live Firestore figures, recent transactions, quick services
-4. 🔄 Transaction system: record-sale page, inline services, payment
-   methods, offline queue, dashboard wiring, flat single-shop data model.
-   *Remaining:* daily ledger (date filters, edit, due→paid, CSV).
-5. 🔄 **Developer console (this build):** `admin.html` — services
-   maintenance and the all-data browser.
+4. ✅ Transaction system: record-sale modal, inline services, payment
+   methods, offline queue, dashboard wiring, flat single-shop data model
+   (v0.8.0 moved sale entry into a dialog; v0.9.0 split the history browser
+   out of it).
+5. ✅ **Daily ledger (v0.9.0, this build):** `ledger.html` — one business
+   day at a time with date navigation, debounced search, payment/status
+   filters, edit, delete, mark-due-as-paid, day totals, cursor pagination
+   and a read-only state for closed days. Monthly reports are **not** part
+   of this part.
 6. Customers
 7. Expenses
-8. Daily closing
+8. Daily closing — *the `days/{dateKey}` register and the day-open rules
+   already shipped in v0.9.0; the close action itself is still to come.*
 9. Reports & service statistics
 10. Settings polish, security-rule tests, deployment hardening
     (v0.7.0 added the trusted-device registry; per-IP brute-force rate

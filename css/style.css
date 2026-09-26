@@ -1,59 +1,75 @@
 /* =========================================================
-   SEVA LEDGER — Design System (core)
+   TrustX Ledger — Design System (core)
    Primary: HTML5 + CSS3 + Vanilla JS + Firebase
+   Palette: Warm Nature — inspired by warm sun, lush greens,
+            soft sky blue, and earthy botanical tones.
    ========================================================= */
 
+
 :root {
-  /* Palette */
-  --color-primary: #0f766e;
-  --color-primary-dark: #0b5e57;
-  --color-primary-darker: #083f3a;
-  --color-primary-soft: #ccfbf1;
-  --color-accent: #f59e0b;
-  --color-accent-soft: #fef3c7;
-  --color-bg: #f1f5f9;
-  --color-surface: #ffffff;
-  --color-border: #e2e8f0;
-  --color-border-strong: #cbd5e1;
-  --color-text: #1e293b;
-  --color-text-soft: #475569;
-  --color-muted: #64748b;
-  --color-faint: #94a3b8;
-  --color-success: #16a34a;
-  --color-success-soft: #dcfce7;
-  --color-danger: #dc2626;
-  --color-danger-soft: #fee2e2;
-  --color-warning: #d97706;
+  /* ── Core palette ──────────────────────────────────────── */
+  /* Primary: warm sky-blue (dinosaur's body) */
+  --color-primary: #4b8bbf;
+  --color-primary-dark: #3a709e;
+  --color-primary-darker: #254d6e;
+  --color-primary-soft: #dceefa;
+
+  /* Accent: warm golden amber (sunlight / toucan beak) */
+  --color-accent: #f5a623;
+  --color-accent-soft: #fef3d0;
+
+  /* Background: warm creamy parchment (illustration sky) */
+  --color-bg: #fdf8ee;
+  --color-surface: #fffdf7;
+  --color-border: #e8dfc4;
+  --color-border-strong: #d4c5a0;
+
+  /* Text: warm charcoal, not cold blue-grey */
+  --color-text: #2d2416;
+  --color-text-soft: #5c4a30;
+  --color-muted: #8a7355;
+  --color-faint: #b89f7a;
+
+  /* Semantic */
+  --color-success: #2d8a4e;       /* lush forest green */
+  --color-success-soft: #d4f0de;
+  --color-danger: #c0392b;        /* warm red */
+  --color-danger-soft: #fde8e6;
+  --color-warning: #d97706;       /* amber */
   --color-warning-soft: #fef3c7;
-  --color-info: #2563eb;
-  --color-info-soft: #dbeafe;
+  --color-info: #4b8bbf;          /* same as primary sky-blue */
+  --color-info-soft: #dceefa;
 
-  /* Sheet / chrome */
-  --color-sidebar-bg: #082f2d;
-  --color-sidebar-text: #a7c1bf;
-  --color-sidebar-text-active: #ffffff;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.07);
-  --color-topbar-bg: #ffffff;
+  /* ── Shell / chrome ────────────────────────────────────── */
+  /* Sidebar: deep forest green (like the tropical foliage) */
+  --color-sidebar-bg: #1a3a2a;
+  --color-sidebar-text: #9dbfa8;
+  --color-sidebar-text-active: #f5f0e8;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  /* Topbar: warm cream */
+  --color-topbar-bg: #fffdf7;
 
-  /* Typography */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Noto Sans", "Noto Sans Malayalam", sans-serif;
+  /* ── Typography ────────────────────────────────────────── */
+  /* Nunito: friendly, rounded, warm — matches illustration style */
+  --font-sans: 'Nunito', -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Noto Sans", "Noto Sans Malayalam", sans-serif;
 
-  /* Geometry */
-  --sidebar-w: 248px;
+  /* ── Geometry ───────────────────────────────────────────── */
+  --sidebar-w: 252px;
   --topbar-h: 64px;
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 14px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.16);
-  --ring: 0 0 0 3px rgba(15, 118, 110, 0.25);
-  --ring-danger: 0 0 0 3px rgba(220, 38, 38, 0.18);
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 18px;
+  /* Softer, warmer shadows with amber undertone */
+  --shadow-sm: 0 1px 3px rgba(80, 50, 10, 0.08);
+  --shadow: 0 2px 6px rgba(80, 50, 10, 0.09), 0 6px 20px rgba(80, 50, 10, 0.07);
+  --shadow-lg: 0 14px 40px rgba(80, 50, 10, 0.18);
+  --ring: 0 0 0 3px rgba(75, 139, 191, 0.30);
+  --ring-danger: 0 0 0 3px rgba(192, 57, 43, 0.20);
 
-  /* Motion */
-  --t-fast: 120ms;
-  --t: 180ms;
+  /* ── Motion ─────────────────────────────────────────────── */
+  --t-fast: 130ms;
+  --t: 200ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -78,18 +94,23 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Subtle warm texture feel via repeating gradient */
+  background-image:
+    radial-gradient(ellipse 900px 500px at 90% -5%, rgba(75, 139, 191, 0.07), transparent 65%),
+    radial-gradient(ellipse 700px 400px at -5% 95%, rgba(45, 138, 78, 0.06), transparent 60%);
+  background-attachment: fixed;
 }
 
 h1, h2, h3, h4, h5, h6 {
   margin: 0;
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1.25;
   letter-spacing: -0.01em;
 }
 
-h1 { font-size: 1.5rem; }
-h2 { font-size: 1.25rem; }
-h3 { font-size: 1.05rem; }
+h1 { font-size: 1.55rem; }
+h2 { font-size: 1.28rem; }
+h3 { font-size: 1.06rem; }
 
 p { margin: 0 0 0.75rem; }
 
@@ -243,8 +264,9 @@ hr {
 }
 
 .nav-link.is-active {
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), #3a9e6b);
   color: var(--color-sidebar-text-active);
+  box-shadow: 0 2px 8px rgba(75, 139, 191, 0.35);
 }
 
 .nav-link .nav-icon {
@@ -387,16 +409,25 @@ hr {
 }
 
 .btn-primary {
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary) 0%, #3a8fbf 100%);
   color: #ffffff;
+  box-shadow: 0 2px 8px rgba(75, 139, 191, 0.35);
 }
-.btn-primary:hover:not(:disabled) { background: var(--color-primary-dark); }
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--color-primary-dark) 0%, #2e7da8 100%);
+  box-shadow: 0 4px 14px rgba(75, 139, 191, 0.45);
+}
 
 .btn-accent {
-  background: var(--color-accent);
-  color: #451a03;
+  background: linear-gradient(135deg, var(--color-accent) 0%, #e8921a 100%);
+  color: #3d1f00;
+  box-shadow: 0 2px 8px rgba(245, 166, 35, 0.35);
 }
-.btn-accent:hover:not(:disabled) { background: #d97706; color: #ffffff; }
+.btn-accent:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e8921a 0%, #d47d0e 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(245, 166, 35, 0.45);
+}
 
 .btn-secondary {
   background: var(--color-surface);
@@ -465,6 +496,8 @@ hr {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
+  /* Subtle warm inner glow */
+  background-image: linear-gradient(160deg, rgba(255,253,247,1) 0%, rgba(253,248,238,0.6) 100%);
 }
 .card-header {
   display: flex;
@@ -501,7 +534,7 @@ hr {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-muted);
-  background: var(--color-bg);
+  background: linear-gradient(180deg, #fdf5e0 0%, var(--color-bg) 100%);
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }

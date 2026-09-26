@@ -1,5 +1,5 @@
-/* =========================================================
-   SEVA LEDGER — Single-code sign-in
+﻿/* =========================================================
+   TrustX Ledger — Single-code sign-in
    -----------------------------------------------------------------
    The whole app opens with one shared code (SHOP_CODE, "TRUSTX").
    Entering it signs the browser in anonymously and grants full access
@@ -103,7 +103,7 @@ function notify(user) {
   currentUser = user;
   ready = true;
   subscribers.forEach((cb) => {
-    try { cb(user, ready); } catch (err) { console.error("[seva-ledger] auth subscriber error:", err); }
+    try { cb(user, ready); } catch (err) { console.error("[trustx-ledger] auth subscriber error:", err); }
   });
 }
 
@@ -168,7 +168,7 @@ export async function signOut() {
     const b = await bridge();
     if (b.auth.currentUser) await b.authMod.signOut(b.auth);
   } catch (err) {
-    console.warn("[seva-ledger] signOut:", err);
+    console.warn("[trustx-ledger] signOut:", err);
   } finally {
     notify(null);
     redirecting = false;
@@ -218,7 +218,7 @@ export function guardPage(redirectTo = "login.html") {
 /* ---------------- Shop record ---------------- */
 
 const DEFAULT_SHOP = {
-  name: "SEVA LEDGER",
+  name: "TrustX Ledger",
   phone: "",
   address: "",
   currency: "INR",
@@ -319,7 +319,7 @@ export function canStoreDeviceCredential() {
 
 /* ---------- IndexedDB credential store ---------- */
 
-const DEVICE_DB = "seva-ledger";
+const DEVICE_DB = "trustx-ledger";
 const DEVICE_STORE = "kv";
 const DEVICE_KEY = "seva.device";
 
@@ -367,7 +367,7 @@ export async function loadDeviceCredential() {
   try {
     return (await idbGet(DEVICE_KEY)) || null;
   } catch (err) {
-    console.warn("[seva-ledger] device credential read failed:", err);
+    console.warn("[trustx-ledger] device credential read failed:", err);
     return null;
   }
 }
@@ -378,7 +378,7 @@ export async function saveDeviceCredential(token) {
     await idbSet(DEVICE_KEY, token);
     return true;
   } catch (err) {
-    console.warn("[seva-ledger] device credential save failed:", err);
+    console.warn("[trustx-ledger] device credential save failed:", err);
     return false;
   }
 }
@@ -388,7 +388,7 @@ export async function clearDeviceCredential() {
   try {
     await idbDelete(DEVICE_KEY);
   } catch (err) {
-    console.warn("[seva-ledger] device credential clear failed:", err);
+    console.warn("[trustx-ledger] device credential clear failed:", err);
   }
 }
 
@@ -518,7 +518,7 @@ export async function enrollDevice({ label } = {}) {
     /* Never let a raw Firestore message ("Missing or insufficient
        permissions.") reach the login screen — the rules rejected the
        registry write for one of our own reasons. */
-    console.error("[seva-ledger] device registration rejected:", err);
+    console.error("[trustx-ledger] device registration rejected:", err);
     throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
   }
 
@@ -529,7 +529,7 @@ export async function enrollDevice({ label } = {}) {
       deviceHash: tokenHash,
     });
   } catch (err) {
-    console.warn("[seva-ledger] enrollment mark-used failed:", err);
+    console.warn("[trustx-ledger] enrollment mark-used failed:", err);
   }
 
   const saved = await saveDeviceCredential(token);
@@ -583,7 +583,7 @@ export async function updateDeviceLastUsed(tokenHash) {
     });
   } catch (err) {
     /* Non-fatal: a revoked/removed device just stops heartbeating. */
-    console.warn("[seva-ledger] device heartbeat failed:", err);
+    console.warn("[trustx-ledger] device heartbeat failed:", err);
   }
 }
 

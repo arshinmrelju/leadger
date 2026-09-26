@@ -1,5 +1,5 @@
-/* =========================================================
-   SEVA LEDGER — Shared application layer
+﻿/* =========================================================
+   TrustX Ledger — Shared application layer
    Common init, design-system helpers (toast / modal / loading),
    sidebar + topbar shell behavior, global error handling.
    ========================================================= */
@@ -11,8 +11,8 @@ import {
 } from "./utils.js";
 
 export const APP = {
-  name: "SEVA LEDGER",
-  version: "0.8.0",
+  name: "TrustX Ledger",
+  version: "0.9.0",
   currency: "INR",
   currencySymbol: "\u20B9",
   timezone: "Asia/Kolkata",
@@ -231,7 +231,7 @@ const lastGlobalError = new Map();
 
 window.addEventListener("error", (event) => {
   if (!event.error && !event.message) return;
-  console.error("[SEVA LEDGER]", event.error || event.message);
+  console.error("[TrustX Ledger]", event.error || event.message);
   const key = String(event.message || (event.error && event.error.message) || "error").slice(0, 80);
   if (lastGlobalError.get(key) && Date.now() - lastGlobalError.get(key) < 5000) return;
   lastGlobalError.set(key, Date.now());
@@ -240,7 +240,7 @@ window.addEventListener("error", (event) => {
 
 window.addEventListener("unhandledrejection", (event) => {
   const reason = event.reason;
-  console.error("[SEVA LEDGER] Unhandled rejection:", reason);
+  console.error("[TrustX Ledger] Unhandled rejection:", reason);
   const message = reason && reason.message ? reason.message : String(reason || "unknown");
   const key = message.slice(0, 80);
   if (lastGlobalError.get(key) && Date.now() - lastGlobalError.get(key) < 5000) return;

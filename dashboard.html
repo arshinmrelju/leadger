@@ -3,9 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard &middot; SEVA LEDGER</title>
-  <meta name="description" content="SEVA LEDGER dashboard" />
+  <title>Dashboard &middot; TrustX Ledger</title>
+  <meta name="description" content="TrustX Ledger dashboard" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <!-- Nunito font — preconnect first, then load non-blocking -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" /></noscript>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/forms.css" />
   <link rel="stylesheet" href="css/dashboard.css" />
@@ -30,7 +35,7 @@
       <div class="sidebar-brand">
         <img class="brand-logo" src="assets/logo.svg" alt="" width="38" height="38" />
         <div class="brand-text">
-          <div class="brand-name">SEVA LEDGER</div>
+          <div class="brand-name">TrustX Ledger</div>
           <div class="brand-sub">Shop ledger</div>
         </div>
       </div>
@@ -48,11 +53,10 @@
           Transactions
         </a>
 
-        <button class="nav-link" type="button" data-coming>
+        <a class="nav-link" data-nav="ledger" href="ledger.html">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
           Daily Ledger
-          <span class="nav-badge">Soon</span>
-        </button>
+        </a>
 
         <button class="nav-link" type="button" data-coming>
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -83,7 +87,7 @@
       <div class="sidebar-footer">
         <div id="userChip"></div>
         <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
-          SEVA LEDGER &middot; v0.8.0
+          TrustX Ledger &middot; v0.9.0
         </div>
       </div>
     </aside>
@@ -152,13 +156,18 @@
       );
     }
 
-    function statBlock(labelHtml, valueId, className, emphasis, noteId) {
+    function statBlock(iconClass, iconSvg, labelText, valueId, cardClass, emphasis, noteId) {
       return (
-        '<div class="stat-card ' + (className || "") + '">' +
-        '<div class="stat-label">' + labelHtml + "</div>" +
+        '<div class="stat-card ' + (cardClass || "") + '">' +
+        '<div class="stat-top">' +
+        '<div class="stat-icon-wrap ' + iconClass + '">' + iconSvg + '</div>' +
+        '<span class="stat-label-text">' + labelText + '</span>' +
+        '</div>' +
+        '<div class="stat-main">' +
         '<div class="stat-value' + (emphasis ? " stat-emphasis" : "") + '" id="' + valueId + '">&nbsp;</div>' +
         (noteId ? '<div class="stat-note" id="' + noteId + '">&nbsp;</div>' : "") +
-        "</div>"
+        '</div>' +
+        '</div>'
       );
     }
 
@@ -182,30 +191,33 @@
       mainContent.innerHTML =
         '<section aria-label="Today\'s summary">' +
         '<div class="dash-head">' +
-        "<div>" +
-        "<h1>Today&rsquo;s figures</h1>" +
-        '<p class="small muted" id="summarySub">Loading&hellip;</p>' +
+        '<div class="dash-head-text">' +
+        '<div class="dash-head-title-row">' +
+        "<h1>Today&rsquo;s Overview</h1>" +
+        '<span class="live-pill"><span class="live-dot"></span> Live</span>' +
         "</div>" +
-        '<button type="button" class="btn btn-primary btn-lg" id="newTxnBtn">' +
+        '<p id="summarySub">Loading&hellip;</p>' +
+        "</div>" +
+        '<button type="button" class="btn btn-new-sale" id="newTxnBtn">' +
         ICON_PLUS +
         "New transaction</button>" +
         "</div>" +
         '<div class="dash-grid">' +
-        statBlock(trendIc + "Today&rsquo;s revenue", "statRevenue", "stat-revenue", true, "revenueNote") +
-        statBlock(txnIc + "Transactions", "statCount") +
-        statBlock(cashIc + "Cash", "statCash", "stat-cash") +
-        statBlock(upiIc + "UPI", "statUpi", "stat-upi") +
-        statBlock(cardIc + "Card", "statCard", "stat-cardp") +
-        statBlock(dueIc + "Due", "statDue", "stat-due") +
-        statBlock(expIc + "Expenses", "statExpenses", "stat-expenses") +
-        statBlock(netIc + "Net", "statNet", "stat-net", true) +
+        statBlock("icon-revenue", trendIc, "Today&rsquo;s revenue", "statRevenue", "stat-revenue", true, "revenueNote") +
+        statBlock("icon-count", txnIc, "Transactions", "statCount", "stat-count") +
+        statBlock("icon-cash", cashIc, "Cash", "statCash", "stat-cash") +
+        statBlock("icon-upi", upiIc, "UPI", "statUpi", "stat-upi") +
+        statBlock("icon-card", cardIc, "Card", "statCard", "stat-cardp") +
+        statBlock("icon-due", dueIc, "Due", "statDue", "stat-due") +
+        statBlock("icon-expenses", expIc, "Expenses", "statExpenses", "stat-expenses") +
+        statBlock("icon-net", netIc, "Net", "statNet", "stat-net", true) +
         "</div>" +
         "</section>" +
         '<div class="dash-columns mt-2">' +
         '<section class="card" aria-label="Recent transactions">' +
         '<div class="card-header"><h3>Recent transactions</h3>' +
         '<div class="card-actions">' +
-        '<span class="small muted" id="recentCount"></span>' +
+        '<span class="pill-count" id="recentCount"></span>' +
         '<a class="btn btn-ghost btn-sm" href="transactions.html">View history</a>' +
         '<button type="button" class="btn btn-secondary btn-sm" id="refreshBtn" title="Refresh today\'s figures">Refresh</button>' +
         "</div></div>" +
@@ -260,7 +272,7 @@
         renderRecent(summary.transactions);
         if (sub) sub.textContent = formatKolkataLong(new Date()) + " \u00B7 Asia/Kolkata";
       } catch (err) {
-        console.error("[seva-ledger] dashboard load:", err);
+        console.error("[trustx-ledger] dashboard load:", err);
         if (sub) sub.textContent = "Could not load today's figures. Check your connection.";
         if (body) {
           body.innerHTML =
@@ -343,12 +355,14 @@
       if (!body || !footer) return;
       if (!transactions.length) {
         body.innerHTML =
-          '<tr><td colspan="7"><div class="state">' +
-          '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<tr><td colspan="7"><div class="empty-state-modern">' +
+          '<div class="empty-icon-bubble">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
           '<path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>' +
-          "<h3>No transactions today</h3>" +
-          "<p>Sales you record during the day will appear here.</p>" +
-          '<button type="button" class="btn btn-primary" id="emptyRecordBtn">' + ICON_PLUS + "Record a sale</button>" +
+          '</div>' +
+          "<h3>No transactions today yet</h3>" +
+          "<p>Sales you record during the day will appear here in real-time.</p>" +
+          '<button type="button" class="btn btn-new-sale btn-sm" id="emptyRecordBtn">' + ICON_PLUS + "Record a sale</button>' +
           "</div></td></tr>";
         document.getElementById("emptyRecordBtn").addEventListener("click", () => openSaleForm());
         footer.innerHTML = "&nbsp;";
@@ -385,7 +399,7 @@
       try {
         services = await fetchServices();
       } catch (err) {
-        console.warn("[seva-ledger] services:", err);
+        console.warn("[trustx-ledger] services:", err);
       }
       const list = services.slice(0, 12);
       grid.innerHTML =

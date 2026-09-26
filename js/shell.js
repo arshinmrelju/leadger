@@ -1,5 +1,5 @@
 /* =========================================================
-   SEVA LEDGER — Protected-page shell bootstrap
+   TrustX Ledger — Protected-page shell bootstrap
    -----------------------------------------------------------------
    Shared by dashboard.html, transactions.html and admin.html. Owns:
      - auth guard + session-loss redirect
@@ -72,7 +72,7 @@ function renderUserChip(user) {
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     const ok = await confirm({
       title: "Sign out",
-      message: "Are you sure you want to sign out of SEVA LEDGER?",
+      message: "Are you sure you want to sign out of TrustX Ledger?",
       confirmText: "Sign out",
       variant: "danger",
     });
@@ -90,14 +90,15 @@ function renderShopName(general) {
   const shop = document.getElementById("topbarShop");
   if (shop && general) {
     shop.style.display = "";
-    shop.textContent = general.name || "SEVA LEDGER";
+    const name = (general.name || "").trim();
+    shop.textContent = (!name || name.toUpperCase() === "SEVA LEDGER") ? "TrustX Ledger" : name;
   }
 }
 
 function renderFatal(err) {
   const mainContent = document.getElementById("mainContent");
   if (!mainContent) return;
-  console.error("[seva-ledger] shell:", err);
+  console.error("[trustx-ledger] shell:", err);
   mainContent.innerHTML = shield(
     '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
     "Something went wrong",
@@ -121,7 +122,7 @@ function wireConnection(onDayChange) {
         try {
           onDayChange();
         } catch (err) {
-          console.error("[seva-ledger] day rollover:", err);
+          console.error("[trustx-ledger] day rollover:", err);
         }
       }
     }

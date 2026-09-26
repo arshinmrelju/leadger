@@ -1,5 +1,5 @@
-/* =========================================================
-   SEVA LEDGER — Pure shared utilities
+﻿/* =========================================================
+   TrustX Ledger — Pure shared utilities
    Money (integer paise), dates (Asia/Kolkata), strings.
    ========================================================= */
 

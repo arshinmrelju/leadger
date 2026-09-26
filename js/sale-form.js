@@ -1,5 +1,5 @@
-/* =========================================================
-   SEVA LEDGER — Record a sale (shared modal)
+﻿/* =========================================================
+   TrustX Ledger — Record a sale (shared modal)
    -----------------------------------------------------------------
    There is exactly ONE sale-entry form and it lives in a modal.
    Every entry point — the dashboard button, the quick-service tiles,
@@ -56,7 +56,7 @@ function emit(record) {
     try {
       cb(record);
     } catch (err) {
-      console.error("[seva-ledger] sale listener:", err);
+      console.error("[trustx-ledger] sale listener:", err);
     }
   });
 }
@@ -258,7 +258,7 @@ async function refreshServices() {
   try {
     services = await fetchServices();
   } catch (err) {
-    console.warn("[seva-ledger] services:", err);
+    console.warn("[trustx-ledger] services:", err);
     services = [];
   }
   if (!overlay) return;
@@ -438,7 +438,7 @@ async function onSave(event) {
     resetForm();
     overlay.querySelector("#qtyInput").focus();
   } catch (err) {
-    console.error("[seva-ledger] save:", err);
+    console.error("[trustx-ledger] save:", err);
     showFormMsg(
       isNetworkError(err) ? "Could not save right now. Check your connection and try again." : reportError(err)
     );

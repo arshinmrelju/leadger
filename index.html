@@ -3,9 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SEVA LEDGER</title>
-  <meta name="description" content="SEVA LEDGER — digital service shop ledger" />
+  <title>TrustX Ledger</title>
+  <meta name="description" content="TrustX Ledger — digital service shop ledger" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <!-- Nunito font — preconnect first, then load non-blocking -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" /></noscript>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/forms.css" />
   <link rel="stylesheet" href="css/responsive.css" />
@@ -23,21 +28,80 @@
   }
   </script>
 </head>
-<body>
-  <main class="auth-body">
-    <div class="auth-card card" style="text-align:center;">
-      <img class="auth-logo" src="assets/logo.svg" alt="SEVA LEDGER logo" width="58" height="58" />
-      <h1 class="auth-title">SEVA LEDGER</h1>
-      <p class="auth-sub">Digital service shop ledger &middot; India (&#x20B9; &middot; Asia/Kolkata)</p>
-
-      <div id="bootArea">
-        <div class="flex" style="justify-content:center; gap:0.6rem;">
-          <span class="spinner" aria-hidden="true"></span>
-          <span class="muted">Starting&hellip;</span>
-        </div>
-      </div>
+<body class="auth-body" data-page="index">
+  <div class="receipt-wrapper">
+    <!-- Top dispenser slot -->
+    <div class="receipt-dispenser" aria-hidden="true">
+      <div class="dispenser-bar"></div>
+      <div class="dispenser-slot"></div>
     </div>
-  </main>
+
+    <!-- The receipt paper card -->
+    <main class="auth-card receipt-card">
+      <div class="receipt-inner">
+        <!-- Top row with header and Chaayos-style green stamp -->
+        <div class="receipt-top-row">
+          <div class="receipt-header-left">
+            <span class="receipt-status-tag">SYSTEM GATEWAY</span>
+            <h1 class="receipt-title">TrustX Ledger</h1>
+            <p class="receipt-subtitle">Digital Shop Ledger &bull; &#x20B9; INR</p>
+          </div>
+          <div class="receipt-stamp" title="TrustX Ledger Verified">
+            <span class="receipt-stamp-brand">TrustX</span>
+            <span class="receipt-stamp-sub">VERIFIED</span>
+          </div>
+        </div>
+
+        <hr class="receipt-divider" />
+
+        <!-- Receipt metadata items -->
+        <div class="receipt-items">
+          <div class="receipt-item-row">
+            <span class="receipt-item-label">LEDGER NODE</span>
+            <span class="receipt-item-val">PRIMARY SHOP</span>
+          </div>
+          <div class="receipt-item-row">
+            <span class="receipt-item-label">VERIFICATION</span>
+            <span class="receipt-item-val">DEVICE TRUST TOKEN</span>
+          </div>
+          <div class="receipt-item-row">
+            <span class="receipt-item-label">TIMESTAMP</span>
+            <span class="receipt-item-val" id="receiptTimeDisplay">26 SEP 2026</span>
+          </div>
+        </div>
+
+        <hr class="receipt-divider" />
+
+        <!-- Boot status / Action area -->
+        <div id="bootArea">
+          <div class="receipt-total-box">
+            <div class="receipt-total-header">
+              <span class="receipt-total-label">AUTHORIZATION STATUS</span>
+              <span class="receipt-total-badge" id="bootBadge">CHECKING</span>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:0.65rem; padding:0.5rem 0;">
+              <span class="spinner" aria-hidden="true"></span>
+              <span style="font-weight:700; color:#5a4b37; font-size:0.9rem;" id="bootStatusText">Verifying trusted device&hellip;</span>
+            </div>
+          </div>
+
+          <a href="login.html" class="btn-receipt-pay" style="text-decoration:none; margin-top:0.75rem;">
+            <span>ENTER SHOP CODE</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </a>
+        </div>
+
+        <div class="receipt-footer-note">HAVE A NICE DAY!</div>
+      </div>
+
+      <!-- Torn bottom serration edge -->
+      <div class="receipt-tear-edge" aria-hidden="true"></div>
+    </main>
+
+    <div class="auth-footer-caption">
+      TrustX Ledger &bull; Fast, Offline-First Shop Record
+    </div>
+  </div>
 
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
 
@@ -52,22 +116,34 @@
     } from "./js/auth.js";
 
     const bootArea = document.getElementById("bootArea");
+    const timeDisp = document.getElementById("receiptTimeDisplay");
+    if (timeDisp) {
+      try {
+        const d = new Date();
+        const day = String(d.getDate()).padStart(2, "0");
+        const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
+        const year = d.getFullYear();
+        timeDisp.textContent = `${day} ${month} ${year}`;
+      } catch (_) {}
+    }
 
     function render(html) {
       bootArea.innerHTML = html;
     }
     function fail(message) {
-      render('<p class="small soft" style="max-width:340px;margin:0 auto;">' + message + "</p>");
+      render(
+        '<div class="receipt-total-box">' +
+          '<div class="receipt-total-header"><span class="receipt-total-label">STATUS</span><span class="receipt-total-badge" style="color:#b23b3b;background:rgba(178,59,59,0.12);">ATTENTION</span></div>' +
+          '<p class="small soft" style="margin:0.25rem 0;color:#6b5239;">' + message + '</p>' +
+        '</div>' +
+        '<a href="login.html" class="btn-receipt-pay" style="text-decoration:none; margin-top:0.75rem;"><span>ENTER SHOP CODE</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>'
+      );
     }
 
     if (!isConfigured()) {
-      render(
-        '<p class="small soft" style="max-width:340px;margin:0 auto;">' +
-          "Firebase is not configured yet.<br/>" +
-          "Open <code>js/firebase.js</code> and replace the " +
-          "<code>YOUR_*</code> values with your web app config from the " +
-          "Firebase console, then reload this page." +
-          "</p>"
+      fail(
+        "Firebase is not configured yet.<br/>" +
+        "Open <code>js/firebase.js</code> and configure your web app credentials."
       );
     } else {
       initFirebase()
@@ -84,7 +160,7 @@
           });
         })
         .catch((err) => {
-          console.error("[seva-ledger] boot failed:", err);
+          console.error("[trustx-ledger] boot failed:", err);
           fail(reportError(err));
         });
     }

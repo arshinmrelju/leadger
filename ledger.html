@@ -1,0 +1,895 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily ledger &middot; TrustX Ledger</title>
+  <meta name="description" content="One business day of sales for TrustX Ledger" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <!-- Nunito font — preconnect first, then load non-blocking -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" /></noscript>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/forms.css" />
+  <link rel="stylesheet" href="css/dashboard.css" />
+  <link rel="stylesheet" href="css/transactions.css" />
+  <link rel="stylesheet" href="css/ledger.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js"
+    }
+  }
+  </script>
+</head>
+<body data-page="ledger">
+  <div class="app">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img class="brand-logo" src="assets/logo.svg" alt="" width="38" height="38" />
+        <div class="brand-text">
+          <div class="brand-name">TrustX Ledger</div>
+          <div class="brand-sub">Shop ledger</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        <div class="nav-section-title">Workspace</div>
+
+        <a class="nav-link" data-nav="dashboard" href="dashboard.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          Dashboard
+        </a>
+
+        <a class="nav-link" data-nav="transactions" href="transactions.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17h10"/><path d="M4 5h16v14H4z"/><path d="M4 5l2-2h12l2 2"/></svg>
+          Transactions
+        </a>
+
+        <a class="nav-link is-active" data-nav="ledger" href="ledger.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
+          Daily Ledger
+        </a>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Customers
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Expenses
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg>
+          Reports
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <div class="nav-section-title">Management</div>
+
+        <a class="nav-link" data-nav="admin" href="admin.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Admin
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div id="userChip"></div>
+        <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
+          TrustX Ledger &middot; v0.9.0
+        </div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- ===================== Main ===================== -->
+    <div class="main">
+      <header class="topbar">
+        <button class="topbar-hamburger" type="button" data-sidebar-toggle aria-label="Toggle navigation">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+        <div class="topbar-title">Daily ledger</div>
+        <span class="pill pill-neutral" id="topbarShop" style="display:none;"></span>
+        <span class="pill pill-neutral" id="topbarDate" aria-live="off"></span>
+      </header>
+
+      <main class="content" id="mainContent">
+        <div class="state">
+          <span class="spinner" aria-hidden="true"></span>
+          <p class="muted">Loading&hellip;</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ===================== Edit sale ===================== -->
+  <div class="modal-overlay" id="editOverlay" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <div class="modal ledger-edit">
+      <div class="modal-header">
+        <h3 id="editTitle">Edit sale</h3>
+        <button class="modal-close" type="button" data-close-modal aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="editForm" novalidate>
+        <div class="modal-body">
+          <div class="ledger-edit-total">
+            <span class="muted">Recorded <span id="editStamp">&mdash;</span></span>
+            <b id="editTotalPreview">₹0</b>
+          </div>
+
+          <div class="field">
+            <label for="editService">Service</label>
+            <select class="input" id="editService"></select>
+          </div>
+
+          <div class="form-row">
+            <div class="field">
+              <label for="editQty">Quantity</label>
+              <input class="input" id="editQty" type="number" inputmode="numeric" min="1" step="1" value="1" />
+            </div>
+            <div class="field">
+              <label for="editRate">Rate (₹)</label>
+              <input class="input" id="editRate" type="number" inputmode="decimal" min="0" step="0.01" value="0" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Payment</label>
+            <div class="seg-row" id="editMethodRow" role="group" aria-label="Payment method">
+              <button class="seg-btn seg-cash" type="button" data-method="cash">Cash</button>
+              <button class="seg-btn seg-upi" type="button" data-method="upi">UPI</button>
+              <button class="seg-btn seg-card" type="button" data-method="card">Card</button>
+              <button class="seg-btn seg-due" type="button" data-method="due">Due</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="editStatus">Status</label>
+            <select class="input" id="editStatus">
+              <option value="paid">Paid</option>
+              <option value="pending">Pending (unpaid)</option>
+            </select>
+            <p class="small muted" id="editStatusHint"></p>
+          </div>
+
+          <div class="field">
+            <label for="editCustomer">Customer</label>
+            <input class="input" id="editCustomer" type="text" maxlength="120" placeholder="Optional" />
+          </div>
+
+          <p class="small text-danger is-hidden" id="editError" role="alert"></p>
+        </div>
+        <div class="modal-footer ledger-modal-actions">
+          <button class="btn btn-secondary" type="button" data-close-modal>Cancel</button>
+          <button class="btn btn-primary" type="submit" id="editSave">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { setLoading, confirm, openModal, closeModal, toast } from "./js/app.js";
+    import {
+      formatINR,
+      formatKolkataLong,
+      escapeHtml,
+      todayKolkata,
+      isValidDateKey,
+      paiseToInput,
+    } from "./js/utils.js";
+    import {
+      fetchDayPage,
+      countDayTransactions,
+      fetchDayState,
+      fetchServices,
+      updateTransaction,
+      deleteTransaction,
+      markTransactionPaid,
+      isNetworkError,
+    } from "./js/ledger.js";
+    import {
+      shiftDateKey,
+      dayHeading,
+      formatEntryTime,
+      filterDayRows,
+      dayTotals,
+      mergeDayPage,
+      sortDayRows,
+    } from "./js/day-ledger.js";
+    import { reportError } from "./js/auth.js";
+    import { initAppShell } from "./js/shell.js";
+    import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
+
+    const mainContent = document.getElementById("mainContent");
+
+    /* Rows pulled per read. A day is small, so the first page normally
+       holds everything; the cursor exists so a busy day degrades into
+       "Load more" instead of a silent truncation. */
+    const PAGE_SIZE = 100;
+
+    /* Search is client-side over the rows already in memory, so this
+       only controls how long typing settles before the list redraws. */
+    const SEARCH_DEBOUNCE_MS = 250;
+
+    /* =========================================================
+       State
+       ========================================================= */
+    let dateKey = todayKolkata();
+    let lastSeenToday = dateKey;   // what "today" was at the last rollover
+    let rows = [];            // every row loaded for `dateKey`
+    let cursor = null;        // resume point for the next page
+    let hasMore = false;
+    let dayCount = 0;         // server-side count for the day
+    let closed = false;       // days/{dateKey}.closed
+    let loading = false;
+    let loadError = null;     // kept so render() can preserve the error state
+
+    let searchText = "";
+    let filterMethod = "any";
+    let filterStatus = "any";
+
+    let services = [];        // active catalog, for the edit picker
+    let editing = null;       // the row open in the edit dialog
+    let editMethod = "cash";
+
+    /* =========================================================
+       Markup
+       ========================================================= */
+
+    const ICON_CHEVRON_L =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+    const ICON_CHEVRON_R =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>';
+    const ICON_REFRESH =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>';
+    const ICON_EDIT =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+    const ICON_TRASH =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
+    const ICON_CHECK =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
+    const ICON_LOCK =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+    const ICON_PLUS =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+
+    function pageMarkup() {
+      return (
+        '<div class="ledger-head">' +
+          "<h1>Daily ledger</h1>" +
+          '<span class="ledger-sub" id="ledgerDayLabel"></span>' +
+          '<div class="ledger-head-actions">' +
+            '<button class="btn btn-primary" type="button" id="ledgerRecordBtn">' + ICON_PLUS + " Record sale</button>" +
+          "</div>" +
+        "</div>" +
+
+        '<div class="ledger-closed is-hidden" id="ledgerClosed">' + ICON_LOCK +
+          "<div><strong>This day is closed.</strong> Sales recorded on it can be read but not edited, settled or deleted.</div>" +
+        "</div>" +
+
+        '<div class="card ledger-card">' +
+          '<div class="card-header">' +
+            '<div class="ledger-bar">' +
+              "<div>" +
+                '<span class="ledger-daylabel">Business day</span>' +
+                '<div class="ledger-datenav">' +
+                  '<button class="btn btn-secondary btn-icon" type="button" id="ledgerPrev" aria-label="Previous day" title="Previous day">' + ICON_CHEVRON_L + "</button>" +
+                  '<input class="input" id="ledgerDate" type="date" aria-label="Business day" />' +
+                  '<button class="btn btn-secondary btn-icon" type="button" id="ledgerNext" aria-label="Next day" title="Next day">' + ICON_CHEVRON_R + "</button>" +
+                  '<button class="btn btn-secondary" type="button" id="ledgerToday">Today</button>' +
+                "</div>" +
+              "</div>" +
+
+              '<div class="field field-search">' +
+                '<label for="ledgerSearch">Search</label>' +
+                '<input class="input" id="ledgerSearch" type="search" placeholder="Service or customer" autocomplete="off" />' +
+              "</div>" +
+
+              '<div class="field field-method">' +
+                '<label for="ledgerMethod">Payment</label>' +
+                '<select class="input" id="ledgerMethod">' +
+                  '<option value="any">All methods</option>' +
+                  '<option value="cash">Cash</option>' +
+                  '<option value="upi">UPI</option>' +
+                  '<option value="card">Card</option>' +
+                  '<option value="due">Due</option>' +
+                "</select>" +
+              "</div>" +
+
+              '<div class="field field-status">' +
+                '<label for="ledgerStatus">Status</label>' +
+                '<select class="input" id="ledgerStatus">' +
+                  '<option value="any">All statuses</option>' +
+                  '<option value="paid">Paid</option>' +
+                  '<option value="pending">Pending</option>' +
+                "</select>" +
+              "</div>" +
+
+              '<div class="ledger-actions">' +
+                '<button class="btn btn-secondary" type="button" id="ledgerRefresh">' + ICON_REFRESH + " Refresh</button>" +
+              "</div>" +
+            "</div>" +
+          "</div>" +
+
+          '<div class="card-body-flush">' +
+            '<div class="table-wrap"><table class="table ledger-table">' +
+              "<thead><tr>" +
+                "<th>Time</th><th>Service</th>" +
+                '<th class="ledger-num">Quantity</th>' +
+                '<th class="ledger-num">Rate</th>' +
+                '<th class="ledger-num">Total</th>' +
+                "<th>Payment</th><th>Customer</th><th>Status</th>" +
+                '<th class="ledger-actions-col"><span class="muted">Actions</span></th>' +
+              "</tr></thead>" +
+              '<tbody id="ledgerBody"></tbody>' +
+            "</table></div>" +
+            '<div class="ledger-totals" id="ledgerTotals"></div>' +
+            '<div class="ledger-more is-hidden" id="ledgerMore">' +
+              '<span class="muted" id="ledgerMoreText"></span>' +
+              '<button class="btn btn-secondary btn-sm" type="button" id="ledgerLoadMore">Load more</button>' +
+            "</div>" +
+          "</div>" +
+        "</div>"
+      );
+    }
+
+    function totalCell(label, value, cls) {
+      return (
+        '<div class="ledger-total-cell ' + (cls || "") + '">' +
+          '<span class="lt-label">' + label + "</span>" +
+          '<span class="lt-value">' + value + "</span>" +
+        "</div>"
+      );
+    }
+
+    function stateRow(icon, title, body, extra) {
+      return (
+        '<tr><td colspan="9"><div class="state ' + (extra || "") + '">' +
+          (icon || "") +
+          "<h3>" + title + "</h3>" +
+          (body ? "<p>" + body + "</p>" : "") +
+        "</div></td></tr>"
+      );
+    }
+
+    /* =========================================================
+       Rendering
+       ========================================================= */
+
+    function render() {
+      const body = document.getElementById("ledgerBody");
+      const totals = document.getElementById("ledgerTotals");
+      const more = document.getElementById("ledgerMore");
+      const label = document.getElementById("ledgerDayLabel");
+      const dateInput = document.getElementById("ledgerDate");
+      const closedBox = document.getElementById("ledgerClosed");
+      if (!body || !totals) return;
+
+      if (dateInput && dateInput.value !== dateKey) dateInput.value = dateKey;
+      if (label) {
+        label.textContent =
+          dayHeading(dateKey) + (dateKey === todayKolkata() ? " (today)" : "");
+      }
+      if (closedBox) closedBox.classList.toggle("is-hidden", !closed);
+
+      /* Totals describe the whole day, not the current filter, so the
+         shop can always see the day's real takings. The count comes
+         from a server aggregate rather than the loaded row count. */
+      const t = dayTotals(rows);
+      totals.innerHTML =
+        totalCell("Transactions", String(dayCount || t.count), "lt-count") +
+        totalCell("Revenue", formatINR(t.revenuePaise), "lt-primary") +
+        totalCell("Cash", formatINR(t.cashPaise)) +
+        totalCell("UPI", formatINR(t.upiPaise)) +
+        totalCell("Card", formatINR(t.cardPaise)) +
+        totalCell("Due", formatINR(t.duePaise), "lt-due");
+
+      if (more) {
+        more.classList.toggle("is-hidden", !hasMore);
+        const text = document.getElementById("ledgerMoreText");
+        if (text) {
+          text.textContent = "Showing " + rows.length + " of " + (dayCount || rows.length);
+        }
+      }
+
+      if (loading && !rows.length) {
+        body.innerHTML =
+          '<tr><td colspan="9"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading the day&hellip;</p></div></td></tr>';
+        return;
+      }
+
+      /* render() also runs from the loader's finally block, so the
+         failure has to be re-asserted here or it would be replaced by
+         the empty state a moment after it was drawn. */
+      if (loadError) {
+        renderError(loadError);
+        return;
+      }
+
+      const visible = sortDayRows(
+        filterDayRows(rows, { query: searchText, method: filterMethod, status: filterStatus })
+      );
+
+      if (!visible.length) {
+        const filtering = searchText.trim() || filterMethod !== "any" || filterStatus !== "any";
+        if (!rows.length) {
+          body.innerHTML = stateRow(
+            ICON_PLUS,
+            "No transactions for this date.",
+            closed
+              ? "This day is closed and has no sales on record."
+              : "Nothing was recorded on " + escapeHtml(dayHeading(dateKey)) + "."
+          );
+        } else if (filtering) {
+          body.innerHTML = stateRow(
+            "",
+            "No matching transactions.",
+            "Nothing on this day matches your search and filters."
+          );
+        } else {
+          body.innerHTML = stateRow("", "No transactions for this date.", "");
+        }
+        return;
+      }
+
+      body.innerHTML = visible.map(rowMarkup).join("");
+    }
+
+    function rowMarkup(t) {
+      const id = escapeHtml(t.txnId);
+      const isDuePending = t.paymentMethod === "due" && t.status === "pending";
+
+      const actions =
+        (isDuePending
+          ? '<button class="btn btn-success btn-sm" type="button" data-act="paid" data-id="' + id + '" title="Mark due as paid">Mark paid</button>'
+          : "") +
+        '<button class="btn btn-secondary btn-sm" type="button" data-act="edit" data-id="' + id + '" title="Edit sale"' + (closed ? " disabled" : "") + ">" + ICON_EDIT + "</button>" +
+        '<button class="btn btn-danger-soft btn-sm" type="button" data-act="delete" data-id="' + id + '" title="Delete sale"' + (closed ? " disabled" : "") + ">" + ICON_TRASH + "</button>";
+
+      return (
+        "<tr>" +
+          '<td class="ledger-time" data-label="Time">' + escapeHtml(formatEntryTime(t.createdAt)) + "</td>" +
+          '<td class="ledger-service" data-label="Service">' + escapeHtml(t.serviceName) + "</td>" +
+          '<td class="ledger-num" data-label="Quantity">' + escapeHtml(String(t.quantity)) + "</td>" +
+          '<td class="ledger-num" data-label="Rate">' + formatINR(t.ratePaise) + "</td>" +
+          '<td class="ledger-num ledger-total" data-label="Total">' + formatINR(t.totalPaise) + "</td>" +
+          '<td data-label="Payment"><span class="ledger-method method-' + t.paymentMethod + '">' + escapeHtml(t.methodLabel) + "</span></td>" +
+          '<td class="ledger-customer" data-label="Customer">' + (t.customerName ? escapeHtml(t.customerName) : "—") + "</td>" +
+          '<td data-label="Status">' + statusBadge(t) + "</td>" +
+          '<td class="ledger-actions-col"><div class="ledger-row-actions">' + actions + "</div></td>" +
+        "</tr>"
+      );
+    }
+
+    function statusBadge(t) {
+      if (t.paymentMethod === "due" && t.status === "pending") {
+        return '<span class="badge badge-warning">Unpaid</span>';
+      }
+      return '<span class="badge badge-success">Paid</span>';
+    }
+
+    /* =========================================================
+       Data
+       ========================================================= */
+
+    async function reload() {
+      if (loading) return;
+      loading = true;
+      loadError = null;
+      const requested = dateKey;
+      render();
+
+      try {
+        /* The rows and the day state are the essential reads. */
+        const [page, state] = await Promise.all([
+          fetchDayPage({ dateKey: requested, pageSize: PAGE_SIZE }),
+          fetchDayState(requested),
+        ]);
+        rows = page.rows;
+        cursor = page.cursor;
+        hasMore = page.hasMore;
+        closed = state.closed;
+      } catch (err) {
+        console.error("[trustx-ledger] ledger load:", err);
+        rows = [];
+        cursor = null;
+        hasMore = false;
+        dayCount = 0;
+        loadError = err;
+        toast(reportError(err), "error");
+        loading = false;
+        render();
+        return;
+      }
+
+      loading = false;
+      render();
+
+      /* The count aggregate is a nicety, and it cannot be served from
+         the offline cache. Fetch it on its own so a failure (typically
+         "offline") leaves the day's rows on screen. The date is
+         re-checked on the way back so a slow count cannot land on top
+         of a day the user has already navigated away from. */
+      try {
+        const count = await countDayTransactions(requested);
+        if (dateKey === requested) {
+          dayCount = count;
+          render();
+        }
+      } catch (err) {
+        console.warn("[trustx-ledger] ledger count unavailable:", err);
+      }
+    }
+
+    function renderError(err) {
+      const body = document.getElementById("ledgerBody");
+      if (!body) return;
+      body.innerHTML = stateRow(
+        ICON_LOCK,
+        "Could not load this day",
+        isNetworkError(err)
+          ? "You appear to be offline. Showing nothing until the connection returns."
+          : escapeHtml(reportError(err)),
+        "is-error"
+      );
+    }
+
+    async function loadMore() {
+      if (loading || !hasMore || !cursor) return;
+      loading = true;
+      const btn = document.getElementById("ledgerLoadMore");
+      if (btn) setLoading(btn, true);
+      try {
+        const page = await fetchDayPage({ dateKey, pageSize: PAGE_SIZE, cursor });
+        rows = mergeDayPage(rows, page.rows);
+        cursor = page.cursor;
+        hasMore = page.hasMore;
+      } catch (err) {
+        console.error("[trustx-ledger] ledger page:", err);
+        toast(reportError(err), "error");
+      } finally {
+        loading = false;
+        if (btn) setLoading(btn, false);
+        render();
+      }
+    }
+
+    /* =========================================================
+       Row actions
+       ========================================================= */
+
+    async function onTableClick(event) {
+      const btn = event.target.closest("button[data-act]");
+      if (!btn) return;
+      const id = btn.getAttribute("data-id");
+      const row = rows.find((r) => r.txnId === id);
+      if (!row) return;
+
+      if (btn.getAttribute("data-act") === "edit") openEdit(row);
+      else if (btn.getAttribute("data-act") === "delete") await confirmDelete(row);
+      else if (btn.getAttribute("data-act") === "paid") await settle(row, btn);
+    }
+
+    async function settle(row, btn) {
+      const ok = await confirm({
+        title: "Mark as paid",
+        message:
+          "Mark the " + formatINR(row.totalPaise) + " due for " + row.serviceName + " as paid?",
+        confirmText: "Mark paid",
+        variant: "primary",
+      });
+      if (!ok) return;
+
+      setLoading(btn, true);
+      try {
+        await markTransactionPaid(row.txnId);
+        row.status = "paid";
+        toast("Marked as paid.", "success");
+        render();
+      } catch (err) {
+        console.error("[trustx-ledger] settle:", err);
+        setLoading(btn, false);
+        toast(describeWriteError(err), "error");
+      }
+    }
+
+    async function confirmDelete(row) {
+      const ok = await confirm({
+        title: "Delete this sale?",
+        message:
+          "Delete " +
+          row.quantity +
+          " × " +
+          row.serviceName +
+          " (" + formatINR(row.totalPaise) + ", " + row.methodLabel + ")? This cannot be undone.",
+        confirmText: "Delete sale",
+      });
+      if (!ok) return;
+
+      try {
+        await deleteTransaction(row.txnId);
+        rows = rows.filter((r) => r.txnId !== row.txnId);
+        dayCount = Math.max(0, dayCount - 1);
+        toast("Sale deleted.", "success");
+        render();
+      } catch (err) {
+        console.error("[trustx-ledger] delete:", err);
+        toast(describeWriteError(err), "error");
+      }
+    }
+
+    /**
+     * Turn a failed write into something actionable. A rules rejection
+     * on a closed day is the case worth calling out by name, since the
+     * UI cannot know the day was closed until the read catches up.
+     */
+    function describeWriteError(err) {
+      if (isNetworkError(err)) {
+        return "You appear to be offline. The change will sync when you reconnect.";
+      }
+      const msg = String((err && err.message) || "").toLowerCase();
+      if (msg.includes("permission") || msg.includes("insufficient")) {
+        if (closed) return "This day is closed, so it can no longer be changed.";
+        return "Not allowed to change this sale. If the day was just closed, it can no longer be edited.";
+      }
+      return reportError(err);
+    }
+
+    /* =========================================================
+       Edit dialog
+       ========================================================= */
+
+    function openEdit(row) {
+      editing = row;
+      editMethod = row.paymentMethod;
+
+      const err = document.getElementById("editError");
+      if (err) {
+        err.textContent = "";
+        err.classList.add("is-hidden");
+      }
+
+      document.getElementById("editStamp").textContent = formatEntryTime(row.createdAt);
+      document.getElementById("editQty").value = String(row.quantity);
+      document.getElementById("editRate").value = paiseToInput(row.ratePaise);
+      document.getElementById("editCustomer").value = row.customerName || "";
+
+      const sel = document.getElementById("editService");
+      sel.innerHTML = services
+        .map(
+          (s) =>
+            '<option value="' + escapeHtml(s.serviceId) + '"' +
+            (s.serviceId === row.serviceId ? " selected" : "") + ">" +
+            escapeHtml(s.name) +
+            (s.pricePaise != null ? " · " + formatINR(s.pricePaise) : "") +
+            "</option>"
+        )
+        .join("");
+      if (row.serviceId && !services.some((s) => s.serviceId === row.serviceId)) {
+        sel.insertAdjacentHTML(
+          "afterbegin",
+          '<option value="' + escapeHtml(row.serviceId) + '" selected>' +
+            escapeHtml(row.serviceName) + " (archived)</option>"
+        );
+      }
+
+      syncStatusControl();
+      paintMethod();
+      updateEditTotal();
+      openModal("editOverlay");
+    }
+
+    function paintMethod() {
+      document.querySelectorAll("#editMethodRow .seg-btn").forEach((btn) => {
+        btn.classList.toggle("is-active", btn.getAttribute("data-method") === editMethod);
+      });
+    }
+
+    /**
+     * A non-due sale is always settled, so the status control is locked
+     * and only offered for due sales.
+     */
+    function syncStatusControl() {
+      const statusSel = document.getElementById("editStatus");
+      const hint = document.getElementById("editStatusHint");
+      const isDue = editMethod === "due";
+
+      statusSel.disabled = !isDue;
+      if (isDue) {
+        statusSel.value = editing && editing.status === "paid" ? "paid" : "pending";
+        hint.textContent = "Due sales can be marked paid or left unpaid.";
+      } else {
+        statusSel.value = "paid";
+        hint.textContent = editMethod === "cash" || editMethod === "upi" || editMethod === "card"
+          ? "This sale is settled by definition."
+          : "";
+      }
+    }
+
+    function updateEditTotal() {
+      const qty = Number(document.getElementById("editQty").value) || 0;
+      const rate = Number(document.getElementById("editRate").value) || 0;
+      const out = document.getElementById("editTotalPreview");
+      if (out) out.textContent = formatINR(Math.round(qty * rate * 100));
+    }
+
+    async function saveEdit(event) {
+      event.preventDefault();
+      if (!editing) return;
+
+      const saveBtn = document.getElementById("editSave");
+      const err = document.getElementById("editError");
+      const fail = (msg) => {
+        if (err) {
+          err.textContent = msg;
+          err.classList.remove("is-hidden");
+        }
+      };
+
+      const qty = Number(document.getElementById("editQty").value);
+      if (!Number.isInteger(qty) || qty < 1) return fail("Quantity must be a whole number greater than 0.");
+
+      const ratePaise = Math.round(Number(document.getElementById("editRate").value) * 100);
+      if (!Number.isFinite(ratePaise) || ratePaise < 0) return fail("Enter a valid rate (₹0 or more).");
+
+      setLoading(saveBtn, true);
+      try {
+        const result = await updateTransaction(editing.txnId, {
+          serviceId: document.getElementById("editService").value,
+          quantity: qty,
+          ratePaise,
+          paymentMethod: editMethod,
+          status: editMethod === "due" ? document.getElementById("editStatus").value : "paid",
+          customerName: document.getElementById("editCustomer").value,
+        });
+
+        const row = rows.find((r) => r.txnId === editing.txnId);
+        if (row) {
+          row.quantity = qty;
+          row.ratePaise = ratePaise;
+          row.totalPaise = result.totalPaise;
+          row.status = result.status;
+          row.paymentMethod = editMethod;
+          row.customerName = String(document.getElementById("editCustomer").value || "").trim();
+          const picked = services.find((s) => s.serviceId === document.getElementById("editService").value);
+          if (picked) {
+            row.serviceId = picked.serviceId;
+            row.serviceName = picked.name;
+          }
+        }
+
+        closeModal("editOverlay");
+        editing = null;
+        toast("Sale updated.", "success");
+        render();
+      } catch (err2) {
+        console.error("[trustx-ledger] edit:", err2);
+        setLoading(saveBtn, false);
+        fail(describeWriteError(err2));
+      }
+    }
+
+    /* =========================================================
+       Boot
+       ========================================================= */
+
+    async function renderPage() {
+      document.getElementById("topbarDate").textContent = formatKolkataLong(new Date());
+      mainContent.innerHTML = pageMarkup();
+
+      const dateInput = document.getElementById("ledgerDate");
+      dateInput.value = dateKey;
+      dateInput.addEventListener("change", () => {
+        if (!isValidDateKey(dateInput.value)) return;
+        goToDate(dateInput.value);
+      });
+
+      document.getElementById("ledgerPrev").addEventListener("click", () => {
+        goToDate(shiftDateKey(dateKey, -1));
+      });
+      document.getElementById("ledgerNext").addEventListener("click", () => {
+        goToDate(shiftDateKey(dateKey, 1));
+      });
+      document.getElementById("ledgerToday").addEventListener("click", () => {
+        goToDate(todayKolkata());
+      });
+      document.getElementById("ledgerRefresh").addEventListener("click", () => reload());
+      document.getElementById("ledgerLoadMore").addEventListener("click", () => loadMore());
+      document.getElementById("ledgerRecordBtn").addEventListener("click", () => openSaleForm());
+      document.getElementById("ledgerBody").addEventListener("click", onTableClick);
+
+      document.getElementById("ledgerMethod").addEventListener("change", (e) => {
+        filterMethod = e.target.value;
+        render();
+      });
+      document.getElementById("ledgerStatus").addEventListener("change", (e) => {
+        filterStatus = e.target.value;
+        render();
+      });
+
+      /* Debounced so a burst of keystrokes redraws the list once. */
+      const search = document.getElementById("ledgerSearch");
+      let timer = null;
+      search.addEventListener("input", () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          searchText = search.value;
+          render();
+        }, SEARCH_DEBOUNCE_MS);
+      });
+
+      /* Edit dialog wiring */
+      document.getElementById("editForm").addEventListener("submit", saveEdit);
+      document.getElementById("editQty").addEventListener("input", updateEditTotal);
+      document.getElementById("editRate").addEventListener("input", updateEditTotal);
+      document.querySelectorAll("#editMethodRow .seg-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          editMethod = btn.getAttribute("data-method");
+          paintMethod();
+          syncStatusControl();
+        });
+      });
+
+      try {
+        services = await fetchServices();
+      } catch (err) {
+        console.error("[trustx-ledger] services for edit:", err);
+        services = [];
+      }
+
+      await reload();
+    }
+
+    /** Move to another business day, discarding the current page. */
+    function goToDate(next) {
+      if (!isValidDateKey(next) || next === dateKey) return;
+      dateKey = next;
+      rows = [];
+      cursor = null;
+      hasMore = false;
+      dayCount = 0;
+      closed = false;
+      loadError = null;
+      searchText = "";
+      const search = document.getElementById("ledgerSearch");
+      if (search) search.value = "";
+      reload();
+    }
+
+    initAppShell({
+      page: "ledger",
+      onReady: renderPage,
+      onDayChange: () => {
+        /* The header rolls over at midnight Kolkata. If the ledger is
+           parked on today, follow it; a day the user deliberately
+           picked stays put. */
+        if (dateKey === lastSeenToday) {
+          const next = todayKolkata();
+          if (next !== dateKey) goToDate(next);
+        }
+        lastSeenToday = todayKolkata();
+      },
+    });
+
+    /* A sale recorded in the dialog belongs to today; jump there if the
+       ledger is parked on another day, otherwise refresh in place. */
+    onSaleRecorded(({ dateKey: saleDate } = {}) => {
+      if (saleDate && saleDate !== dateKey) goToDate(saleDate);
+      else reload();
+    });
+  </script>
+</body>
+</html>

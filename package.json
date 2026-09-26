@@ -1,10 +1,10 @@
-{
-  "name": "seva-ledger",
+﻿{
+  "name": "trustx-ledger",
   "private": true,
-  "version": "0.8.0",
-  "description": "SEVA LEDGER — digital service shop ledger (static Firebase app)",
+  "version": "0.9.0",
+  "description": "TrustX Ledger — digital service shop ledger (static Firebase app)",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/ledger.mjs"
+    "test": "node --test tests/ledger.mjs tests/module-graph.mjs"
   }
 }

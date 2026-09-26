@@ -1,5 +1,5 @@
 /* =========================================================
-   SEVA LEDGER — Forms
+   TrustX Ledger — Forms
    ========================================================= */
 
 .field {
@@ -175,61 +175,340 @@ input.input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none
   cursor: pointer;
 }
 
-/* ---------- Login page ---------- */
+/* ---------- Login page / Receipt Aesthetic ---------- */
 .auth-body {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
-  background:
-    radial-gradient(1200px 500px at 80% -10%, rgba(15, 118, 110, 0.14), transparent 60%),
-    radial-gradient(900px 400px at -10% 110%, rgba(245, 158, 11, 0.10), transparent 55%),
-    var(--color-bg);
+  padding: 2.5rem 1.25rem 3rem;
+  background-color: #f6f0e4;
+  background-image:
+    radial-gradient(ellipse 650px 380px at 50% 18%, rgba(245, 170, 40, 0.42), rgba(245, 170, 40, 0.12) 50%, transparent 75%),
+    radial-gradient(circle 900px at 50% 100%, rgba(45, 138, 78, 0.08), transparent 60%);
+  position: relative;
+  overflow-x: hidden;
 }
 
-.auth-card {
+.receipt-wrapper {
   width: 100%;
-  max-width: 420px;
-  padding: 1.9rem 2rem 1.6rem;
-}
-.auth-logo {
-  width: 58px;
-  height: 58px;
-  margin: 0 auto 0.9rem;
-  border-radius: 16px;
-}
-.auth-title {
-  text-align: center;
-  font-size: 1.35rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.auth-sub {
-  text-align: center;
-  color: var(--color-muted);
-  font-size: 0.88rem;
-  margin-bottom: 1.4rem;
-}
-.auth-card .alert { margin-bottom: 1rem; }
-.auth-divider {
+  max-width: 410px;
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.8rem;
-  margin: 1rem 0;
-  color: var(--color-muted);
-  font-size: 0.78rem;
+  margin: 0 auto;
 }
-.auth-divider::before,
-.auth-divider::after {
+
+/* Ambient glow orb behind dispenser */
+.receipt-wrapper::before {
   content: "";
-  flex: 1;
-  border-top: 1px solid var(--color-border);
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  height: 120px;
+  background: radial-gradient(ellipse, rgba(250, 185, 55, 0.55) 0%, rgba(245, 166, 35, 0.2) 50%, transparent 75%);
+  pointer-events: none;
+  z-index: 1;
+  filter: blur(14px);
 }
-.code-input {
-  font-size: 1.05rem;
+
+/* Dispenser slot at top — Chaayos 3D roll housing */
+.receipt-dispenser {
+  width: calc(100% + 28px);
+  position: relative;
+  z-index: 10;
+  margin-bottom: -10px;
+  filter: drop-shadow(0 12px 22px rgba(150, 105, 40, 0.32));
+}
+.dispenser-bar {
+  height: 42px;
+  background: linear-gradient(180deg, #ffffff 0%, #fefcf7 15%, #f1e5cf 45%, #d5c19e 75%, #9e8760 100%);
+  border-radius: 21px;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow:
+    inset 0 3px 5px rgba(255, 255, 255, 1),
+    inset 0 -4px 6px rgba(70, 50, 20, 0.4),
+    0 4px 10px rgba(0, 0, 0, 0.08);
+  position: relative;
+}
+.dispenser-bar::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 24px;
+  right: 24px;
+  height: 4px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,0.95) 50%, rgba(255,255,255,0.2));
+  border-radius: 3px;
+  filter: blur(0.5px);
+}
+.dispenser-slot {
+  width: calc(100% - 32px);
+  height: 10px;
+  margin: -5px auto 0;
+  background: linear-gradient(180deg, #120d07 0%, #2b2014 100%);
+  border-radius: 5px;
+  box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.95), 0 2px 4px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 2;
+}
+
+/* The receipt paper card */
+.auth-card.receipt-card {
+  width: 100%;
+  max-width: 410px;
+  background: #fffdf9;
+  position: relative;
+  z-index: 5;
+  border-radius: 0;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+  filter: drop-shadow(0 16px 32px rgba(110, 75, 30, 0.16)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.05));
+  animation: receiptSlideDown 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes receiptSlideDown {
+  from {
+    transform: translateY(-24px);
+    opacity: 0.3;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Top paper inner with shadow cast from dispenser hood */
+.receipt-inner {
+  padding: 1.65rem 1.75rem 1rem;
+  box-shadow: inset 0 10px 14px -6px rgba(70, 45, 15, 0.25);
+  position: relative;
+}
+
+/* Top header row with Chaayos-style stamp */
+.receipt-top-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+.receipt-header-left {
+  flex: 1;
+  min-width: 0;
+}
+.receipt-status-tag {
+  display: inline-block;
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  color: #6d5b45;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+.receipt-title {
+  font-size: 1.65rem;
+  font-weight: 850;
+  color: #1e1912;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.receipt-subtitle {
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9c8a74;
+  margin-top: 0.28rem;
+}
+
+/* Green circular stamp (Chaayos style) */
+.receipt-stamp {
+  flex-shrink: 0;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #18773c, #0b4f23);
+  border: 2px dashed rgba(255, 255, 255, 0.65);
+  box-shadow: 0 5px 12px rgba(11, 79, 35, 0.38), inset 0 2px 4px rgba(255, 255, 255, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  text-align: center;
+  padding: 4px;
+  transform: rotate(-7deg);
+  transition: transform 0.25s ease;
+  user-select: none;
+}
+.receipt-stamp:hover {
+  transform: rotate(0deg) scale(1.05);
+}
+.receipt-stamp-brand {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+.receipt-stamp-sub {
+  font-size: 0.48rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  opacity: 0.9;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Dashed divider lines */
+.receipt-divider {
+  border: 0;
+  border-top: 1.5px dashed #dbc9b5;
+  margin: 0.85rem 0;
+}
+
+/* Receipt metadata rows */
+.receipt-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.84rem;
+  color: #4a3e2e;
+}
+.receipt-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 600;
+}
+.receipt-item-label {
+  color: #63533e;
+  letter-spacing: 0.02em;
+}
+.receipt-item-val {
+  font-weight: 750;
+  color: #1e1912;
+}
+
+/* Highlight box for shop code entry */
+.receipt-total-box {
+  background: #faf4e6;
+  border: 1px solid #ebdcc5;
+  border-radius: 8px;
+  padding: 0.85rem 0.95rem;
+  margin: 0.85rem 0 0.5rem;
+}
+.receipt-total-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.receipt-total-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #63503a;
+}
+.receipt-total-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #0f632f;
+  background: rgba(45, 138, 78, 0.14);
+  padding: 2px 7px;
+  border-radius: 99px;
+}
+
+.code-input {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.32em;
   text-align: center;
   text-transform: uppercase;
+  background: #ffffff;
+  border: 1.5px dashed #c8b79b;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  color: #1e1912;
+  transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+.code-input:focus {
+  outline: none;
+  border-color: #1a743a;
+  border-style: solid;
+  box-shadow: 0 0 0 3px rgba(31, 122, 66, 0.18);
+  background: #ffffff;
+}
+
+/* Green receipt submit CTA */
+.btn-receipt-pay {
+  width: 100%;
+  background: linear-gradient(180deg, #1f7a42 0%, #156133 100%);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.98rem;
+  letter-spacing: 0.05em;
+  padding: 0.78rem 1.25rem;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 14px rgba(21, 97, 51, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  margin-top: 0.85rem;
+  box-sizing: border-box;
+}
+.btn-receipt-pay:hover {
+  background: linear-gradient(180deg, #248c4c 0%, #176f3a 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(21, 97, 51, 0.36);
+}
+.btn-receipt-pay:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 8px rgba(21, 97, 51, 0.25);
+}
+
+/* "HAVE A NICE DAY!" text */
+.receipt-footer-note {
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  color: #9e8d78;
+  text-transform: uppercase;
+  margin-top: 1.15rem;
+  margin-bottom: 0.35rem;
+}
+
+/* Serrated / Jagged tear edge — realistic downward teeth */
+.receipt-tear-edge {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 12' preserveAspectRatio='none'%3E%3Cpolygon points='0,0 10,12 20,0' fill='%23fffdf9'/%3E%3C/svg%3E");
+  background-size: 16px 12px;
+  background-repeat: repeat-x;
+  pointer-events: none;
+}
+
+.auth-footer-caption {
+  margin-top: 1.4rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #8c785f;
+  font-weight: 600;
 }

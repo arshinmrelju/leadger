@@ -1,5 +1,5 @@
-/* =========================================================
-   SEVA LEDGER — Ledger data layer
+﻿/* =========================================================
+   TrustX Ledger — Ledger data layer
    -----------------------------------------------------------------
    Flat single-shop collections:
      transactions/{txnId}   sales recorded on a business day
@@ -13,6 +13,7 @@ import { getFirebridge } from "./firebase.js";
 import {
   todayKolkata,
   uid,
+  isValidDateKey,
   sanitizeQuantity,
   rateToPaise,
   computeTotalPaise,
@@ -282,7 +283,9 @@ export async function createTransaction({
   };
 
   await fs.setDoc(fs.doc(b.db, "transactions", txnId), doc);
-  return { txnId, totalPaise, status: doc.status };
+  /* `dateKey` is echoed back so a page that is parked on another day can
+     follow the sale to the day it landed on. */
+  return { txnId, totalPaise, status: doc.status, dateKey };
 }
 
 /**
@@ -329,6 +332,225 @@ export async function fetchTransactions({ dateKey = null, limit = 200 } = {}) {
     : fs.query(base, fs.orderBy("createdAt", "desc"), fs.limit(limit));
   const snap = await fs.getDocs(q);
   return snap.docs.map((d) => normalizeTxn(d.id, d.data()));
+}
+
+/* ------------------------------------------------------------------
+   Daily ledger (single business day)
+
+   Every read below is anchored to one `dateKey` with a `where` clause,
+   so the page never pulls the whole store into memory. Cursor
+   pagination is prepared from the start: the query asks for one row
+   more than the caller wants, uses that extra row to decide whether a
+   further page exists, and hands the caller an opaque cursor to
+   resume from.
+   ------------------------------------------------------------------ */
+
+/** Upper bound on one day query, mirroring the rules' field ranges. */
+const MAX_DAY_LIMIT = 1000;
+
+/**
+ * Fetch one page of a single business day, newest first.
+ *
+ * @param {object} opts
+ * @param {string} opts.dateKey      Asia/Kolkata `YYYY-MM-DD`.
+ * @param {number} [opts.pageSize]   Rows to return (1..1000).
+ * @param {*}      [opts.cursor]     Opaque cursor from a previous page.
+ * @returns {Promise<{rows: object[], cursor: object|null, hasMore: boolean}>}
+ */
+export async function fetchDayPage({ dateKey, pageSize = 100, cursor = null } = {}) {
+  if (!isValidDateKey(dateKey)) {
+    throw new Error("Pick a valid date to view the ledger.");
+  }
+
+  const size = Math.min(Math.max(1, Math.trunc(Number(pageSize) || 100)), MAX_DAY_LIMIT);
+  const b = await getFirebridge();
+  const fs = b.firestore;
+  const base = fs.collection(b.db, "transactions");
+
+  const parts = [
+    fs.where("dateKey", "==", dateKey),
+    fs.orderBy("createdAt", "desc"),
+    fs.orderBy(fs.documentId(), "desc"),
+  ];
+  if (cursor) parts.push(fs.startAfter(cursor));
+  // One extra row tells us whether a further page exists without a
+  // second count query.
+  parts.push(fs.limit(size + 1));
+
+  const snap = await fs.getDocs(fs.query(base, ...parts));
+  const docs = snap.docs;
+
+  if (docs.length <= size) {
+    return { rows: docs.map((d) => normalizeTxn(d.id, d.data())), cursor: null, hasMore: false };
+  }
+
+  const page = docs.slice(0, size);
+  return {
+    rows: page.map((d) => normalizeTxn(d.id, d.data())),
+    cursor: page[page.length - 1],
+    hasMore: true,
+  };
+}
+
+/**
+ * Total number of sales recorded on a day. A count aggregate costs the
+ * same read as one row, so the ledger footer can show the true
+ * transaction count even while only a page of rows is loaded.
+ *
+ * NOTE: count aggregates are server-side only — `getCountFromServer`
+ * cannot be served from the offline cache. Callers must treat a failure
+ * here as "count unknown" and fall back to the number of rows they
+ * actually hold, rather than failing the page load.
+ */
+export async function countDayTransactions(dateKey) {
+  if (!isValidDateKey(dateKey)) return 0;
+  const b = await getFirebridge();
+  const fs = b.firestore;
+  const snap = await fs.getCountFromServer(
+    fs.query(fs.collection(b.db, "transactions"), fs.where("dateKey", "==", dateKey))
+  );
+  return toSafe(snap.data().count);
+}
+
+/**
+ * Whether a business day has been closed. A missing `days/{dateKey}`
+ * document means open, which is the case for every day before the
+ * close-day feature exists.
+ *
+ * This read fails *open* on purpose. `getDoc` on a document that was
+ * never fetched rejects while the client is offline, and the ledger
+ * must stay readable offline — so a failed read reports "open" rather
+ * than taking the page down. That cannot let a stale write through: the
+ * rules re-check the day on the server and refuse the write, which the
+ * page surfaces as a friendly message.
+ */
+export async function fetchDayState(dateKey) {
+  if (!isValidDateKey(dateKey)) return { dateKey, closed: false };
+  try {
+    const b = await getFirebridge();
+    const fs = b.firestore;
+    const snap = await fs.getDoc(fs.doc(b.db, "days", dateKey));
+    return { dateKey, closed: snap.exists() ? snap.data().closed === true : false };
+  } catch (err) {
+    console.warn("[trustx-ledger] day state unavailable, treating as open:", err);
+    return { dateKey, closed: false };
+  }
+}
+
+/**
+ * Edit a recorded sale.
+ *
+ * The editable surface mirrors what the rules will accept. `txnId`,
+ * `createdAt`, `createdBy`, `customerId` and `dateKey` stay pinned to
+ * the original row, so a sale can never be re-dated onto another
+ * business day (which is also what keeps the day-close gate sound).
+ *
+ * The service is chosen from the catalog rather than typed: the rules
+ * require a row's `serviceName` to equal the live `services/<id>.name`,
+ * so free-text naming could only ever be rejected. The name is read
+ * back from the service document here so a stale client cache cannot
+ * cause a permission error.
+ *
+ * `total` is always recomputed from quantity x rate rather than trusted
+ * from the caller, and `updatedAt` / `updatedBy` are always refreshed.
+ */
+export async function updateTransaction(txnId, patch = {}) {
+  const id = String(txnId || "").trim();
+  if (!id) throw new Error("That sale could not be found.");
+
+  const b = await getFirebridge();
+  const fs = b.firestore;
+  const user = b.auth.currentUser;
+  if (!user || !user.uid) throw new Error("You need to be signed in to edit a sale.");
+
+  const qty = sanitizeQuantity(patch.quantity);
+  if (qty === null) throw new Error("Quantity must be a whole number greater than 0.");
+
+  // `rate` is stored in paise, so validate it as an integer directly
+  // instead of round-tripping through rupees.
+  const ratePaise = toPaiseInt(patch.ratePaise);
+  if (patch.ratePaise == null || patch.ratePaise === "" || ratePaise < 0) {
+    throw new Error("Enter a valid rate (₹0 or more).");
+  }
+
+  const totalPaise = computeTotalPaise(qty, ratePaise);
+  if (totalPaise === null) throw new Error("The total is out of the allowed range.");
+
+  const serviceId = String(patch.serviceId || "").trim();
+  if (!serviceId) throw new Error("Choose a service for this sale.");
+  const svcSnap = await fs.getDoc(fs.doc(b.db, "services", serviceId));
+  if (!svcSnap.exists()) throw new Error("That service no longer exists.");
+  const serviceDoc = svcSnap.data();
+  if (serviceDoc.active !== true) throw new Error("That service is archived and cannot be used.");
+  const serviceName = String(serviceDoc.name || "").trim();
+  if (!serviceName) throw new Error("That service has no name.");
+
+  if (!isPaymentMethod(patch.paymentMethod)) {
+    throw new Error("Choose a payment method (cash, UPI, card or due).");
+  }
+
+  const method = patch.paymentMethod;
+  let status = patch.status === "paid" || patch.status === "pending" ? patch.status : null;
+  if (!status) status = method === "due" ? "pending" : "paid";
+  // A non-due sale is always settled; only a due sale may sit pending.
+  if (method !== "due") status = "paid";
+
+  const ref = fs.doc(b.db, "transactions", id);
+  const next = {
+    serviceId,
+    serviceName,
+    quantity: qty,
+    rate: ratePaise,
+    total: totalPaise,
+    paymentMethod: method,
+    status,
+    customerName: String(patch.customerName || "").trim().slice(0, 120),
+    updatedAt: fs.serverTimestamp(),
+    updatedBy: user.uid,
+  };
+
+  await fs.updateDoc(ref, next);
+  return { txnId: id, totalPaise, status };
+}
+
+/**
+ * Settle a due sale. Flips `status` to `paid` and refreshes the audit
+ * fields; nothing else on the row is touched.
+ */
+export async function markTransactionPaid(txnId) {
+  const id = String(txnId || "").trim();
+  if (!id) throw new Error("That sale could not be found.");
+
+  const b = await getFirebridge();
+  const fs = b.firestore;
+  const user = b.auth.currentUser;
+  if (!user || !user.uid) throw new Error("You need to be signed in to settle a due sale.");
+
+  await fs.updateDoc(fs.doc(b.db, "transactions", id), {
+    status: "paid",
+    updatedAt: fs.serverTimestamp(),
+    updatedBy: user.uid,
+  });
+  return { txnId: id, status: "paid" };
+}
+
+/**
+ * Delete a recorded sale. Callers are expected to confirm with the
+ * user first; the rules independently refuse the write on a closed
+ * day and for a caller who is not signed in.
+ */
+export async function deleteTransaction(txnId) {
+  const id = String(txnId || "").trim();
+  if (!id) throw new Error("That sale could not be found.");
+
+  const b = await getFirebridge();
+  const fs = b.firestore;
+  if (!b.auth.currentUser || !b.auth.currentUser.uid) {
+    throw new Error("You need to be signed in to delete a sale.");
+  }
+
+  await fs.deleteDoc(fs.doc(b.db, "transactions", id));
+  return { txnId: id };
 }
 
 /** Read expenses for the all-data browser. */

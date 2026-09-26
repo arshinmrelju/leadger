@@ -1,15 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
-  <title id="title">SEVA LEDGER</title>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">TrustX Ledger</title>
   <defs>
+    <!-- Sky-blue to forest-green gradient matching the illustration -->
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0f766e"/>
-      <stop offset="1" stop-color="#0b5e57"/>
+      <stop offset="0" stop-color="#4b8bbf"/>
+      <stop offset="0.55" stop-color="#3a709e"/>
+      <stop offset="1" stop-color="#2d8a4e"/>
+    </linearGradient>
+    <!-- Warm amber glow for the book accent -->
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f5a623"/>
+      <stop offset="1" stop-color="#e8921a"/>
     </linearGradient>
   </defs>
+  <!-- Rounded square background -->
   <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
-  <path d="M46 72c22-8 46-8 68 0v112c-22-8-46-8-68 0V72z" fill="none" stroke="#ffffff" stroke-width="12" stroke-linejoin="round"/>
-  <path d="M210 72c-22-8-46-8-68 0v112c22-8 46-8 68 0V72z" fill="none" stroke="#ffffff" stroke-width="12" stroke-linejoin="round"/>
-  <path d="M114 72v112" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
-  <path d="M138 92c18-3 33 7 33 22 0 13-13 21-33 21h-6l12 27" fill="none" stroke="#fbbf24" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M126 116h38" stroke="#fbbf24" stroke-width="10" stroke-linecap="round"/>
+  <!-- Subtle inner highlight -->
+  <rect x="8" y="8" width="240" height="120" rx="56" fill="rgba(255,255,255,0.08)"/>
+  <!-- Open book pages -->
+  <path d="M46 72c22-8 46-8 68 0v112c-22-8-46-8-68 0V72z" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M210 72c-22-8-46-8-68 0v112c22-8 46-8 68 0V72z" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M114 72v112" stroke="rgba(255,255,255,0.9)" stroke-width="12" stroke-linecap="round"/>
+  <!-- Rupee ₹ symbol in warm amber (right page) -->
+  <path d="M138 92c18-3 33 7 33 22 0 13-13 21-33 21h-6l12 27" fill="none" stroke="url(#amber)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M126 116h38" stroke="url(#amber)" stroke-width="11" stroke-linecap="round"/>
+  <!-- Small leaf dot bottom-right for the "nature" feel -->
+  <circle cx="208" cy="216" r="12" fill="rgba(45,138,78,0.55)"/>
+  <circle cx="208" cy="216" r="6" fill="rgba(245,166,35,0.9)"/>
 </svg>
