@@ -194,7 +194,6 @@
         '<div class="dash-head-text">' +
         '<div class="dash-head-title-row">' +
         "<h1>Today&rsquo;s Overview</h1>" +
-        '<span class="live-pill"><span class="live-dot"></span> Live</span>' +
         "</div>" +
         '<p id="summarySub">Loading&hellip;</p>' +
         "</div>" +
@@ -362,7 +361,7 @@
           '</div>' +
           "<h3>No transactions today yet</h3>" +
           "<p>Sales you record during the day will appear here in real-time.</p>" +
-          '<button type="button" class="btn btn-new-sale btn-sm" id="emptyRecordBtn">' + ICON_PLUS + "Record a sale</button>' +
+          '<button type="button" class="btn btn-new-sale btn-sm" id="emptyRecordBtn">' + ICON_PLUS + "Record a sale</button>" +
           "</div></td></tr>";
         document.getElementById("emptyRecordBtn").addEventListener("click", () => openSaleForm());
         footer.innerHTML = "&nbsp;";
