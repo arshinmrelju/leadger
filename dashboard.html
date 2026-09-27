@@ -23,7 +23,8 @@
     "imports": {
       "firebase/app": "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js",
       "firebase/auth": "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js",
-      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js"
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js",
+      "firebase/database": "https://www.gstatic.com/firebasejs/12.18.0/firebase-database.js"
     }
   }
   </script>
@@ -331,8 +332,9 @@
 
     /* =========================================================
        Dashboard — today's figures + recent transactions.
-       Reads real Firestore data (transactions + expenses for today's
-       Asia/Kolkata date only). No mock rows.
+       Reads today's day head and its sales from Firestore, and today's
+       expenses from the Realtime Database (Asia/Kolkata date only).
+       No mock rows.
        ========================================================= */
     async function renderDashboard() {
       const txnIc = ic('<path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h3"/>');

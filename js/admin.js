@@ -3,7 +3,7 @@
    -----------------------------------------------------------------
    Not linked from the public navigation and gated by its own admin
    code: this browser must hold an admins/{uid} grant (see auth.js /
-   firestore.rules) before any of this renders. Behind the gate the
+   database.rules.json) before any of this renders. Behind the gate the
    console covers the shop's maintenance — the service catalog, the
    trust registry and a full-data browser. The dashboard stays
    operational-only.

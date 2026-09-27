@@ -1,51 +1,65 @@
 rules_version = '2';
 
 // =============================================================
-// SEVA LEDGER — Cloud Firestore security rules
+// TRUSTX LEDGER — Cloud Firestore security rules
 // -------------------------------------------------------------
-// SINGLE-SHOP (flat) model. There is no per-shop namespace; this
-// instance IS one shop.
+// TRANSACTIONS ONLY. Every other collection in this app now lives in
+// the Realtime Database — see database.rules.json for:
+//   settings/{general,security,admin}   shop identity and the two codes
+//   enrollments/{nonce}                 one-time proof-of-code
+//   devices/{tokenHash}                 trusted-device registry
+//   admins/{uid}                        Developer-console grants
+//   services/{serviceId}                the quick-service catalog
+//   expenses/{expId}                    spends (read-only this build)
 //
-// Simple trust model: the shop opens with one shared code, verified
-// SERVER-SIDE at enrollment. A browser that proves the code once mints
-// a 256-bit random token (kept only in its IndexedDB); the token's
-// sha256 is a devices/<hash> document that auto-authenticates it on
-// later visits. Firestore's job here is record integrity and the
-// trust registry:
-//   * The auto-login gate can GET a device doc anonymously because its
-//     id is an unguessable 256-bit capability; a real session is only
-//     created for trusted/verified devices, so data stays code-gated.
-//   * Only signed-in (anonymous) devices touch data.
-//   * Every document is strongly typed and non-forgeable on the
-//     server: createdBy == request.auth.uid, createdAt == request.time,
-//     transactions money stays integer paise with
-//     total == quantity * rate, services must exist and be active,
-//     fields are range-checked.
-//   * Nothing is ever deleted (services archive with active=false),
-//     with one deliberate exception: a sale on a still-open business
-//     day can be deleted from the daily ledger. Once a day is closed
-//     its rows are frozen — see match /days and dayOpen() above.
-//   * The Developer console is a SECOND gate. The shop code opens the
-//     ledger; a separate admin code (settings/admin, never readable by
-//     clients) is what mints an admins/{uid} grant. Device management —
-//     revoke, restore and remove — is refused to any device without that
-//     grant, so the shop code alone cannot lock the owner out of their
-//     own browsers. See isAdmin() and match /admins below.
+// DATA MODEL COVERED HERE
+//   dayHeads/{dateKey}                        the independent head for
+//                                              one Asia/Kolkata business day
+//   dayHeads/{dateKey}/transactions/{txnId}   the sales recorded that day
 //
-// Data model covered here:
-//   settings/general               shop identity (auto-created on first use)
-//   settings/security              the access code (server-side only; never client-readable)
-//   settings/admin                 the admin code (server-side only; never client-readable)
-//   enrollments/{nonce}            one-time proof-of-code, shop or admin scope
-//   devices/{tokenHash}            trusted-device registry (auto-login + revocation)
-//   admins/{uid}                   admin grants for the Developer console
-//   transactions/{txnId}           sales (editable + deletable while the day is open)
-//   services/{serviceId}           service catalog
-//   expenses/{expId}               spends (read-only this build)
-//   days/{dateKey}                 closed business days (absent = open)
+// A HEAD PER DAY, NOT A dateKey FIELD
+//   The old model was one flat transactions collection with a dateKey
+//   field, which meant every day view was a filter plus a composite
+//   index and a day that grew large grew unreadable. Now the day IS the
+//   partition: a day's sales are a subcollection of that day's head, so
+//   reading a day needs no index at all, and one busy day can never
+//   slow down another.
 //
-// The old members/ and pendingMembers/ collections are no longer
-// used; the deny-all tail below keeps them unreachable.
+// WHAT THE HEAD CARRIES
+//   dateKey, state (open | closed), openedAt/By, closedAt/By, and a
+//   `counters` block holding the day's running totals. That makes the
+//   head a one-document answer to "how did today go?", and it replaces
+//   the old close-day register, which used the existence of a
+//   days/{dateKey} document to mean "closed".
+//
+// MONEY
+//   All money is integer paise. `rate` is paise per unit, `total` is
+//   always quantity x rate, and the rules re-derive it on every write,
+//   so money is never client-asserted. `amounts` is the per-method split
+//   of that total and is proved to agree with `paymentMethod`.
+//
+// COUNTER INTEGRITY
+//   A sale and the day's totals are written in ONE atomic batch, and the
+//   SALE's own rules check the head moved by exactly this sale's
+//   contribution (create), by exactly the difference between the old and
+//   new split (edit), or by exactly minus this sale (delete). Because
+//   rules cannot re-sum a subcollection, this is as strong as the rows
+//   themselves: there is no path where a sale lands and the head does
+//   not follow.
+//   The head's OWN update rule cannot see the sale, so it only permits
+//   a no-op merge, a single-sale-sized delta inside the money cap, and
+//   the one-way open -> closed transition. A caller who writes the head
+//   alone can therefore skew the DISPLAY counters by at most one sale
+//   per write — and the daily ledger always recomputes its totals from
+//   the rows, so the pages that matter never trust the counters.
+//
+// SERVICE CATALOG
+//   The catalog moved to the Realtime Database, and Firestore rules
+//   cannot read across. A sale therefore stores serviceId plus a
+//   SNAPSHOT of the serviceName it was sold under, validated as a
+//   bounded string; the client refuses to sell an archived service.
+//   The guarantee this gives up, deliberately: a sale's name can no
+//   longer be proven to equal a currently-live catalog row.
 // =============================================================
 
 service cloud.firestore {
@@ -55,447 +69,335 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function unsigned() {
-      return request.auth == null;
+    function headPath(dk) {
+      return /databases/$(database)/documents/dayHeads/$(dk);
     }
 
-    // Admin capability for THIS session. The grant is a document keyed by
-    // uid, so the rules can answer "is this caller an admin?" without ever
-    // knowing which device token it holds — the device doc id is a hash of
-    // a secret the server cannot invert.
-    function isAdmin() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    // Field ranges, mirroring the client guards in js/utils.js so a bad
+    // write is caught before the network rather than after it.
+    function validQuantity(q) {
+      return q is int && q >= 1 && q <= 100000;
+    }
+    function validRate(r) {
+      return r is number && r >= 0 && r <= 10000000;
+    }
+    function validTotal(t) {
+      return t is number && t >= 0 && t <= 100000000000;
     }
 
-    // A business day is open unless a days/{dateKey} document says
-    // otherwise. This is what the daily ledger consults before letting
-    // anyone edit, settle or delete a sale.
-    function dayOpen(dateKey) {
-      return !exists(/databases/$(database)/documents/days/$(dateKey));
-    }
-
-    function validGeneralDoc(doc) {
-      return doc.keys().hasOnly([
-            'name', 'phone', 'address',
-            'currency', 'active', 'createdAt', 'createdBy'
+    // A counter set is valid when nothing is negative, the four payment
+    // buckets add up to the gross, and what has been collected is the
+    // gross minus what is still outstanding. The cap is a whole day of
+    // maximum-value sales, so a real counter can never hit it.
+    function countersOk(c) {
+      return c.keys().hasOnly([
+            'txnCount', 'grossPaise', 'cashPaise', 'upiPaise',
+            'cardPaise', 'duePaise', 'collectedPaise'
           ])
-        && doc.name is string
-        && doc.name.size() >= 1
-        && doc.name.size() <= 80
-        && doc.phone is string
-        && doc.phone.size() <= 20
-        && doc.address is string
-        && doc.address.size() <= 300
-        && doc.currency is string
-        && doc.currency.size() == 3
-        && doc.active == true;
+        && c.txnCount is int && c.txnCount >= 0 && c.txnCount <= 1000000
+        && c.grossPaise is int && c.grossPaise >= 0 && c.grossPaise <= 100000000000000
+        && c.cashPaise is int && c.cashPaise >= 0
+        && c.upiPaise is int && c.upiPaise >= 0
+        && c.cardPaise is int && c.cardPaise >= 0
+        && c.duePaise is int && c.duePaise >= 0
+        && c.collectedPaise is int && c.collectedPaise >= 0
+        && c.grossPaise == c.cashPaise + c.upiPaise + c.cardPaise + c.duePaise
+        && c.collectedPaise == c.grossPaise - c.duePaise;
     }
 
-    // ---------------- Settings ----------------
-    // `general` is the shop record: silently auto-created the first
-    // time any code-signed-in device opens the app (see auth.js
-    // ensureShopRecord). Update is open to any signed-in device — one
-    // shop, one identity.
-    // `security` carries the access code used for device enrollment and
-    // `admin` the separate code that unlocks the Developer console.
-    // Neither is EVER readable or writable by clients after creation:
-    // only the rules engine compares them to an enrollment attempt, so
-    // the codes themselves never leave Firestore's server boundary.
-    match /settings/{docId} {
-      allow get, list: if signedIn() && docId != 'security' && docId != 'admin';
-
-      allow create: if signedIn()
-        && (
-            (docId == 'general'
-             && !exists(/databases/$(database)/documents/settings/general)
-             && validGeneralDoc(request.resource.data)
-             && request.resource.data.createdAt == request.time
-             && request.resource.data.createdBy == request.auth.uid)
-            || (docId == 'security'
-                && !exists(/databases/$(database)/documents/settings/security)
-                && request.resource.data.keys().hasOnly(['accessCode', 'createdAt', 'createdBy'])
-                && request.resource.data.accessCode.matches('^[A-Z0-9]{4,12}$')
-                && request.resource.data.createdAt == request.time
-                && request.resource.data.createdBy == request.auth.uid)
-            || (docId == 'admin'
-                && !exists(/databases/$(database)/documents/settings/admin)
-                && request.resource.data.keys().hasOnly(['adminCode', 'createdAt', 'createdBy'])
-                && request.resource.data.adminCode.matches('^[A-Z0-9]{6,24}$')
-                && request.resource.data.createdAt == request.time
-                && request.resource.data.createdBy == request.auth.uid)
-          );
-
-      allow update: if signedIn()
-        && docId == 'general'
-        && validGeneralDoc(request.resource.data)
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.createdBy == resource.data.createdBy;
-
-      allow delete: if false;
+    // The per-method split of a sale's total. Written without a ternary
+    // and without building a map, because the rules language has
+    // neither: each bucket is proved to be either 0 or the whole total,
+    // the buckets are proved to add up to the total, and the one
+    // non-zero bucket is proved to be this sale's payment method. That
+    // is exactly as binding as a branch would be.
+    function validAmounts(t) {
+      return t.amounts.keys().hasOnly([
+            'gross', 'cash', 'upi', 'card', 'due', 'collected'
+          ])
+        && t.amounts.gross is int && t.amounts.gross == t.total
+        && t.amounts.cash is int
+        && t.amounts.upi is int
+        && t.amounts.card is int
+        && t.amounts.due is int
+        && t.amounts.collected is int
+        && t.amounts.cash + t.amounts.upi + t.amounts.card + t.amounts.due == t.total
+        && (t.amounts.cash > 0) == (t.paymentMethod == 'cash')
+        && (t.amounts.upi > 0) == (t.paymentMethod == 'upi')
+        && (t.amounts.card > 0) == (t.paymentMethod == 'card')
+        && (t.amounts.due > 0) == (t.paymentMethod == 'due')
+        && t.amounts.collected == t.total - t.amounts.due;
     }
 
-    // ---------------- Device enrollment (proof-of-code, single use) ----------------
-    // A first-time device proves possession of a code by writing a one-time
-    // enrollment nonce. `scope` says which door it is knocking on:
-    //   'shop'  -> settings/security.accessCode  (opens the ledger)
-    //   'admin' -> settings/admin.adminCode       (unlocks the console)
-    // The rules compare the submitted `verifiedCode` against the matching
-    // settings doc server-side, so neither code is ever persisted anywhere a
-    // client can read. The client then mints the capability document
-    // (devices/<hash> for shop, admins/<uid> for admin), marks the nonce
-    // `used`, and the proof is spent.
-    match /enrollments/{nonce} {
-      function shopProof(doc) {
-        return doc.scope == 'shop'
-          && exists(/databases/$(database)/documents/settings/security)
-          && doc.verifiedCode
-               == get(/databases/$(database)/documents/settings/security).data.accessCode;
-      }
-
-      function adminProof(doc) {
-        return doc.scope == 'admin'
-          && exists(/databases/$(database)/documents/settings/admin)
-          && doc.verifiedCode
-               == get(/databases/$(database)/documents/settings/admin).data.adminCode;
-      }
-
-      allow create: if signedIn()
-        && nonce.matches('^[a-f0-9]{32}$')
-        && request.resource.data.keys().hasOnly(['scope', 'verifiedCode', 'createdAt', 'createdBy', 'used'])
-        && request.resource.data.scope in ['shop', 'admin']
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.used == false
-        && (shopProof(request.resource.data) || adminProof(request.resource.data));
-
-      allow get, list: if false;
-
-      // Only the owner flips `used` after the capability doc exists.
-      allow update: if signedIn()
-        && request.auth.uid == resource.data.createdBy
-        && request.resource.data.keys().hasOnly(['used', 'deviceHash'])
-        && request.resource.data.used == true
-        && request.resource.data.deviceHash is string
-        && request.resource.data.deviceHash.matches('^[a-f0-9]{64}$');
-
-      allow delete: if signedIn() && request.auth.uid == resource.data.createdBy;
+    // The head moved by exactly one sale's contribution (`a`), in the
+    // sale's direction (`step` is +1 for a create, -1 for a delete).
+    function headSteppedBy(before, after, a, step) {
+      return countersOk(after)
+        && after.txnCount == before.txnCount + step
+        && after.grossPaise == before.grossPaise + a.gross * step
+        && after.cashPaise == before.cashPaise + a.cash * step
+        && after.upiPaise == before.upiPaise + a.upi * step
+        && after.cardPaise == before.cardPaise + a.card * step
+        && after.duePaise == before.duePaise + a.due * step
+        && after.collectedPaise == before.collectedPaise + a.collected * step;
     }
 
-    // ---------------- Admin grants (Developer console) ----------------
-    // The shop code opens the ledger; THIS document is what opens the
-    // console. It is keyed by uid so `isAdmin()` above is a single
-    // `exists()` check, and it can only be created by presenting the admin
-    // code as an unused enrollment proof — the client cannot assert it.
-    match /admins/{uid} {
-      function validAdminDoc(doc) {
-        return doc.keys().hasOnly(['uid', 'deviceHash', 'enrollmentId', 'createdAt', 'createdBy'])
-          && doc.uid is string && doc.uid == uid && doc.uid == request.auth.uid
-          && doc.deviceHash is string && doc.deviceHash.matches('^[a-f0-9]{64}$')
-          && doc.enrollmentId is string && doc.enrollmentId.matches('^[a-f0-9]{32}$')
-          && exists(/databases/$(database)/documents/enrollments/$(doc.enrollmentId))
-          && get(/databases/$(database)/documents/enrollments/$(doc.enrollmentId)).data.scope == 'admin'
-          && get(/databases/$(database)/documents/enrollments/$(doc.enrollmentId)).data.used == false
-          && get(/databases/$(database)/documents/enrollments/$(doc.enrollmentId)).data.createdBy == request.auth.uid
-          && doc.createdAt == request.time
-          && doc.createdBy == request.auth.uid;
-      }
-
-      // A device may always read its own grant (that is the gate check);
-      // only admins may enumerate who else has one.
-      allow get: if signedIn() && request.auth.uid == uid;
-      allow list: if isAdmin();
-
-      allow create: if signedIn() && validAdminDoc(request.resource.data);
-
-      // A grant is permanent for that browser: revoking admin means
-      // removing the doc, never editing it.
-      allow update: if false;
-
-      // An admin can revoke any browser's admin rights; a browser may
-      // always drop its own (that is how you lock a console out again).
-      allow delete: if signedIn() && (isAdmin() || request.auth.uid == uid);
+    // The head moved by exactly the difference between an old sale and
+    // its edited form: the sale count is untouched, only the split moves.
+    function headShiftedBy(before, after, a, b) {
+      return countersOk(after)
+        && after.txnCount == before.txnCount
+        && after.grossPaise == before.grossPaise - b.gross + a.gross
+        && after.cashPaise == before.cashPaise - b.cash + a.cash
+        && after.upiPaise == before.upiPaise - b.upi + a.upi
+        && after.cardPaise == before.cardPaise - b.card + a.card
+        && after.duePaise == before.duePaise - b.due + a.due
+        && after.collectedPaise == before.collectedPaise - b.collected + a.collected;
     }
 
-    // ---------------- Trusted devices ----------------
-    // A recognized browser holds a 256-bit random token whose SHA-256
-    // is this document id. The id is UNGUESSABLE (2^256), so it acts as
-    // a capability: an unauthenticated visitor may GET a device doc by
-    // id to run the auto-login gate BEFORE creating any session, while
-    // listing is reserved for signed-in devices. An ACTIVE
-    // devices/<tokenHash> doc enables automatic sign-in without the
-    // access code; revocation (active = false) or removal forces
-    // verification again. Only an admin grant may revoke, restore or
-    // remove a device (see the update/delete rules below). The
-    // network/client fields are coarse metadata only (no IP, no
-    // fingerprinting).
-    match /devices/{tokenHash} {
-      function validDeviceCreateDoc(doc) {
+    // A day is open unless its head says otherwise. Read from the head
+    // rather than from a separate days collection, so the state and the
+    // rows it governs are one document apart.
+    function dayOpen(dk) {
+      return exists(headPath(dk)) && get(headPath(dk)).data.state == 'open';
+    }
+
+    // ---------------- The day head ----------------
+    // One document per Asia/Kolkata business day. Created once, on that
+    // day's first sale (js/ledger.js ensureDayHead), with zeroed
+    // counters, so the client never has to guess whether it exists.
+    match /dayHeads/{dateKey} {
+      function validHeadCreate(doc) {
         return doc.keys().hasOnly([
-              'tokenHash', 'uid', 'label', 'client', 'network',
-              'createdAt', 'createdBy', 'lastUsedAt', 'lastUsedNetwork',
-              'active', 'enrollmentId'
+              'dateKey', 'state', 'openedAt', 'openedBy',
+              'counters', 'updatedAt', 'updatedBy'
             ])
-          && doc.tokenHash is string && doc.tokenHash.matches('^[a-f0-9]{64}$') && doc.tokenHash == tokenHash
-          && doc.uid is string && doc.uid == request.auth.uid && doc.uid == doc.createdBy
-          && doc.label is string && doc.label.size() >= 1 && doc.label.size() <= 80
-          && doc.client is map
-          && doc.client.keys().hasOnly(['ua', 'lang'])
-          && doc.client.ua is string && doc.client.ua.size() <= 100
-          && doc.client.lang is string && doc.client.lang.size() <= 40
-          && doc.network is map
-          && doc.network.keys().hasOnly(['type', 'saveData', 'online'])
-          && doc.network.type is string && doc.network.type.size() <= 20
-          && doc.network.saveData is bool
-          && doc.network.online is bool
-          && doc.active == true
-          && doc.enrollmentId is string && doc.enrollmentId.matches('^[a-f0-9]{32}$')
-          && exists(/databases/$(database)/documents/enrollments/$(doc.enrollmentId))
-          && get(/databases/$(database)/documents/enrollments/$(doc.enrollmentId)).data.createdBy == request.auth.uid
-          && doc.createdBy == request.auth.uid
-          && doc.createdAt == request.time
-          && doc.lastUsedAt == request.time;
+          && doc.dateKey is string
+          && doc.dateKey == dateKey
+          && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && doc.state == 'open'
+          && doc.openedAt == request.time
+          && doc.openedBy == request.auth.uid
+          && doc.updatedAt == request.time
+          && doc.updatedBy == request.auth.uid
+          && countersOk(doc.counters)
+          && doc.counters.txnCount == 0
+          && doc.counters.grossPaise == 0;
       }
 
-      function validNetwork(net) {
-        return net is map
-          && net.keys().hasOnly(['type', 'saveData', 'online'])
-          && net.type is string && net.type.size() <= 20
-          && net.saveData is bool
-          && net.online is bool;
+      // An OPEN head carries no closing stamp at all, so a stale
+      // closedAt/closedBy can never ride along on a counter write.
+      function openHeadShape(doc) {
+        return doc.keys().hasOnly([
+              'dateKey', 'state', 'openedAt', 'openedBy',
+              'counters', 'updatedAt', 'updatedBy'
+            ])
+          && !doc.keys().hasAny(['closedAt', 'closedBy'])
+          && doc.state == 'open'
+          && commonHeadShape(doc);
+      }
+
+      // A CLOSED head must carry a fresh, real closing stamp.
+      function closedHeadShape(doc) {
+        return doc.keys().hasOnly([
+              'dateKey', 'state', 'openedAt', 'openedBy',
+              'counters', 'closedAt', 'closedBy',
+              'updatedAt', 'updatedBy'
+            ])
+          && doc.state == 'closed'
+          && doc.closedAt == request.time
+          && doc.closedBy == request.auth.uid
+          && commonHeadShape(doc);
+      }
+
+      function commonHeadShape(doc) {
+        return doc.dateKey is string
+          && doc.dateKey == dateKey
+          && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && doc.openedAt is timestamp
+          && doc.openedBy is string
+          && countersOk(doc.counters)
+          && doc.updatedAt == request.time
+          && doc.updatedBy == request.auth.uid;
+      }
+
+      // The head cannot see the sale that moved its counters, so its own
+      // write rule only bounds the change: a no-op merge, a shift of at
+      // most one sale in or out, and the one-way close. The sale's rules
+      // below are what prove the delta was exact.
+      function boundedCounterStep(before, after) {
+        return countersOk(after)
+          && (after.txnCount == before.txnCount
+              || after.txnCount == before.txnCount + 1
+              || after.txnCount == before.txnCount - 1)
+          && after.grossPaise <= before.grossPaise + 100000000000
+          && after.grossPaise + 100000000000 >= before.grossPaise
+          && after.cashPaise <= before.cashPaise + 100000000000
+          && after.cashPaise + 100000000000 >= before.cashPaise
+          && after.upiPaise <= before.upiPaise + 100000000000
+          && after.upiPaise + 100000000000 >= before.upiPaise
+          && after.cardPaise <= before.cardPaise + 100000000000
+          && after.cardPaise + 100000000000 >= before.cardPaise
+          && after.duePaise <= before.duePaise + 100000000000
+          && after.duePaise + 100000000000 >= before.duePaise
+          && after.collectedPaise <= before.collectedPaise + 100000000000
+          && after.collectedPaise + 100000000000 >= before.collectedPaise;
       }
 
       allow read: if signedIn();
-      // Capability read: the 64-hex doc id is the sha256 of a 256-bit
-      // random token held only by the trusted browser, so knowing the
-      // id == owning the credential before any session exists.
-      allow get: if unsigned();
 
-      allow create: if signedIn()
-        && validDeviceCreateDoc(request.resource.data)
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.used == false;
+      allow create: if signedIn() && validHeadCreate(request.resource.data);
 
-      // Managing the trust registry is a console-only power: it decides
-      // who can open the shop at all, so it sits behind isAdmin() rather
-      // than behind the shop code every device already holds.
       allow update: if signedIn()
         && (
-            // An admin revokes a browser (active true -> false).
-            (isAdmin()
-             && request.resource.data.active == false
-             && resource.data.active == true
-             && request.resource.data.keys().hasOnly(['active']))
-            ||
-            // An admin brings a revoked browser back.
-            (isAdmin()
-             && request.resource.data.active == true
-             && resource.data.active == false
-             && request.resource.data.keys().hasOnly(['active', 'lastUsedAt', 'lastUsedNetwork'])
-             && request.resource.data.lastUsedAt == request.time
-             && validNetwork(request.resource.data.lastUsedNetwork))
-            ||
-            // The owning device maintains heartbeat / rename / restore.
-            (request.auth.uid == resource.data.createdBy
-             && request.resource.data.keys().hasOnly(['lastUsedAt', 'lastUsedNetwork', 'label', 'active'])
-             && request.resource.data.lastUsedAt == request.time
-             && validNetwork(request.resource.data.lastUsedNetwork)
-             && request.resource.data.label is string && request.resource.data.label.size() >= 1 && request.resource.data.label.size() <= 80
-             && request.resource.data.active is bool)
+            // Re-asserting a head the client just found, changing
+            // nothing. Keeps the "make sure the day exists" step from
+            // needing to know whether it won the create race.
+            (
+              resource.data.state == 'open'
+              && request.resource.data.counters == resource.data.counters
+              && openHeadShape(request.resource.data)
+            )
+            // Counters moved, but only by a single sale's worth. The
+            // sale's own rule below proves the delta was exact.
+            || (
+              resource.data.state == 'open'
+              && request.resource.data.state == 'open'
+              && boundedCounterStep(resource.data.counters, request.resource.data.counters)
+              && openHeadShape(request.resource.data)
+            )
+            // Close the day: one way only, counters untouched.
+            || (
+              resource.data.state == 'open'
+              && request.resource.data.counters == resource.data.counters
+              && closedHeadShape(request.resource.data)
+            )
           );
 
-      // Full removal (cleanup), console only. The audit-friendly path is
-      // revoke (active = false) above.
-      allow delete: if isAdmin();
+      // A closed day is permanent, and so is a head that is on disk:
+      // nothing may re-open a day, re-date a head, or delete the register.
+      allow delete: if false;
     }
 
-    // ---------------- Transactions ----------------
+    // ---------------- Sales, inside their day ----------------
     // Single-method sales. Money is integer paise; `rate` is paise per
-    // unit, `total` = quantity x rate, `dateKey` is the Asia/Kolkata
-    // business-day key, `createdAt` orders the day.
+    // unit; `total` is always quantity x rate; `dateKey` must equal the
+    // head it is filed under, so a sale can never be filed under the
+    // wrong day; and `amounts` is the split the head counters follow.
     //
-    // Editing (daily ledger) is deliberately narrow: the descriptive
-    // fields may move, but txnId / serviceId / createdAt / createdBy /
-    // dateKey are pinned. Pinning dateKey is what makes the day-close
-    // gate sound — a sale can never be re-dated onto a closed day, nor
-    // pulled off one. `total` is re-derived from quantity x rate on
-    // every write, so money is never client-asserted.
-    match /transactions/{txnId} {
+    // Editing is deliberately narrow: the descriptive fields move, but
+    // txnId / serviceId / dateKey / createdAt / createdBy / customerId
+    // stay pinned to the original row. Pinning dateKey is what keeps the
+    // day-close gate sound — a sale can never be dragged onto a closed
+    // day, nor pulled off one.
+    match /dayHeads/{dateKey}/transactions/{txnId} {
       function validTransactionDoc(doc) {
         return doc.keys().hasOnly([
               'txnId', 'serviceId', 'serviceName', 'quantity',
-              'rate', 'total', 'paymentMethod', 'customerId',
-              'customerName', 'status', 'dateKey',
+              'rate', 'total', 'amounts', 'paymentMethod',
+              'customerId', 'customerName', 'status', 'dateKey',
               'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
             ])
           && doc.txnId is string && doc.txnId.size() <= 120
           && doc.txnId == txnId
-          && doc.serviceId is string && doc.serviceId.size() >= 1 && doc.serviceId.size() <= 120
-          && exists(/databases/$(database)/documents/services/$(doc.serviceId))
-          && get(/databases/$(database)/documents/services/$(doc.serviceId)).data.active == true
-          && doc.serviceName is string && doc.serviceName.size() >= 1 && doc.serviceName.size() <= 80
-          && doc.serviceName == get(/databases/$(database)/documents/services/$(doc.serviceId)).data.name
-          && doc.quantity is int && doc.quantity >= 1 && doc.quantity <= 100000
-          && doc.rate is number && doc.rate >= 0 && doc.rate <= 10000000
-          && doc.total is number && doc.total >= 0 && doc.total <= 100000000000
+          && doc.serviceId is string
+          && doc.serviceId.size() >= 1 && doc.serviceId.size() <= 120
+          && doc.serviceName is string
+          && doc.serviceName.size() >= 1 && doc.serviceName.size() <= 80
+          && validQuantity(doc.quantity)
+          && validRate(doc.rate)
+          && validTotal(doc.total)
           && doc.total == doc.quantity * doc.rate
           && doc.paymentMethod in ['cash', 'upi', 'card', 'due']
+          && validAmounts(doc)
           && doc.customerId is string && doc.customerId.size() <= 200
           && doc.customerName is string && doc.customerName.size() <= 120
           && doc.status in ['paid', 'pending']
           && ((doc.paymentMethod == 'due' && doc.status in ['pending', 'paid'])
               || (doc.paymentMethod != 'due' && doc.status == 'paid'))
           && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && doc.dateKey == dateKey
           && doc.createdBy == request.auth.uid
           && doc.updatedBy == request.auth.uid
           && doc.createdAt == request.time
           && doc.updatedAt == request.time;
       }
 
-      // The editable surface of a sale. Everything here is re-validated
-      // against the live service doc so an edit cannot leave a row whose
-      // serviceName disagrees with the catalog.
       function validTransactionEdit(before, after) {
-        return after.keys().hasAll([
+        return after.keys().hasOnly([
               'txnId', 'serviceId', 'serviceName', 'quantity',
-              'rate', 'total', 'paymentMethod', 'customerId',
-              'customerName', 'status', 'dateKey',
+              'rate', 'total', 'amounts', 'paymentMethod',
+              'customerId', 'customerName', 'status', 'dateKey',
               'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
             ])
           && after.txnId == before.txnId
           && after.serviceId == before.serviceId
           && after.dateKey == before.dateKey
+          && after.dateKey == dateKey
           && after.createdAt == before.createdAt
           && after.createdBy == before.createdBy
           && after.customerId == before.customerId
           && after.serviceId is string && after.serviceId.size() >= 1
-          && exists(/databases/$(database)/documents/services/$(after.serviceId))
-          && get(/databases/$(database)/documents/services/$(after.serviceId)).data.active == true
-          && after.serviceName is string && after.serviceName.size() >= 1 && after.serviceName.size() <= 80
-          && after.serviceName == get(/databases/$(database)/documents/services/$(after.serviceId)).data.name
-          && after.quantity is int && after.quantity >= 1 && after.quantity <= 100000
-          && after.rate is number && after.rate >= 0 && after.rate <= 10000000
-          && after.total is number && after.total >= 0 && after.total <= 100000000000
+          && after.serviceName is string
+          && after.serviceName.size() >= 1 && after.serviceName.size() <= 80
+          && validQuantity(after.quantity)
+          && validRate(after.rate)
+          && validTotal(after.total)
           && after.total == after.quantity * after.rate
           && after.paymentMethod in ['cash', 'upi', 'card', 'due']
+          && validAmounts(after)
           && after.customerName is string && after.customerName.size() <= 120
           && after.status in ['paid', 'pending']
           && ((after.paymentMethod == 'due' && after.status in ['pending', 'paid'])
               || (after.paymentMethod != 'due' && after.status == 'paid'))
-          && after.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
           && after.updatedBy == request.auth.uid
           && after.updatedAt == request.time;
       }
 
+      // `read` also authorizes a collection-group query across every
+      // day's sales, which is what the Developer console's "All recent"
+      // view uses. The day is still enforced per document, because the
+      // head state is read from the document's own parent path.
       allow read: if signedIn();
 
+      // Creating a sale and advancing the day's counters is ONE batch, so
+      // the head must move by exactly this sale's contribution.
       allow create: if signedIn()
-        && validTransactionDoc(request.resource.data);
+        && dayOpen(dateKey)
+        && validTransactionDoc(request.resource.data)
+        && headSteppedBy(
+             get(headPath(dateKey)).data.counters,
+             getAfter(headPath(dateKey)).data.counters,
+             request.resource.data.amounts,
+             1
+           );
 
-      // Editing or settling a sale is only possible while the business
-      // day is still open, and only by a signed-in device.
+      // Editing a sale may move money between payment buckets, so the
+      // head shifts by the difference between the old and new split.
       allow update: if signedIn()
-        && dayOpen(resource.data.dateKey)
-        && validTransactionEdit(resource.data, request.resource.data);
+        && dayOpen(dateKey)
+        && validTransactionEdit(resource.data, request.resource.data)
+        && headShiftedBy(
+             get(headPath(dateKey)).data.counters,
+             getAfter(headPath(dateKey)).data.counters,
+             request.resource.data.amounts,
+             resource.data.amounts
+           );
 
-      // Deleting is likewise confined to an open day. There is no
-      // per-user ownership check because every signed-in device is the
-      // same shop — see the trust model above.
+      // Deleting retreats the counters by exactly this sale.
       allow delete: if signedIn()
-        && dayOpen(resource.data.dateKey);
+        && dayOpen(dateKey)
+        && headSteppedBy(
+             get(headPath(dateKey)).data.counters,
+             getAfter(headPath(dateKey)).data.counters,
+             resource.data.amounts,
+             -1
+           );
     }
 
-    // ---------------- Services ----------------
-    // Any signed-in (code-gated) device may create, rename, re-price or
-    // archive services. Deletion is never allowed, so "removal" means
-    // setting active=false.
-    match /services/{serviceId} {
-      function validServiceDoc(doc) {
-        return doc.keys().hasOnly([
-              'serviceId', 'name', 'code', 'pricePaise',
-              'active', 'sortOrder', 'createdAt', 'createdBy',
-              'updatedAt', 'updatedBy'
-            ])
-          && doc.serviceId is string && doc.serviceId.size() <= 120
-          && doc.serviceId == serviceId
-          && doc.name is string && doc.name.size() >= 1 && doc.name.size() <= 80
-          && doc.code is string && doc.code.size() <= 12
-          && doc.pricePaise is number && doc.pricePaise >= 0 && doc.pricePaise <= 10000000
-          && doc.active is bool
-          && doc.sortOrder is number
-          && doc.createdBy == request.auth.uid
-          && doc.updatedBy == request.auth.uid
-          && doc.createdAt == request.time
-          && doc.updatedAt == request.time;
-      }
-
-      function validServiceUpdate(doc) {
-        return doc.keys().hasOnly([
-              'serviceId', 'name', 'code', 'pricePaise',
-              'active', 'sortOrder', 'createdAt', 'createdBy',
-              'updatedAt', 'updatedBy'
-            ])
-          && doc.serviceId is string && doc.serviceId.size() <= 120
-          && doc.serviceId == serviceId
-          && doc.name is string && doc.name.size() >= 1 && doc.name.size() <= 80
-          && doc.code is string && doc.code.size() <= 12
-          && doc.pricePaise is number && doc.pricePaise >= 0 && doc.pricePaise <= 10000000
-          && doc.active is bool
-          && doc.sortOrder is number
-          && doc.createdAt == resource.data.createdAt
-          && doc.createdBy == resource.data.createdBy
-          && doc.updatedAt == request.time
-          && doc.updatedBy == request.auth.uid;
-      }
-
-      allow read: if signedIn();
-
-      allow create: if signedIn()
-        && validServiceDoc(request.resource.data);
-
-      allow update: if signedIn()
-        && validServiceUpdate(request.resource.data);
-
-      allow delete: if false;
-    }
-
-    // ---------------- Expenses (read-only this build) ----------------
-    // Reading expenses is allowed so the Developer console can show the
-    // table, but every write is denied: recording a spend arrives in a
-    // later build, and nothing may pre-seed a row the rules would then
-    // have to trust.
-    match /expenses/{expId} {
-      allow read: if signedIn();
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
-    }
-
-    // ---------------- Business days ----------------
-    // days/{dateKey} is the close-day register. A document only exists
-    // for a day that has been closed; every other day is open because
-    // `exists()` is false. The close-day action itself ships in a later
-    // part — what matters here is that the transaction rules above
-    // already respect a closed day, so nothing that lands in a closed
-    // day can afterwards be edited or deleted.
-    match /days/{dateKey} {
-      function validDayDoc(doc) {
-        return doc.keys().hasOnly(['dateKey', 'closed', 'closedAt', 'closedBy'])
-          && doc.dateKey is string
-          && doc.dateKey == dateKey
-          && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
-          && doc.closed == true
-          && doc.closedAt == request.time
-          && doc.closedBy == request.auth.uid;
-      }
-
-      allow read: if signedIn();
-      allow create: if signedIn() && validDayDoc(request.resource.data);
-      // A closed day is permanent: nothing may re-open or re-date it.
-      allow update: if false;
-      allow delete: if false;
-    }
-
-    // Everything else (members, pendingMembers, …) is denied by default.
+    // Everything else is denied. The service catalog, expenses, devices,
+    // admins, enrollments and settings are all Realtime Database paths
+    // now, and anything unlisted here is not part of this app.
     match /{document=**} {
       allow read, write: if false;
     }

@@ -24,7 +24,8 @@
     "imports": {
       "firebase/app": "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js",
       "firebase/auth": "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js",
-      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js"
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js",
+      "firebase/database": "https://www.gstatic.com/firebasejs/12.18.0/firebase-database.js"
     }
   }
   </script>
@@ -244,7 +245,7 @@
     let cursor = null;        // resume point for the next page
     let hasMore = false;
     let dayCount = 0;         // server-side count for the day
-    let closed = false;       // days/{dateKey}.closed
+    let closed = false;       // dayHeads/{dateKey}.state === "closed"
     let loading = false;
     let loadError = null;     // kept so render() can preserve the error state
 
@@ -532,10 +533,10 @@
       loading = false;
       render();
 
-      /* The count aggregate is a nicety, and it cannot be served from
-         the offline cache. Fetch it on its own so a failure (typically
-         "offline") leaves the day's rows on screen. The date is
-         re-checked on the way back so a slow count cannot land on top
+      /* The day's true count is a nicety, fetched on its own so a failure
+         never takes the day's rows off the screen. It is normally the day
+         head's own counter, which is cached and works offline. The date
+         is re-checked on the way back so a slow read cannot land on top
          of a day the user has already navigated away from. */
       try {
         const count = await countDayTransactions(requested);
@@ -609,7 +610,7 @@
 
       setLoading(btn, true);
       try {
-        await markTransactionPaid(row.txnId);
+        await markTransactionPaid(row.txnId, row.dateKey);
         row.status = "paid";
         toast("Marked as paid.", "success");
         render();
@@ -634,7 +635,7 @@
       if (!ok) return;
 
       try {
-        await deleteTransaction(row.txnId);
+        await deleteTransaction(row.txnId, row.dateKey);
         rows = rows.filter((r) => r.txnId !== row.txnId);
         dayCount = Math.max(0, dayCount - 1);
         toast("Sale deleted.", "success");
@@ -761,7 +762,7 @@
 
       setLoading(saveBtn, true);
       try {
-        const result = await updateTransaction(editing.txnId, {
+        const result = await updateTransaction(editing.txnId, editing.dateKey, {
           serviceId: document.getElementById("editService").value,
           quantity: qty,
           ratePaise,

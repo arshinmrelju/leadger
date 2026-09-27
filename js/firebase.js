@@ -5,7 +5,8 @@
    The object below is the *public* Firebase client configuration.
    Firebase client config is NOT a secret — it is shipped to every
    browser that opens the app (it only identifies the project). All
-   real security lives in `firestore.rules` and Firebase Authentication.
+   real security lives in `firestore.rules`, `database.rules.json`
+   and Firebase Authentication.
    NEVER paste service-account / admin private keys here.
 
    HOW TO CONNECT A REAL PROJECT
@@ -15,14 +16,32 @@
       every `YOUR_*` value below.
    3. Enable the sign-in methods you want (Authentication -> Sign-in
       method): Google and/or Email/Password.
-   4. Deploy `firestore.rules` and `firestore.indexes.json`
-      (`firebase deploy --only firestore`).
+   4. Deploy both rule sets and the Firestore indexes
+      (`firebase deploy --only firestore,database`).
+
+   ONE PROJECT, TWO DATABASES
+   Firestore holds the money and nothing else, partitioned by day:
+     dayHeads/{dateKey}                     one document per business day
+     dayHeads/{dateKey}/transactions/{id}   that day's sales
+   Realtime Database holds everything the money does not need to sit
+   next to — the shop identity, the two access codes, the trusted-device
+   registry, the service catalog and expenses. It was chosen for them
+   because reads are whole-tree (a catalog, a device list) with no
+   paging, no serverTimestamp and no composite index to maintain, and
+   because its rules language can compare a submitted secret against a
+   server-held one — which is what the enrollment check needs.
    ========================================================= */
 
 export const FIREBASE_CONFIG = {
   apiKey: "AIzaSyD8IOVbktIMNhuziVf40WqhRMpp3pNu04w",
   authDomain: "trustxplpy.firebaseapp.com",
   projectId: "trustxplpy",
+  /* VERIFY THIS against Project settings -> Your apps -> Web app ->
+     Realtime Database. Newer projects use the "-default-rtdb" form,
+     older ones use "firebaseio.com" directly. Realtime Database refuses
+     to guess, so a wrong value here breaks the catalog, the devices
+     registry and expenses — everything except the ledger itself. */
+  databaseURL: "https://trustxplpy-default-rtdb.firebaseio.com",
   storageBucket: "trustxplpy.firebasestorage.app",
   messagingSenderId: "35151713005",
   appId: "1:35151713005:web:4450046d9fc20e133372e4",
@@ -45,25 +64,26 @@ export function isConfigured() {
 let firebridgePromise = null;
 
 /**
- * Initialize (idempotent) Firebase App + Auth + Firestore.
+ * Initialize (idempotent) Firebase App + Auth + Firestore + RTDB.
  * The SDK is loaded lazily from the pinned CDN (`import map` in the
  * HTML pages) so the app shell never depends on the network to boot.
  *
- * Offline-first: Firestore is configured with IndexedDB persistence
- * (multi-tab), so data keeps working during temporary internet loss
- * and writes sync automatically when connectivity returns.
+ * Offline-first: both databases are configured with local persistence
+ * (multi-tab for Firestore), so data keeps working during temporary
+ * internet loss and writes sync automatically when connectivity returns.
  *
- * @returns {Promise<{app, auth, db, googleProvider, authMod, firestore} | null>}
+ * @returns {Promise<{app, auth, db, rtdb, googleProvider, authMod, firestore, rtdbMod} | null>}
  */
 export function initFirebase() {
   if (!isConfigured()) return Promise.resolve(null);
   if (firebridgePromise) return firebridgePromise;
 
   firebridgePromise = (async () => {
-    const [{ initializeApp }, authMod, firestoreMod] = await Promise.all([
+    const [{ initializeApp }, authMod, firestoreMod, rtdbMod] = await Promise.all([
       import("firebase/app"),
       import("firebase/auth"),
       import("firebase/firestore"),
+      import("firebase/database"),
     ]);
 
     const app = initializeApp(FIREBASE_CONFIG);
@@ -89,13 +109,31 @@ export function initFirebase() {
       db = firestoreMod.getFirestore(app);
     }
 
+    /* Realtime Database caches in memory by default and persists to
+       IndexedDB when it can, with no configuration to get wrong. It is
+       resolved defensively: Firestore is the money path and must still
+       boot if a misconfigured databaseURL takes the catalog, the
+       devices registry and expenses down with it. Callers check `rtdb`
+       and surface a clear message instead of failing obscurely. */
+    let rtdb = null;
+    try {
+      rtdb = rtdbMod.getDatabase(app);
+    } catch (err) {
+      console.error(
+        "[trustx-ledger] Realtime Database unavailable — check databaseURL in js/firebase.js:",
+        err
+      );
+    }
+
     return {
       app,
       auth,
       db,
+      rtdb,
       googleProvider: new authMod.GoogleAuthProvider(),
       authMod,
       firestore: firestoreMod,
+      rtdbMod,
     };
   })();
 

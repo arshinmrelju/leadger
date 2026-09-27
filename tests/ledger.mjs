@@ -39,6 +39,16 @@ import {
 } from "../js/service-catalog.js";
 
 import {
+  DAY_STATE,
+  COUNTER_FIELDS,
+  emptyCounters,
+  splitAmounts,
+  amountsFromDoc,
+  isCounterSetValid,
+  stepCounters,
+} from "../js/day-heads.js";
+
+import {
   serviceMatchesQuery,
   serviceTile,
   serviceGroupOf,
@@ -643,4 +653,251 @@ test("fixedPlacementCorrection: no correction when the first try was right", () 
   assert.equal(fixedPlacementCorrection(220, 300, 220.4, 299.6), null);
   /* One axis off is still a correction. */
   assert.deepEqual(fixedPlacementCorrection(220, 300, 220, 260), { left: 220, top: 340 });
+});
+
+/* =========================================================
+   The day head.
+
+   A business day is one document whose counters are advanced in the same
+   atomic batch as each sale, and firestore.rules re-checks on every write
+   that the head moved by exactly that sale. So this arithmetic is not
+   cosmetic: if it drifts, sales stop being recordable, and if it is
+   wrong in the permissive direction the day's totals are wrong.
+   ========================================================= */
+
+const COUNTER_MAX = 100000000000000; // mirrors the rules' field range
+
+/**
+ * A line-by-line mirror of the `countersOk` rule in firestore.rules, so
+ * the client-side check can be held to the server's contract.
+ */
+function rulesCountersOk(c) {
+  if (!c || typeof c !== "object") return false;
+  const allowed = new Set([
+    "txnCount",
+    "grossPaise",
+    "cashPaise",
+    "upiPaise",
+    "cardPaise",
+    "duePaise",
+    "collectedPaise",
+  ]);
+  for (const key of Object.keys(c)) if (!allowed.has(key)) return false;
+  for (const field of allowed) {
+    const v = c[field];
+    if (v === undefined) continue; // the rules' hasOnly tolerates a subset
+    if (!Number.isInteger(v) || v < 0 || v > COUNTER_MAX) return false;
+  }
+  const g = c.grossPaise ?? 0;
+  const parts = (c.cashPaise ?? 0) + (c.upiPaise ?? 0) + (c.cardPaise ?? 0) + (c.duePaise ?? 0);
+  if (g !== parts) return false;
+  if ((c.collectedPaise ?? 0) !== g - (c.duePaise ?? 0)) return false;
+  return true;
+}
+
+test("emptyCounters: a new day is a valid, all-zero day", () => {
+  const c = emptyCounters();
+  assert.deepEqual(Object.keys(c).sort(), [...COUNTER_FIELDS].sort(), "exactly the fields the rules pin");
+  assert.ok(isCounterSetValid(c), "an untouched day still satisfies the rules' invariant");
+  assert.equal(c.txnCount, 0);
+  assert.equal(c.grossPaise, 0);
+  assert.equal(c.collectedPaise, 0);
+  /* A fresh object every call, so a caller cannot poison the next day. */
+  emptyCounters().grossPaise = 999;
+  assert.equal(emptyCounters().grossPaise, 0);
+});
+
+test("splitAmounts: a sale lands in exactly one bucket, and only due is uncollected", () => {
+  for (const method of ["cash", "upi", "card", "due"]) {
+    const a = splitAmounts(12345, method);
+    const buckets = [a.cash, a.upi, a.card, a.due];
+    assert.equal(a.gross, 12345, "gross is the sale total");
+    assert.equal(
+      buckets.reduce((s, v) => s + v, 0),
+      a.gross,
+      "the four buckets add up to the gross"
+    );
+    assert.equal(buckets.filter((v) => v > 0).length, 1, "only one bucket is non-zero");
+    assert.equal(a[method], a.gross, `the ${method} bucket carries the sale`);
+    if (method === "due") {
+      assert.equal(a.collected, 0, "a due sale has not been collected");
+    } else {
+      assert.equal(a.collected, a.gross, "a settled sale is collected in full");
+    }
+  }
+});
+
+test("splitAmounts: a zero-rupee sale is still a sale", () => {
+  const a = splitAmounts(0, "upi");
+  assert.equal(a.gross, 0);
+  assert.equal(a.collected, 0);
+  /* The count is the counter that says a sale happened; the money split
+     being empty must not make the day look unsold. */
+  const stepped = stepCounters(emptyCounters(), a, 1);
+  assert.equal(stepped.txnCount, 1);
+  assert.ok(isCounterSetValid(stepped));
+});
+
+test("splitAmounts: an unknown method is refused rather than silently worth nothing", () => {
+  /* Silently returning all zeros would let a sale be recorded while
+     contributing nothing to its day — the exact failure the head exists
+     to make impossible. */
+  for (const bad of ["bank", "", null, undefined, 0, "CASH", "Cash"]) {
+    assert.throws(
+      () => splitAmounts(500, bad),
+      Error,
+      `method ${JSON.stringify(bad)} must not produce a sale split`
+    );
+  }
+});
+
+test("isCounterSetValid: agrees with the firestore.rules invariant", () => {
+  /* Both must give the same answer for any well-formed counter set, or
+     the client will either distrust a good day or trust a bad one. */
+  const cases = [
+    emptyCounters(),
+    stepCounters(emptyCounters(), splitAmounts(50000, "cash"), 1),
+    stepCounters(emptyCounters(), splitAmounts(50000, "due"), 1),
+    /* Buckets that do not add up to the gross. */
+    { ...emptyCounters(), txnCount: 1, grossPaise: 100, cashPaise: 40 },
+    /* Collected disagreeing with the gross minus due. */
+    { ...emptyCounters(), txnCount: 1, grossPaise: 100, cashPaise: 100, collectedPaise: 50 },
+    /* A negative count. */
+    { ...emptyCounters(), txnCount: -1 },
+    /* A fractional paise count. */
+    { ...emptyCounters(), grossPaise: 10.5 },
+    /* Past the rules' ceiling. */
+    { ...emptyCounters(), grossPaise: COUNTER_MAX + 1 },
+    /* An unexpected field the rules would not allow. */
+    { ...emptyCounters(), surprise: 1 },
+  ];
+  for (const c of cases) {
+    assert.equal(
+      isCounterSetValid(c),
+      rulesCountersOk(c),
+      `client and rules must agree on ${JSON.stringify(c)}`
+    );
+  }
+});
+
+test("isCounterSetValid: the client is deliberately stricter than the rules on a missing field", () => {
+  /* The rules' keys().hasOnly() tolerates an absent counter and reads it
+     as zero, which is fine for them because the field is pinned on every
+     write. A head read back with one missing is not something to show a
+     shopkeeper as a day's takings, so the client refuses it. */
+  const partial = { ...emptyCounters() };
+  delete partial.cardPaise;
+  assert.equal(rulesCountersOk(partial), true, "the rules would accept this");
+  assert.equal(isCounterSetValid(partial), false, "the client refuses it and folds the rows instead");
+});
+
+test("isCounterSetValid: rubbish in, false out — never a crash", () => {
+  for (const bad of [null, undefined, 0, "", "nope", [], NaN, true]) {
+    assert.equal(isCounterSetValid(bad), false, `${JSON.stringify(bad)} is not a counter set`);
+  }
+});
+
+test("stepCounters: a sale and its reversal land the day back where it started", () => {
+  /* This is the property the rules exploit: an edit writes the difference,
+     and a delete writes the negative. If a step were not exactly
+     reversible the day would drift a little on every correction. */
+  for (const method of ["cash", "upi", "card", "due"]) {
+    for (const total of [0, 1, 499, 100000, 99999999]) {
+      const before = emptyCounters();
+      const amounts = splitAmounts(total, method);
+      const after = stepCounters(before, amounts, 1);
+      const back = stepCounters(after, amounts, -1);
+      assert.deepEqual(back, before, `${method} ${total} must reverse exactly`);
+    }
+  }
+});
+
+test("stepCounters: does not mutate the day it was given", () => {
+  const before = stepCounters(emptyCounters(), splitAmounts(1000, "cash"), 1);
+  const snapshot = { ...before };
+  stepCounters(before, splitAmounts(70000, "upi"), 1);
+  assert.deepEqual(before, snapshot, "a sale must not edit the caller's copy of the day");
+});
+
+test("a whole day of sales keeps the head consistent and the total honest", () => {
+  /* Walk a realistic day and check the head after every single sale, the
+     way the rules check it after every single write. */
+  const sales = [
+    ["cash", 2, 5000],
+    ["upi", 1, 100000],
+    ["due", 3, 25000],
+    ["card", 1, 129900],
+    ["due", 1, 75000],
+    ["cash", 5, 1200],
+    ["upi", 2, 4999],
+  ];
+
+  let head = emptyCounters();
+  let expectedGross = 0;
+  let expectedCollected = 0;
+  let expectedDue = 0;
+
+  for (const [method, qty, ratePaise] of sales) {
+    const totalPaise = qty * ratePaise;
+    head = stepCounters(head, splitAmounts(totalPaise, method), 1);
+    expectedGross += totalPaise;
+    if (method === "due") expectedDue += totalPaise;
+    else expectedCollected += totalPaise;
+
+    assert.ok(
+      isCounterSetValid(head),
+      `the head must satisfy the rules after a ${method} sale: ${JSON.stringify(head)}`
+    );
+  }
+
+  assert.equal(head.txnCount, sales.length, "every sale counted once");
+  assert.equal(head.grossPaise, expectedGross, "the day's gross is the sum of its sales");
+  assert.equal(head.collectedPaise, expectedCollected, "collected is everything not still owed");
+  assert.equal(head.duePaise, expectedDue, "what is owed is tracked on its own");
+  assert.equal(head.collectedPaise + head.duePaise, head.grossPaise, "collected and owed cover the gross");
+});
+
+test("amountsFromDoc: prefers the stored split, re-splits a document that predates it", () => {
+  /* A sale written with the split, exactly as the current code stores it. */
+  const modern = { total: 5000, paymentMethod: "upi", amounts: splitAmounts(5000, "upi") };
+  assert.deepEqual(amountsFromDoc(modern), splitAmounts(5000, "upi"));
+
+  /* A sale from before the split existed: the total is still there, so
+     the contribution can be recovered under the document's OWN method
+     rather than whatever bucket the caller happened to default to. */
+  for (const method of ["cash", "upi", "card", "due"]) {
+    const legacy = { total: 5000, paymentMethod: method };
+    assert.deepEqual(
+      amountsFromDoc(legacy),
+      splitAmounts(5000, method),
+      `a legacy ${method} sale must be recovered as ${method}`
+    );
+  }
+
+  /* A stored split wins over the fallback, even when they disagree — it
+     is what the day's counters were actually advanced by. */
+  const drifted = { total: 9999, paymentMethod: "cash", amounts: splitAmounts(5000, "upi") };
+  assert.deepEqual(amountsFromDoc(drifted), splitAmounts(5000, "upi"));
+
+  /* An explicit override still applies when a caller really means it. */
+  assert.deepEqual(amountsFromDoc({ total: 5000, paymentMethod: "upi" }, "card"), splitAmounts(5000, "card"));
+
+  /* A stored split is read defensively: junk in one bucket must not
+     become NaN and poison the day. */
+  const junk = { total: 5000, paymentMethod: "upi", amounts: { gross: 5000, cash: "x", upi: null, card: 0, due: 0, collected: 0 } };
+  assert.deepEqual(amountsFromDoc(junk), { gross: 5000, cash: 0, upi: 0, card: 0, due: 0, collected: 0 });
+
+  /* An unreadable method is recovered as cash rather than throwing, so
+     a shopkeeper can still fix or delete a malformed row. */
+  const broken = { total: 5000, paymentMethod: "cheque" };
+  assert.deepEqual(amountsFromDoc(broken), splitAmounts(5000, "cash"));
+
+  /* Nothing to recover at all still gives a zero contribution. */
+  assert.deepEqual(amountsFromDoc(null), splitAmounts(0, "cash"));
+});
+
+test("the day state names are frozen, so a rule and a client cannot drift apart", () => {
+  assert.ok(Object.isFrozen(DAY_STATE), "DAY_STATE must not be editable at runtime");
+  assert.deepEqual(Object.values(DAY_STATE).sort(), ["closed", "open"]);
+  assert.ok(Object.isFrozen(COUNTER_FIELDS), "COUNTER_FIELDS must not be editable at runtime");
 });

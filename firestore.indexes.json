@@ -1,10 +1,19 @@
-﻿{
+{
   "indexes": [
     {
+      "comment": "Day ledger paging. The day is now the partition (dayHeads/{dateKey}/transactions), so this serves one subcollection: newest sale first, with the document id as a stable tiebreak for the cursor. A single-field orderBy would be served by the automatic index, so this one is belt and braces — it pins the cursor order so it can never depend on an implicit tiebreak, and it stays a declared contract if a second ordering is ever added.",
       "collectionGroup": "transactions",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "dateKey", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "comment": "Developer console 'All recent' view, which spans every day. A collection-group query reaches all dayHeads/*/transactions subcollections at once, so the old dateKey-first composite index is gone: the day is no longer a field being filtered on.",
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
         { "fieldPath": "createdAt", "order": "DESCENDING" },
         { "fieldPath": "__name__", "order": "DESCENDING" }
       ]

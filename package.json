@@ -5,6 +5,7 @@
   "description": "TrustX Ledger — digital service shop ledger (static Firebase app)",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/ledger.mjs tests/module-graph.mjs"
+    "test": "node --test tests/ledger.mjs tests/module-graph.mjs",
+    "test:rules": "node tools/rules-check.mjs"
   }
 }

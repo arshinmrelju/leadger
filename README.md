@@ -1,4 +1,4 @@
-﻿# TrustX Ledger
+# TrustX Ledger
 
 A lightweight, production-oriented digital service shop ledger for a small
 Indian digital-service / Akshaya-style shop. The employee works in a desktop
@@ -38,7 +38,7 @@ the history browser, and the console now needs a **second code** of its own:
 - Sales, the service catalog, expenses and the day-close register are
   unchanged — the employee still does all of that with the shop code alone.
 
-> **Deploy required:** `firebase deploy --only firestore`. The rules add
+> **Deploy required:** `firebase deploy --only firestore,database`. The rules add
 > `settings/admin`, the `scope` field on enrollments, the `admins/{uid}`
 > collection and the admin gate on `devices`. Until those land, the console
 > unlock will be refused and device management will follow the old rules.
@@ -59,7 +59,7 @@ totals for transactions, revenue, cash, UPI, card and due underneath.
   `updatedBy`; the rules re-derive `total` from `quantity × rate` and pin
   `txnId`, `serviceId`, `createdAt`, `createdBy` and `dateKey` so a sale can
   never be silently re-dated or have its service name drift from the catalog.
-- **Closed days are read-only.** When a `days/{dateKey}` document exists the
+- **Closed days are read-only.** When a `dayHeads/{dateKey}` document is `closed` the
   page shows a "day is closed" notice, disables the row actions, and the rules
   reject the write server-side regardless of what the UI allows.
 - **Pagination is prepared** with cursor paging (`orderBy createdAt DESC,
@@ -104,12 +104,12 @@ business day; `createdAt` is the Firestore timestamp used for ordering.
 NET = today's collections − today's expenses (dues are money not yet
 received and are excluded).
 
-> **Deploy required:** run `firebase deploy --only firestore` first — the
+> **Deploy required:** run `firebase deploy --only firestore,database` first — the
 > rules now add the trust registry (`settings/security`, `enrollments/**`,
 > `devices/**`) and allow the auto-login gate to read a device doc by its
 > unguessable hash id before any session exists. v0.9.0 additionally opens
 > `transactions` to validated `update`/`delete` while the day is open, adds
-> the read-only `days/{dateKey}` close register, and extends the composite
+> the `dayHeads/{dateKey}` close register, and extends the composite
 > index behind the ledger's cursor paging (`dateKey` ASC + `createdAt` DESC
 > + `__name__` DESC). v0.10.0 adds the admin gate: `settings/admin` (a second,
 > never client-readable code), the `scope` field on `enrollments/**`, the
@@ -140,7 +140,8 @@ received and are excluded).
 ├── js/
 │   ├── firebase.js       Firebase config, lazy SDK load, offline persistence
 │   ├── auth.js           Code sign-in, trusted-device enrollment/check, shop bootstrap
-│   ├── ledger.js         Transactions/services reads + writes + day queries
+│   ├── ledger.js         Firestore day heads + sales, RTDB services/expenses
+│   ├── day-heads.js      Pure day-head counters + per-method split — no Firebase
 │   ├── day-ledger.js     Pure day-view logic (date shift, filter, totals) — no Firebase
 │   ├── service-catalog.js  Default service seed list (pure data) — no Firebase
 │   ├── admin.js          Developer console rendering
@@ -149,15 +150,16 @@ received and are excluded).
 │   ├── app.js            Shared init, toasts, modals, shell behavior, errors
 │   └── utils.js          Money (paise), dates (Asia/Kolkata), validation
 ├── tests/
-│   ├── ledger.mjs        Node test suite for money/validation/day-view/catalog helpers
+│   ├── ledger.mjs        Node test suite for money/validation/day-view/catalog/day-head helpers
 │   └── module-graph.mjs  Every named import must resolve to a real export
 ├── package.json          Scripts (npm test), no runtime deps
 ├── assets/
 │   ├── logo.svg
 │   └── favicon.svg
-├── firestore.rules       Security rules (single-shop model enforced here)
+├── firestore.rules       Firestore security rules — the money only
 ├── firestore.indexes.json
-├── firebase.json         Firebase Hosting + Firestore deploy config
+├── database.rules.json   Realtime Database rules — settings, devices, catalog, expenses
+├── firebase.json         Hosting + Firestore + Realtime Database deploy config
 ├── .env.example
 └── README.md
 ```
@@ -168,9 +170,11 @@ build step to run the app.
 
 ## Data model (single shop)
 
-All collections are top-level — there is no `shops/` path:
+One shop, one Firebase project, **two databases**. There is no `shops/`
+path in either. Everything the money does not need to sit next to is in
+the Realtime Database:
 
-| Path | Read | Write |
+| Realtime Database path | Read | Write |
 |---|---|---|
 | `settings/general` | code-signed-in devices | auto-created on first use; any signed-in device may edit |
 | `settings/security` | **never readable or writable by clients** | seeded with the default code on first use; enrollment rules compare against it server-side |
@@ -178,16 +182,58 @@ All collections are top-level — there is no `shops/` path:
 | `enrollments/{nonce}` | denied | one-time proof-of-code, `scope: 'shop' \| 'admin'` (single use, owner-burn) during first-time device setup and console unlock |
 | `devices/{tokenHash}` | signed-in devices (list); unauthenticated GET **by unguessable hash id** (the auto-login gate) | enrollment creates; owner heartbeats/renames; **revoke/restore/remove require an admin grant** |
 | `admins/{uid}` | the device itself (`get`); list is admin-only | created only from an unused `scope: 'admin'` enrollment; never updated; deleted by an admin or by the device itself |
-| `transactions/{txnId}` | code-signed-in devices | create: signed-in, server-validated (`createdBy == uid`, money checks). update/delete: signed-in **and the day is still open** |
 | `services/{serviceId}` | code-signed-in devices | signed-in; `delete` always denied (archive via `active=false`) |
-| `expenses/{expId}` | code-signed-in devices | (writing arrives in a later build) |
-| `days/{dateKey}` | code-signed-in devices | absent document = day is **open**; a present document is a closed day, written once and never updated or deleted |
+| `expenses/{dateKey}/{expId}` | code-signed-in devices | **read-only in this build** — no client write path exists; populated by a trusted writer that bypasses rules |
 
-A transaction document: `serviceId`, `serviceName`, `quantity`,
-`rate` (paise/unit), `total` (`quantity * rate` — re-verified server-side),
-`paymentMethod` (`cash`/`upi`/`card`/`due`), `status` (`paid`/`pending`,
-derived from method), `customerId`/`customerName` (customer name optional),
-`dateKey`, `createdAt`/`updatedAt`, `createdBy`/`updatedBy`.
+The money is in Firestore, and it is the only thing there:
+
+| Firestore path | Read | Write |
+|---|---|---|
+| `dayHeads/{dateKey}` | code-signed-in devices | created on a day's first sale; counters move **only** in the same atomic batch as a sale, edit or delete, and the rules re-check the delta. Absent document = day is **open**; a `closed` day is written once and never reopened |
+| `dayHeads/{dateKey}/transactions/{txnId}` | code-signed-in devices | create: signed-in, server-validated (`createdBy == uid`, money checks, head delta). update/delete: signed-in **and the day is still open** |
+
+### Which database holds what
+
+**Cloud Firestore holds the money and nothing else.** The business day is
+the partition, so a day is a single document and its sales are a
+subcollection of that document:
+
+- `dayHeads/{dateKey}` — the day: `state` (`open`/`closed`),
+  `openedAt`/`openedBy`, optional `closedAt`/`closedBy`, and `counters`
+  (`txnCount`, `grossPaise`, `cashPaise`, `upiPaise`, `cardPaise`,
+  `duePaise`, `collectedPaise`).
+- `dayHeads/{dateKey}/transactions/{txnId}` — the sales recorded that day.
+
+Two things follow from that, and both are deliberate:
+
+- **A sale and the day's totals are one atomic batch.** The rules prove the
+  head moved by exactly that sale's `amounts` split, so a sale cannot land
+  without the day following it, and an edit or delete cannot leave the day
+  counting money that is gone. The pure arithmetic behind this lives in
+  `js/day-heads.js` and is unit-tested against the rules' own invariant.
+- **The dashboard reads one document instead of a whole day of sales.** If
+  the head is missing or its counters fail the consistency check, the day's
+  rows are folded instead, so the numbers on screen are never worse than
+  they were before the day was given a head.
+
+**Realtime Database holds everything the money does not need to sit next
+to** — shop settings, the device registry, the service catalog and
+expenses. The paths and their rules are in `database.rules.json`; the
+Firestore equivalent is gone entirely.
+
+One consequence worth knowing: the catalog is on the other database, and
+Firestore rules cannot read across. A sale therefore stores `serviceId`
+**plus a snapshot** of the `serviceName` it was sold under, and the rules
+only prove that name is a sane string. The client is what refuses to sell
+an archived service.
+
+A transaction document: `txnId`, `serviceId`, `serviceName` (snapshot),
+`quantity`, `rate` (paise/unit), `total` (`quantity * rate` — re-verified
+server-side), `amounts` (the per-method split the head counters are
+advanced by), `paymentMethod` (`cash`/`upi`/`card`/`due`), `status`
+(`paid`/`pending`, derived from method), `customerId`/`customerName`
+(customer name optional), `dateKey`, `createdAt`/`updatedAt`,
+`createdBy`/`updatedBy`.
 
 ### Default service catalog
 
@@ -269,13 +315,22 @@ Then open <http://localhost:3000/> (or the printed port).
 2. **Add app → Web app** and register a nickname (e.g. `trustx-ledger`).
 3. Open **Project settings → Your apps** and copy the `firebaseConfig` block.
 4. Edit `js/firebase.js` and replace **every** `YOUR_*` placeholder
-   (`apiKey`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`).
+   (`apiKey`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`),
+   and set `databaseURL` to the Realtime Database URL from the same page.
 5. Enable the sign-in method the app needs:
    **Authentication → Sign-in method → Anonymous**.
    The free Spark plan is enough — **no Cloud Functions are required**.
 
+The config object is not complete without `databaseURL`, and the app needs
+it for more than the catalog: the trusted-device registry, the shop and
+admin codes, the Developer console and expenses all live in the Realtime
+Database. A wrong or missing URL leaves the ledger working (sales are
+Firestore) but the login gate, the quick-services grid and the expense
+panel degraded, with the reason in the browser console.
+
 Firebase **client configuration is not a secret** — it goes in the frontend
-by design. All real security lives in `firestore.rules` and Authentication.
+by design. All real security lives in `firestore.rules`, `database.rules.json` and
+Authentication.
 Never paste service-account or admin private keys into frontend code.
 
 The app detects the placeholders and stays in a safe "setup needed" mode
@@ -290,11 +345,12 @@ firebase use --add        # select or create the project, e.g. alias "default"
 
 You can also put the project id in `.env` (see `.env.example`).
 
-## Deploy to Firebase Hosting & Firestore
+## Deploy to Firebase Hosting, Firestore & the Realtime Database
 
 ```bash
 firebase deploy --only hosting
-firebase deploy --only firestore     # rules + indexes
+firebase deploy --only firestore     # Firestore rules + indexes
+firebase deploy --only database      # Realtime Database rules
 ```
 
 ## Access
@@ -398,6 +454,27 @@ There is no lint, type-check or build step, and no CI. `npm test` and
 `node --check` on each module are the whole safety net, so run both after
 touching a file.
 
+### The security rules
+
+Rules are behaviour, not configuration, so they get their own check:
+
+```bash
+npm run test:rules
+```
+
+`tools/rules-check.mjs` starts a throwaway Firestore emulator, points it at a
+test-only copy of `firestore.rules`, and drives the day-head scenarios through
+it — that a sale cannot land unless the day's counters move by exactly that
+sale, that the payment buckets must re-derive the total, that `total` must be
+`quantity x rate`, that a settled due sale moves no money, that a day closes
+once and never reopens, and that nothing outside `dayHeads` is writable. It
+starts and stops the emulator itself, so it is not part of `npm test`.
+
+It deliberately does not run the real `request.time` pins: the public REST
+API cannot express `FieldValue.serverTimestamp()`, so the script substitutes a
+fixed literal for that one expression and leaves every clause carrying the
+day's arithmetic exactly as written.
+
 A Firestore emulator rules suite (signed-in-only access with per-document
 validation, money integrity, day-close enforcement) is planned for a later
 hardening pass.
@@ -411,10 +488,17 @@ hardening pass.
 - Day-view helpers live in `js/day-ledger.js` (no Firebase import):
   `shiftDateKey`, `dayHeading`, `formatEntryTime`, `filterDayRows`,
   `dayTotals`, `mergeDayPage`, `sortDayRows`.
+- The day head's own arithmetic lives in `js/day-heads.js` (no Firebase
+  import): `emptyCounters`, `splitAmounts`, `amountsFromDoc`,
+  `isCounterSetValid`, `stepCounters`, plus the frozen `DAY_STATE`,
+  `PAYMENT_METHODS` and `COUNTER_FIELDS`. It is the client-side twin of
+  the rules, and the test suite checks the two agree.
 - Day-scoped reads/writes live in `js/ledger.js`:
   `fetchDayPage({ dateKey, pageSize, cursor })`, `countDayTransactions`,
-  `fetchDayState`, `updateTransaction`, `markTransactionPaid`,
-  `deleteTransaction`.
+  `fetchDayState`, `updateTransaction(txnId, dateKey, patch)`,
+  `markTransactionPaid(txnId, dateKey)`, `deleteTransaction(txnId, dateKey)`.
+  The mutations take a `dateKey` because a sale is addressed by its day,
+  not by a flat id.
 - UI helpers live in `js/app.js`:
   `toast(msg, type)`, `confirm({...})`, `setLoading(button, bool)`.
   `confirm()` escapes its `message` for you — pass `htmlMessage` instead
@@ -471,14 +555,20 @@ hardening pass.
 - **"Firebase is not configured yet."** — Replace the `YOUR_*` values in
   `js/firebase.js` (see *Connect Firebase* above).
 - **"That code is not recognised."** — the code you typed doesn't match the
-  code stored in `settings/security`. The default seed is `TRUSTX`; it can
-  only be changed from the Firebase console (edit the `security` document)
-   or by re-seeding — there is intentionally no in-app setter. The admin code
-   works the same way in the `admin` document, seeded `TRUSTXADMIN`.
+  code stored in the Realtime Database at `settings/security`. The default seed
+  is `TRUSTX`; it can only be changed from the Firebase console (Realtime
+  Database → `settings` → `security`) or by re-seeding — there is intentionally
+  no in-app setter. The admin code works the same way at `settings/admin`,
+  seeded `TRUSTXADMIN`.
 - **"That admin code is not recognised" / the console stays on the unlock
-  card** — either the code is wrong, or `firebase deploy --only firestore` has
+  card** — either the code is wrong, or `firebase deploy --only database` has
   not shipped the v0.10.0 rules yet (`settings/admin` missing, `admins/**`
   denied).
+- **"Realtime Database is not reachable."** — `databaseURL` in `js/firebase.js`
+  is wrong, or the database has never been created for the project. The ledger
+  still records sales (they are Firestore), but the login gate, quick services,
+  expenses and the console are unavailable until it points at the right
+  database.
 - **"The ledger rejected that request" on revoke / restore / remove** — those
   three actions need an admin grant. Unlock the console in a browser that has
   one, or create `admins/{uid}` by hand in the Firebase console (uid = the
@@ -505,8 +595,9 @@ hardening pass.
 - **Quick services are empty on the dashboard** — the catalog read failed, so
   the automatic seed was skipped (`ensureCatalogSeeded()` logs the reason to the
   browser console and never blocks the page). Check the console for the error:
-  the usual cause is rules that predate the services collection, fixed with
-  `firebase deploy --only firestore`. You can also seed by hand from the console.
+  the usual cause is Realtime Database rules that were never deployed, fixed
+  with `firebase deploy --only database`, or a `databaseURL` in `js/firebase.js`
+  that does not match your project. You can also seed by hand from the console.
 - **A seed stopped part-way** — the connection dropped or a write was refused.
   The services already written are kept, and the next sign-in adds only what is
   still missing.
@@ -530,7 +621,7 @@ hardening pass.
    device management.
 7. Customers
 8. Expenses
-9. Daily closing — *the `days/{dateKey}` register and the day-open rules
+9. Daily closing — *the `dayHeads/{dateKey}` register and the day-open rules
    already shipped in v0.9.0; the close action itself is still to come.*
 10. Reports & service statistics
 11. Settings polish, security-rule tests, deployment hardening

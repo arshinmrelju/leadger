@@ -1,10 +1,11 @@
-﻿{
+{
   "hosting": {
     "public": ".",
     "ignore": [
       "firebase.json",
       "firestore.rules",
       "firestore.indexes.json",
+      "database.rules.json",
       ".env.example",
       ".git/**",
       "**/.*",
@@ -51,5 +52,13 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "emulators": {
+    "firestore": { "port": 8080 },
+    "database": { "port": 9300 },
+    "ui": { "enabled": true, "port": 4000 }
   }
 }

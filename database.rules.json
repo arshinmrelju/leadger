@@ -1,0 +1,156 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    ".validate": false,
+
+    "settings": {
+      ".read": false,
+      ".write": false,
+
+      "general": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid) || (data.exists() && newData.child('createdAt').val() == data.child('createdAt').val() && newData.child('createdBy').val() == data.child('createdBy').val()))",
+
+        "name": { ".validate": "newData.isString() && newData.val().matches(/^.{1,80}$/)" },
+        "phone": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,20}$/)" },
+        "address": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,300}$/)" },
+        "currency": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z]{3}$/)" },
+        "active": { ".validate": "newData.val() == true" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "createdBy": { ".validate": "newData.isString() && newData.val() == auth.uid" }
+      },
+
+      "security": {
+        ".read": false,
+        ".write": "auth != null && !data.exists() && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid",
+        "accessCode": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9]{4,12}$/)" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "createdBy": { ".validate": "newData.isString() && newData.val() == auth.uid" }
+      },
+
+      "admin": {
+        ".read": false,
+        ".write": "auth != null && !data.exists() && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid",
+        "adminCode": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9]{6,24}$/)" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "createdBy": { ".validate": "newData.isString() && newData.val() == auth.uid" }
+      }
+    },
+
+    "enrollments": {
+      ".read": false,
+      ".write": false,
+      ".validate": false,
+
+      "$nonce": {
+        ".write": "auth != null && !data.exists() && $nonce.matches(/^[a-f0-9]{32}$/) && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid && newData.child('used').val() == false && ((newData.child('scope').val() == 'shop' && newData.child('verifiedCode').val() == root.child('settings/security').child('accessCode').val()) || (newData.child('scope').val() == 'admin' && newData.child('verifiedCode').val() == root.child('settings/admin').child('adminCode').val()))",
+
+        "scope": { ".validate": "newData.val() == 'shop' || newData.val() == 'admin'" },
+        "verifiedCode": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9]{4,24}$/)" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "createdBy": { ".validate": "newData.isString() && newData.val() == auth.uid" },
+
+        "used": {
+          ".write": "auth != null && data.child('createdBy').val() == auth.uid && data.child('used').val() == false && newData.val() == true",
+          ".validate": "newData.val() == true || newData.val() == false"
+        },
+        "deviceHash": {
+          ".write": "auth != null && data.child('createdBy').val() == auth.uid && data.child('used').val() == false && newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)",
+          ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
+        }
+      }
+    },
+
+    "devices": {
+      ".read": "auth != null",
+      ".write": false,
+      ".validate": false,
+      ".indexOn": ["createdAt"],
+
+      "$tokenHash": {
+        ".read": "auth != null || data.child('tokenHash').val() == $tokenHash",
+
+        ".write": "(auth != null && !data.exists() && newData.child('tokenHash').val() == $tokenHash && newData.child('uid').val() == auth.uid && newData.child('uid').val() == newData.child('createdBy').val() && newData.child('active').val() == true && newData.child('createdAt').val() == now && newData.child('lastUsedAt').val() == now && newData.child('enrollmentId').exists() && root.child('enrollments').child(newData.child('enrollmentId').val()).child('createdBy').val() == auth.uid && root.child('enrollments').child(newData.child('enrollmentId').val()).child('used').val() == false) || (auth != null && data.exists() && !newData.exists() && root.child('admins').child(auth.uid).exists()) || (auth != null && data.exists() && newData.child('tokenHash').val() == $tokenHash && newData.child('uid').val() == data.child('uid').val() && newData.child('createdAt').val() == data.child('createdAt').val() && newData.child('createdBy').val() == data.child('createdBy').val() && newData.child('enrollmentId').val() == data.child('enrollmentId').val() && ((auth.uid == data.child('createdBy').val() && data.child('active').val() == true && newData.child('lastUsedAt').val() == now) || (root.child('admins').child(auth.uid).exists() && (newData.child('lastUsedAt').val() == now || newData.child('lastUsedAt').val() == data.child('lastUsedAt').val()))))",
+
+        "tokenHash": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)" },
+        "uid": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" },
+        "label": { ".validate": "newData.isString() && newData.val().matches(/^.{1,80}$/)" },
+        "active": { ".validate": "newData.val() == true || newData.val() == false" },
+        "enrollmentId": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "lastUsedAt": { ".validate": "newData.isNumber()" },
+        "createdBy": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" },
+
+        "client": {
+          "ua": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,100}$/)" },
+          "lang": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,40}$/)" }
+        },
+        "network": {
+          "type": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,40}$/)" },
+          "saveData": { ".validate": "newData.val() == true || newData.val() == false" },
+          "online": { ".validate": "newData.val() == true || newData.val() == false" }
+        },
+        "lastUsedNetwork": {
+          "type": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,40}$/)" },
+          "saveData": { ".validate": "newData.val() == true || newData.val() == false" },
+          "online": { ".validate": "newData.val() == true || newData.val() == false" }
+        }
+      }
+    },
+
+    "admins": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+      ".write": false,
+      ".validate": false,
+
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "(auth != null && !data.exists() && auth.uid == $uid && newData.child('uid').val() == auth.uid && newData.child('deviceHash').isString() && newData.child('deviceHash').val().matches(/^[a-f0-9]{64}$/) && newData.child('enrollmentId').isString() && newData.child('enrollmentId').val().matches(/^[a-f0-9]{32}$/) && root.child('enrollments').child(newData.child('enrollmentId').val()).child('scope').val() == 'admin' && root.child('enrollments').child(newData.child('enrollmentId').val()).child('used').val() == false && root.child('enrollments').child(newData.child('enrollmentId').val()).child('createdBy').val() == auth.uid && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid) || (auth != null && data.exists() && !newData.exists() && (root.child('admins').child(auth.uid).exists() || auth.uid == $uid))",
+        "uid": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" },
+        "deviceHash": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)" },
+        "enrollmentId": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "createdBy": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" }
+      }
+    },
+
+    "services": {
+      ".read": "auth != null",
+      ".write": false,
+      ".validate": false,
+      ".indexOn": ["sortOrder"],
+
+      "$serviceId": {
+        ".write": "auth != null && ((!data.exists() && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid) || (data.exists() && newData.child('createdAt').val() == data.child('createdAt').val() && newData.child('createdBy').val() == data.child('createdBy').val()))",
+        "serviceId": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,120}$/)" },
+        "name": { ".validate": "newData.isString() && newData.val().matches(/^.{1,80}$/)" },
+        "code": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,12}$/)" },
+        "pricePaise": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000000" },
+        "active": { ".validate": "newData.val() == true || newData.val() == false" },
+        "sortOrder": { ".validate": "newData.isNumber()" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "createdBy": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" },
+        "updatedAt": { ".validate": "newData.isNumber() && newData.val() == now" },
+        "updatedBy": { ".validate": "newData.isString() && newData.val() == auth.uid" }
+      }
+    },
+
+    "expenses": {
+      ".read": "auth != null",
+      ".write": false,
+      ".validate": false,
+
+      "$dateKey": {
+        "$expId": {
+          "date": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)" },
+          "title": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,120}$/)" },
+          "category": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,40}$/)" },
+          "amountPaise": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000000000" },
+          "createdAt": { ".validate": "newData.isNumber()" },
+          "createdBy": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" }
+        }
+      }
+    }
+  }
+}
