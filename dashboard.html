@@ -100,10 +100,186 @@
       </header>
 
       <main class="content" id="mainContent">
-        <!-- Rendered by dashboard JS (app shell). -->
-        <div class="state">
-          <span class="spinner" aria-hidden="true"></span>
-          <p class="muted">Loading&hellip;</p>
+        <!-- Initial skeleton receipt — matches the authentic shop paper layout seamlessly -->
+        <div class="dash-receipt-wrapper is-skeleton-mode" aria-label="Loading dashboard">
+          <!-- Top dispenser slot (Chaayos roll housing) -->
+          <div class="receipt-dispenser dash-dispenser" aria-hidden="true">
+            <div class="dispenser-bar"></div>
+            <div class="dispenser-slot"></div>
+          </div>
+          <!-- The Master Receipt Paper Sheet -->
+          <div class="auth-card receipt-card dash-receipt-card">
+            <div class="receipt-inner dash-receipt-inner">
+              <div class="receipt-top-row dash-receipt-top-row">
+                <div class="receipt-header-left">
+                  <span class="receipt-status-tag" style="background:#ede3d0;color:#63503a;border-color:#dbc9b5;">
+                    <span class="loading-pulse-dot" style="display:inline-block;margin-right:6px;"></span>
+                    ACTIVE WORKSPACE &bull; LIVE SHOP LEDGER
+                  </span>
+                  <h1 class="receipt-title">Today&rsquo;s Overview</h1>
+                  <p class="receipt-subtitle" style="display:flex;align-items:center;gap:0.5rem;margin-top:0.35rem;">
+                    <span class="skel skel-text" style="width:180px;height:14px;"></span>
+                  </p>
+                </div>
+                <div class="dash-header-actions">
+                  <div class="receipt-stamp" title="TrustX Ledger Verified">
+                    <span class="receipt-stamp-brand">TrustX</span>
+                    <span class="receipt-stamp-sub">VERIFIED</span>
+                  </div>
+                  <div class="dash-sync-pill">
+                    <span class="spinner spinner-sm"></span>
+                    <span>Opening ledger<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>
+                  </div>
+                </div>
+              </div>
+              <hr class="receipt-divider" />
+              <!-- Receipt metadata items -->
+              <div class="dash-receipt-items">
+                <div class="receipt-item-row">
+                  <span class="receipt-item-label">LEDGER MODE</span>
+                  <span class="receipt-item-val"><span class="skel skel-text" style="width:90px;height:14px;"></span></span>
+                </div>
+                <div class="receipt-item-row">
+                  <span class="receipt-item-label">SECURITY PROTOCOL</span>
+                  <span class="receipt-item-val"><span class="skel skel-text" style="width:125px;height:14px;"></span></span>
+                </div>
+                <div class="receipt-item-row">
+                  <span class="receipt-item-label">TIMESTAMP</span>
+                  <span class="receipt-item-val"><span class="skel skel-text" style="width:85px;height:14px;"></span></span>
+                </div>
+                <div class="receipt-item-row">
+                  <span class="receipt-item-label">CURRENCY</span>
+                  <span class="receipt-item-val">&#x20B9; INR</span>
+                </div>
+              </div>
+              <hr class="receipt-divider" />
+              <div class="dash-grid">
+                <div class="stat-card stat-revenue">
+                  <div class="stat-top">
+                    <div class="stat-icon-wrap icon-revenue"><span class="skel skel-circle" style="width:18px;height:18px;"></span></div>
+                    <span class="stat-label-text">Today&rsquo;s revenue</span>
+                  </div>
+                  <div class="stat-main">
+                    <div class="stat-value"><span class="skel skel-num" style="width:110px;height:24px;"></span></div>
+                    <div class="stat-note"><span class="skel skel-text" style="width:130px;height:11px;"></span></div>
+                  </div>
+                </div>
+                <div class="stat-card stat-count">
+                  <div class="stat-top">
+                    <div class="stat-icon-wrap icon-count"><span class="skel skel-circle" style="width:18px;height:18px;"></span></div>
+                    <span class="stat-label-text">Transactions</span>
+                  </div>
+                  <div class="stat-main">
+                    <div class="stat-value"><span class="skel skel-num" style="width:60px;height:24px;"></span></div>
+                  </div>
+                </div>
+                <div class="stat-card stat-cash">
+                  <div class="stat-top">
+                    <div class="stat-icon-wrap icon-cash"><span class="skel skel-circle" style="width:18px;height:18px;"></span></div>
+                    <span class="stat-label-text">Cash</span>
+                  </div>
+                  <div class="stat-main">
+                    <div class="stat-value"><span class="skel skel-num" style="width:85px;height:24px;"></span></div>
+                  </div>
+                </div>
+                <div class="stat-card stat-upi">
+                  <div class="stat-top">
+                    <div class="stat-icon-wrap icon-upi"><span class="skel skel-circle" style="width:18px;height:18px;"></span></div>
+                    <span class="stat-label-text">UPI</span>
+                  </div>
+                  <div class="stat-main">
+                    <div class="stat-value"><span class="skel skel-num" style="width:85px;height:24px;"></span></div>
+                  </div>
+                </div>
+                <div class="stat-card stat-cardp">
+                  <div class="stat-top">
+                    <div class="stat-icon-wrap icon-card"><span class="skel skel-circle" style="width:18px;height:18px;"></span></div>
+                    <span class="stat-label-text">Card</span>
+                  </div>
+                  <div class="stat-main">
+                    <div class="stat-value"><span class="skel skel-num" style="width:75px;height:24px;"></span></div>
+                  </div>
+                </div>
+                <div class="stat-card stat-due">
+                  <div class="stat-top">
+                    <div class="stat-icon-wrap icon-due"><span class="skel skel-circle" style="width:18px;height:18px;"></span></div>
+                    <span class="stat-label-text">Due</span>
+                  </div>
+                  <div class="stat-main">
+                    <div class="stat-value"><span class="skel skel-num" style="width:75px;height:24px;"></span></div>
+                  </div>
+                </div>
+                <div class="stat-card stat-expenses">
+                  <div class="stat-top">
+                    <div class="stat-icon-wrap icon-expenses"><span class="skel skel-circle" style="width:18px;height:18px;"></span></div>
+                    <span class="stat-label-text">Expenses</span>
+                  </div>
+                  <div class="stat-main">
+                    <div class="stat-value"><span class="skel skel-num" style="width:75px;height:24px;"></span></div>
+                  </div>
+                </div>
+                <div class="stat-card stat-net">
+                  <div class="stat-top">
+                    <div class="stat-icon-wrap icon-net"><span class="skel skel-circle" style="width:18px;height:18px;"></span></div>
+                    <span class="stat-label-text">Net</span>
+                  </div>
+                  <div class="stat-main">
+                    <div class="stat-value"><span class="skel skel-num" style="width:95px;height:24px;"></span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="dash-columns mt-2">
+                <section class="card dash-paper-card" aria-label="Recent transactions">
+                  <div class="card-header dash-card-header">
+                    <h3>Recent transactions</h3>
+                    <div class="card-actions">
+                      <span class="skel skel-chip" style="width:65px;height:26px;"></span>
+                    </div>
+                  </div>
+                  <div class="table-wrap">
+                    <table class="table txn-table dash-txn-table">
+                      <thead>
+                        <tr>
+                          <th>Time</th><th>Customer</th><th>Service</th><th>Payment</th>
+                          <th class="text-right">Amount</th><th class="text-right">Paid</th><th class="text-right">Due</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colspan="7">
+                            <div class="state state-table-loading">
+                              <div class="state-loading-badge">
+                                <span class="spinner spinner-sm"></span>
+                                <span>Loading today&rsquo;s transactions<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="txn-footer small muted dash-txn-footer">&nbsp;</div>
+                </section>
+                <section class="card dash-paper-card" aria-label="Quick services">
+                  <div class="card-header dash-card-header"><h3>Quick services</h3></div>
+                  <div class="card-body dash-card-body">
+                    <div class="quick-grid">
+                      <div class="quick-service is-skeleton"><span class="qs-icon"></span><div class="qs-body"><span class="skel skel-text" style="width:70px;"></span><span class="skel skel-text" style="width:40px;"></span></div></div>
+                      <div class="quick-service is-skeleton"><span class="qs-icon"></span><div class="qs-body"><span class="skel skel-text" style="width:80px;"></span><span class="skel skel-text" style="width:50px;"></span></div></div>
+                      <div class="quick-service is-skeleton"><span class="qs-icon"></span><div class="qs-body"><span class="skel skel-text" style="width:60px;"></span><span class="skel skel-text" style="width:35px;"></span></div></div>
+                      <div class="quick-service is-skeleton"><span class="qs-icon"></span><div class="qs-body"><span class="skel skel-text" style="width:75px;"></span><span class="skel skel-text" style="width:45px;"></span></div></div>
+                    </div>
+                    <p class="small muted mt-2" style="margin-bottom:0;color:#8a7355;font-weight:600;">Tap a service to open a sale with it already filled in.</p>
+                  </div>
+                </section>
+              </div>
+              <div class="receipt-footer-note dash-footer-note">HAVE A NICE DAY! &bull; TRUSTX LEDGER</div>
+            </div>
+            <div class="receipt-tear-edge" aria-hidden="true"></div>
+          </div>
+          <div class="auth-footer-caption" style="margin-top:2.2rem;margin-bottom:1.5rem;">
+            TrustX Ledger &bull; Fast, Offline-First Shop Record
+          </div>
         </div>
       </main>
     </div>
@@ -264,8 +440,10 @@
         '<th class="text-right">Due</th>' +
         '</tr></thead>' +
         '<tbody id="recentBody">' +
-        '<tr><td colspan="7"><div class="state"><span class="spinner" aria-hidden="true"></span>' +
-        '<p class="muted">Loading today&rsquo;s transactions&hellip;</p></div></td></tr>' +
+        '<tr><td colspan="7"><div class="state state-table-loading">' +
+        '<div class="state-loading-badge"><span class="spinner spinner-sm"></span>' +
+        '<span>Loading today&rsquo;s transactions<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div>' +
+        '</div></td></tr>' +
         '</tbody></table></div>' +
         '<div class="txn-footer small muted dash-txn-footer" id="recentFooter">&nbsp;</div>' +
         '</section>' +
@@ -273,7 +451,10 @@
         '<div class="card-header dash-card-header"><h3>Quick services</h3></div>' +
         '<div class="card-body dash-card-body">' +
         '<div class="quick-grid" id="quickGrid">' +
-        '<div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading&hellip;</p></div>' +
+        '<div class="quick-service is-skeleton"><span class="qs-icon"></span><div class="qs-body"><span class="skel skel-text" style="width:70px;"></span><span class="skel skel-text" style="width:40px;"></span></div></div>' +
+        '<div class="quick-service is-skeleton"><span class="qs-icon"></span><div class="qs-body"><span class="skel skel-text" style="width:80px;"></span><span class="skel skel-text" style="width:50px;"></span></div></div>' +
+        '<div class="quick-service is-skeleton"><span class="qs-icon"></span><div class="qs-body"><span class="skel skel-text" style="width:60px;"></span><span class="skel skel-text" style="width:35px;"></span></div></div>' +
+        '<div class="quick-service is-skeleton"><span class="qs-icon"></span><div class="qs-body"><span class="skel skel-text" style="width:75px;"></span><span class="skel skel-text" style="width:45px;"></span></div></div>' +
         '</div>' +
         '<p class="small muted mt-2" id="quickGridHint" style="margin-bottom:0;color:#8a7355;font-weight:600;">Tap a service to open a sale with it already filled in.</p>' +
         '</div></section>' +

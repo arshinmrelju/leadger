@@ -59,7 +59,10 @@ textarea.input:focus {
 .input::placeholder,
 textarea.input::placeholder { color: var(--color-faint); }
 
-input.input[type="number"] { -moz-appearance: textfield; }
+input.input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
 input.input[type="number"]::-webkit-outer-spin-button,
 input.input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 

@@ -809,3 +809,61 @@ body[data-page="dashboard"] {
   font-weight: 700 !important;
   font-size: 0.7rem !important;
 }
+
+/* ---------- Dashboard Receipt Skeleton & Loading Styles ---------- */
+.dash-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 1.1rem;
+  background: #faf4e6;
+  border: 1px solid #ebdcc5;
+  border-radius: 8px;
+  color: #5c4a30;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  box-shadow: 0 2px 6px rgba(110, 75, 30, 0.05);
+  box-sizing: border-box;
+}
+
+.dash-receipt-wrapper.is-skeleton-mode .stat-card {
+  pointer-events: none;
+}
+
+.dash-receipt-wrapper.is-skeleton-mode .stat-card .stat-icon-wrap {
+  background: #ede3cc;
+  opacity: 0.85;
+}
+
+.dash-receipt-wrapper.is-skeleton-mode .receipt-stamp {
+  animation: pulseScale 2.2s infinite ease-in-out;
+}
+
+.quick-service.is-skeleton {
+  pointer-events: none;
+  background: #faf4e6;
+  border: 1.5px solid #ebdcc5;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  min-height: 52px;
+  box-shadow: 0 2px 6px rgba(110, 75, 30, 0.03);
+}
+
+.quick-service.is-skeleton .qs-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #ede3cc;
+  flex-shrink: 0;
+}
+
+.quick-service.is-skeleton .qs-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}

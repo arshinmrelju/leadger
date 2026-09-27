@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    TrustX Ledger — Developer console (admin.html)
    -----------------------------------------------------------------
    Not linked from the public navigation and gated by its own admin
@@ -146,7 +146,7 @@ export async function renderAdminPage(ctx) {
     '<button type="button" class="btn btn-primary btn-sm" id="addSvcSave">Add service</button>' +
     "</div></div>" +
     '<p class="small muted" id="seedSvcNote" style="margin:.75rem 0 .25rem;">The default list is added automatically the first time a device opens the app &mdash; printing, DTP, certificates, online applications and photos. Every service starts at &curren;0, so set your rate on the row below. The button only adds whatever is still missing.</p>' +
-    '<div id="servicesList"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading services&hellip;</p></div></div>' +
+    '<div id="servicesList"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading services<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></div>' +
     "</div></section>" +
 
     '<section class="card mt-2" id="devicesCard">' +
@@ -156,7 +156,7 @@ export async function renderAdminPage(ctx) {
     "</div></div>" +
     '<div class="card-body">' +
     '<p class="small muted" style="margin:0 0 .75rem;">These browsers open the ledger without the shop code. Only an admin can revoke, restore or remove them, so the shop code alone can never lock you out of your own shop. Revoke any device you do not recognise; the next time it opens the app it will ask for the code again.</p>' +
-    '<div id="devicesList"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading devices&hellip;</p></div></div>' +
+    '<div id="devicesList"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading devices<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></div>' +
     "</div></section>" +
 
     '<section class="card mt-2" id="dataCard">' +
@@ -176,7 +176,7 @@ export async function renderAdminPage(ctx) {
     '<th class="text-right">Qty</th><th class="text-right">Rate</th>' +
     '<th class="text-right">Amount</th>' +
     "</tr></thead>" +
-    '<tbody id="dataTxnBody"><tr><td colspan="8"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading&hellip;</p></div></td></tr></tbody>' +
+    '<tbody id="dataTxnBody"><tr><td colspan="8"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading transactions<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></td></tr></tbody>' +
     "</table></div>" +
     '<div class="txn-footer small" id="dataTxnFooter">&nbsp;</div>' +
     '<h4 style="margin:1rem 0 .5rem;">Expenses</h4>' +
@@ -185,7 +185,7 @@ export async function renderAdminPage(ctx) {
     "<th>Date</th><th>Title</th><th>Category</th>" +
     '<th class="text-right">Amount</th>' +
     "</tr></thead>" +
-    '<tbody id="dataExpBody"><tr><td colspan="4"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading&hellip;</p></div></td></tr></tbody>' +
+    '<tbody id="dataExpBody"><tr><td colspan="4"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading expenses<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></td></tr></tbody>' +
     "</table></div>" +
     '<div class="txn-footer small" id="dataExpFooter">&nbsp;</div>' +
     "</div></section>";

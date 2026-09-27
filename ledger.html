@@ -101,9 +101,25 @@
       </header>
 
       <main class="content" id="mainContent">
-        <div class="state">
-          <span class="spinner" aria-hidden="true"></span>
-          <p class="muted">Loading&hellip;</p>
+        <!-- Rendered by ledger JS (app shell). -->
+        <div class="ledger-loading-screen" aria-label="Loading daily ledger">
+          <div class="ledger-loading-card">
+            <div class="ledger-loading-emblem">
+              <div class="emblem-spinner"></div>
+              <div class="emblem-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
+              </div>
+            </div>
+            <h2 class="ledger-loading-title">Daily Ledger</h2>
+            <p class="ledger-loading-sub">Shop Day Book &amp; Reconciliations</p>
+            <div class="ledger-loading-pill">
+              <span class="loading-pulse-dot"></span>
+              <span>Loading day records<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>
+            </div>
+            <div class="ledger-loading-progress">
+              <div class="ledger-loading-bar"></div>
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -402,7 +418,10 @@
 
       if (loading && !rows.length) {
         body.innerHTML =
-          '<tr><td colspan="9"><div class="state"><span class="spinner" aria-hidden="true"></span><p class="muted">Loading the day&hellip;</p></div></td></tr>';
+          '<tr><td colspan="9"><div class="state state-table-loading">' +
+          '<div class="state-loading-badge"><span class="spinner spinner-sm"></span>' +
+          '<span>Loading the day<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div>' +
+          '</div></td></tr>';
         return;
       }
 

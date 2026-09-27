@@ -101,9 +101,24 @@
 
       <main class="content" id="mainContent">
         <!-- Rendered by transactions JS (app shell). -->
-        <div class="state">
-          <span class="spinner" aria-hidden="true"></span>
-          <p class="muted">Loading&hellip;</p>
+        <div class="ledger-loading-screen" aria-label="Loading transactions">
+          <div class="ledger-loading-card">
+            <div class="ledger-loading-emblem">
+              <div class="emblem-spinner"></div>
+              <div class="emblem-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17h10"/><path d="M4 5h16v14H4z"/><path d="M4 5l2-2h12l2 2"/></svg>
+              </div>
+            </div>
+            <h2 class="ledger-loading-title">Transactions Ledger</h2>
+            <p class="ledger-loading-sub">Shop Transaction Records</p>
+            <div class="ledger-loading-pill">
+              <span class="loading-pulse-dot"></span>
+              <span>Loading ledger history<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>
+            </div>
+            <div class="ledger-loading-progress">
+              <div class="ledger-loading-bar"></div>
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -216,8 +231,10 @@
         '<th class="text-right">Amount</th><th class="text-right">Paid</th><th class="text-right">Due</th>' +
         "</tr></thead>" +
         '<tbody id="histBody">' +
-        '<tr><td colspan="9"><div class="state"><span class="spinner" aria-hidden="true"></span>' +
-        "<p class=\"muted\">Loading the ledger&hellip;</p></div></td></tr>" +
+        '<tr><td colspan="9"><div class="state state-table-loading">' +
+        '<div class="state-loading-badge"><span class="spinner spinner-sm"></span>' +
+        '<span>Loading the ledger<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div>' +
+        '</div></td></tr>' +
         "</tbody></table></div>" +
         '<div class="txn-footer small muted" id="histFooter">&nbsp;</div>' +
         "</section>";

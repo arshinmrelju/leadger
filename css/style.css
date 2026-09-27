@@ -712,30 +712,292 @@ hr {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-primary);
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  border: 3px solid rgba(217, 119, 6, 0.18);
+  border-top-color: #1f7a42;
+  border-right-color: #f5a623;
   border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  animation: spin 0.8s cubic-bezier(0.4, 0.1, 0.2, 0.9) infinite;
+  vertical-align: middle;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.spinner-lg {
+  width: 42px;
+  height: 42px;
+  border-width: 3.5px;
+}
+
+.spinner-amber {
+  border-color: rgba(245, 166, 35, 0.2);
+  border-top-color: #f5a623;
+  border-right-color: #d97706;
+}
+
+.spinner-forest {
+  border-color: rgba(31, 122, 66, 0.18);
+  border-top-color: #1f7a42;
+  border-right-color: #2d8a4e;
+}
+
+.spinner-light {
+  border-color: rgba(255, 255, 255, 0.25);
+  border-top-color: #ffffff;
+  border-right-color: rgba(255, 255, 255, 0.8);
+}
+
+/* Warm Parchment Skeleton Loader */
 .skel {
   position: relative;
   overflow: hidden;
-  background: #e8edf3;
+  background: #ede3cc;
   border-radius: 6px;
 }
 .skel::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-  animation: shimmer 1.4s infinite;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 254, 250, 0.75) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.5s infinite ease-in-out;
   transform: translateX(-100%);
 }
 @keyframes shimmer {
   100% { transform: translateX(100%); }
+}
+
+.skel-text {
+  height: 12px;
+  border-radius: 4px;
+  display: inline-block;
+}
+.skel-title {
+  height: 20px;
+  border-radius: 6px;
+  display: inline-block;
+}
+.skel-num {
+  height: 28px;
+  border-radius: 6px;
+  display: inline-block;
+}
+.skel-chip {
+  height: 32px;
+  border-radius: 8px;
+  display: inline-block;
+}
+.skel-circle {
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ---------- Brand Loading Screen & Card ---------- */
+.ledger-loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+  padding: 3rem 1rem;
+  position: relative;
+}
+
+.ledger-loading-card {
+  background: #fffdf9;
+  border: 1px solid #ebdcc5;
+  border-radius: 16px;
+  padding: 2.4rem 2.2rem 2rem;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 16px 36px rgba(110, 75, 30, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  animation: toast-in 0.35s var(--ease);
+}
+
+.ledger-loading-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 4px;
+  background: linear-gradient(90deg, #1f7a42 0%, #f5a623 50%, #1f7a42 100%);
+  border-radius: 0 0 4px 4px;
+}
+
+.ledger-loading-emblem {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ledger-loading-emblem .emblem-spinner {
+  position: absolute;
+  inset: 0;
+  border: 3.5px solid rgba(245, 166, 35, 0.18);
+  border-top-color: #1f7a42;
+  border-right-color: #f5a623;
+  border-radius: 50%;
+  animation: spin 0.9s cubic-bezier(0.4, 0.1, 0.2, 0.9) infinite;
+  box-shadow: 0 0 16px rgba(31, 122, 66, 0.12);
+}
+
+.ledger-loading-emblem .emblem-icon {
+  width: 44px;
+  height: 44px;
+  background: #faf4e6;
+  border: 1px solid #ebdcc5;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1f7a42;
+  animation: pulseScale 2s ease-in-out infinite;
+  box-shadow: 0 2px 8px rgba(110, 75, 30, 0.06);
+}
+
+.ledger-loading-emblem .emblem-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.ledger-loading-title {
+  font-size: 1.18rem;
+  font-weight: 850;
+  color: #1e1912;
+  margin: 0 0 0.3rem;
+  letter-spacing: -0.01em;
+}
+
+.ledger-loading-sub {
+  font-size: 0.85rem;
+  color: #8a7355;
+  font-weight: 600;
+  margin: 0 0 1.25rem;
+}
+
+.ledger-loading-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 1rem;
+  background: #faf4e6;
+  border: 1px solid #ebdcc5;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: #5c4a30;
+  box-shadow: 0 1px 3px rgba(110, 75, 30, 0.04);
+}
+
+.loading-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1f7a42;
+  box-shadow: 0 0 0 0 rgba(31, 122, 66, 0.7);
+  animation: pulseGlow 1.6s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulseGlow {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(31, 122, 66, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(31, 122, 66, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(31, 122, 66, 0);
+  }
+}
+
+@keyframes pulseScale {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.ledger-loading-progress {
+  margin-top: 1.5rem;
+  height: 3px;
+  background: rgba(235, 220, 197, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.ledger-loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, #1f7a42, #f5a623);
+  border-radius: 3px;
+  animation: progressSweep 1.6s infinite ease-in-out;
+}
+
+@keyframes progressSweep {
+  0% { left: -40%; width: 30%; }
+  50% { width: 50%; }
+  100% { left: 100%; width: 30%; }
+}
+
+.loading-dots span {
+  display: inline-block;
+  animation: dotBlink 1.4s infinite both;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBlink {
+  0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-1.5px); }
+}
+
+/* In-table & card loading badges */
+.state-table-loading {
+  padding: 1.8rem 1rem !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.state-loading-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 1.15rem;
+  background: #fffdf9;
+  border: 1px solid #ebdcc5;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(110, 75, 30, 0.06);
+  color: #5c4a30;
+  font-weight: 750;
+  font-size: 0.88rem;
 }
 
 /* ---------- States (empty / error) ---------- */
