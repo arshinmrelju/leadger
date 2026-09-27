@@ -11,7 +11,7 @@
    Pages subscribe with onSaleRecorded() to refresh their own data.
    ========================================================= */
 
-import { toast, setLoading, openModal, closeModal } from "./app.js";
+import { toast, setLoading, openModal } from "./app.js";
 import {
   formatINR,
   paiseToInput,
@@ -196,10 +196,6 @@ export function openSaleForm({ serviceId = "" } = {}) {
       if (serviceId) pickService(serviceId);
     })
     .catch(() => {});
-}
-
-export function closeSaleForm() {
-  if (overlay) closeModal(overlay);
 }
 
 /** Ctrl+N anywhere in the app opens the same dialog. */

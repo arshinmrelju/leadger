@@ -136,6 +136,7 @@
       kolkataDateKey,
       isValidDateKey,
       isPaymentMethod,
+      debounce,
     } from "./js/utils.js";
     import { fetchTransactions, isNetworkError } from "./js/ledger.js";
     import { reportError } from "./js/auth.js";
@@ -250,11 +251,15 @@
       document.getElementById("newTxnBtn").addEventListener("click", () => openSaleForm());
 
       const search = document.getElementById("histSearch");
+      /* Filtering is client-side over the loaded window, so re-render from
+         cache instead of re-querying on every keystroke. The render itself
+         rebuilds the whole table, so it is debounced the same way the ledger
+         day view is - otherwise a fast typist pays for a full rebuild per
+         character. */
+      const onSearchInput = debounce(() => renderHistory(lastRows), 160);
       search.addEventListener("input", () => {
         query = search.value.trim().toLowerCase();
-        /* Filtering is client-side over the loaded window, so re-render
-           from cache instead of re-querying on every keystroke. */
-        renderHistory(lastRows);
+        onSearchInput();
       });
 
       document.getElementById("histDate").addEventListener("change", (e) => {
@@ -383,6 +388,9 @@
       set("histDue", formatINR(s.due));
       const dueEl = document.getElementById("histDue");
       if (dueEl) dueEl.classList.toggle("text-danger", s.due > 0);
+      /* Handed back so the caller reuses this pass for the footer grand
+         total instead of walking the same rows a second time. */
+      return s;
     }
 
     function methodChips(t) {
@@ -447,7 +455,7 @@
       if (!body || !footer) return;
 
       const filtered = (rows || []).filter(matches);
-      renderTotals(filtered);
+      const grand = renderTotals(filtered);
 
       if (sub) {
         sub.textContent =
@@ -477,7 +485,6 @@
       }
 
       const groups = groupByDay(filtered);
-      const grand = totalsOf(filtered);
 
       body.innerHTML =
         groups
@@ -515,7 +522,6 @@
        Boot
        ========================================================= */
     initAppShell({
-      page: "transactions",
       onReady: renderPage,
       onDayChange: () => {
         /* Keep a pinned day in sync with the rollover; "all time" needs no reload. */

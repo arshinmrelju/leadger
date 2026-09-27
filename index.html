@@ -111,7 +111,6 @@
       initAuth,
       signInAnonymous,
       checkTrustedDevice,
-      updateDeviceLastUsed,
       reportError,
     } from "./js/auth.js";
 
@@ -155,7 +154,9 @@
             return;
           }
           return signInAnonymous().then(() => {
-            updateDeviceLastUsed(trust.tokenHash);
+            /* No heartbeat here: the protected page's shell (js/shell.js)
+               fires it as soon as it boots, so writing it twice per visit
+               was a wasted Firestore write. */
             window.location.replace("dashboard.html");
           });
         })

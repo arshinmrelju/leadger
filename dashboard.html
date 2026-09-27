@@ -303,19 +303,6 @@
 
     const mainContent = document.getElementById("mainContent");
 
-    function shield(icon, title, text, actionsHtml) {
-      return (
-        '<div class="state card" style="max-width:520px;margin:2rem auto;padding:2rem;">' +
-        '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        icon +
-        "</svg>" +
-        "<h3>" + escapeHtml(title) + "</h3>" +
-        "<p>" + escapeHtml(text) + "</p>" +
-        (actionsHtml || "") +
-        "</div>"
-      );
-    }
-
     const ICON_PLUS =
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 
@@ -548,7 +535,7 @@
 
     function methodChips(t) {
       return (
-        '<span class="badge badge-method badge-' + t.paymentMethod + '">' +
+        '<span class="badge badge-method badge-' + escapeHtml(t.paymentMethod) + '">' +
         escapeHtml(t.methodLabel) +
         (t.status === "pending" ? ' <span class="badge badge-warning" style="margin-left:2px;">Pending</span>' : "") +
         "</span>"
@@ -667,7 +654,6 @@
        Boot
        ========================================================= */
     initAppShell({
-      page: "dashboard",
       onReady: async () => {
         /* A sale saved in the dialog updates the figures in place. */
         onSaleRecorded(() => loadDashboardData());

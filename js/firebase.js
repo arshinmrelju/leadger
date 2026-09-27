@@ -42,12 +42,6 @@ export function isConfigured() {
   return Boolean(c && hasValue(c.apiKey) && hasValue(c.projectId) && hasValue(c.appId));
 }
 
-/* Local emulator support is intentionally disabled in production.
-   To run against emulators during development, set to true and run
-   the Firebase emulator suite, then define connectFirestoreEmulator /
-   connectAuthEmulator calls here. Do not ship this enabled. */
-export const EMULATORS = { enabled: false };
-
 let firebridgePromise = null;
 
 /**

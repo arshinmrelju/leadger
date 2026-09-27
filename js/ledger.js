@@ -18,6 +18,7 @@ import {
   rateToPaise,
   computeTotalPaise,
   isPaymentMethod,
+  statusForMethod,
   methodLabel,
 } from "./utils.js";
 import { findMissingCatalogServices } from "./service-catalog.js";
@@ -376,7 +377,7 @@ export async function createTransaction({
     paymentMethod,
     customerId: "",
     customerName: String(customerName || "").trim().slice(0, 120),
-    status: paymentMethod === "due" ? "pending" : "paid",
+    status: statusForMethod(paymentMethod),
     dateKey,
     createdAt: fs.serverTimestamp(),
     updatedAt: fs.serverTimestamp(),
@@ -593,7 +594,7 @@ export async function updateTransaction(txnId, patch = {}) {
 
   const method = patch.paymentMethod;
   let status = patch.status === "paid" || patch.status === "pending" ? patch.status : null;
-  if (!status) status = method === "due" ? "pending" : "paid";
+  if (!status) status = statusForMethod(method);
   // A non-due sale is always settled; only a due sale may sit pending.
   if (method !== "due") status = "paid";
 

@@ -480,7 +480,7 @@
           '<td class="ledger-num" data-label="Quantity">' + escapeHtml(String(t.quantity)) + "</td>" +
           '<td class="ledger-num" data-label="Rate">' + formatINR(t.ratePaise) + "</td>" +
           '<td class="ledger-num ledger-total" data-label="Total">' + formatINR(t.totalPaise) + "</td>" +
-          '<td data-label="Payment"><span class="ledger-method method-' + t.paymentMethod + '">' + escapeHtml(t.methodLabel) + "</span></td>" +
+          '<td data-label="Payment"><span class="ledger-method method-' + escapeHtml(t.paymentMethod) + '">' + escapeHtml(t.methodLabel) + "</span></td>" +
           '<td class="ledger-customer" data-label="Customer">' + (t.customerName ? escapeHtml(t.customerName) : "—") + "</td>" +
           '<td data-label="Status">' + statusBadge(t) + "</td>" +
           '<td class="ledger-actions-col"><div class="ledger-row-actions">' + actions + "</div></td>" +
@@ -884,7 +884,6 @@
     }
 
     initAppShell({
-      page: "ledger",
       onReady: renderPage,
       onDayChange: () => {
         /* The header rolls over at midnight Kolkata. If the ledger is

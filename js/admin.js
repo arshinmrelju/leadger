@@ -239,7 +239,9 @@ function wireSeedDefaults() {
       .join(", ");
     const ok = await confirm({
       title: "Add default services",
-      message:
+      /* Markup, so htmlMessage rather than the escaped-by-default `message`.
+         Every interpolated value below is either a count or pre-escaped. */
+      htmlMessage:
         '<p class="small">This adds ' + missing.length + " of " + SERVICE_CATALOG.length +
         " default services at &curren;0, in counter order. You can rename, re-price or archive any of them afterwards.</p>" +
         '<p class="small muted" style="margin-bottom:0;">' + preview + "</p>",

@@ -459,22 +459,11 @@ service cloud.firestore {
     }
 
     // ---------------- Expenses (read-only this build) ----------------
+    // Reading expenses is allowed so the Developer console can show the
+    // table, but every write is denied: recording a spend arrives in a
+    // later build, and nothing may pre-seed a row the rules would then
+    // have to trust.
     match /expenses/{expId} {
-      function validExpenseDoc(doc) {
-        return doc.keys().hasOnly([
-              'expId', 'date', 'title', 'category',
-              'amountPaise', 'note', 'createdBy', 'createdAt',
-              'updatedAt', 'updatedBy'
-            ])
-          && doc.expId is string && doc.expId.size() <= 120
-          && doc.expId == expId
-          && doc.date is string && doc.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
-          && doc.title is string && doc.title.size() <= 160
-          && doc.category is string && doc.category.size() <= 60
-          && doc.amountPaise is number && doc.amountPaise >= 0
-          && doc.note is string && doc.note.size() <= 500;
-      }
-
       allow read: if signedIn();
       allow create: if false;
       allow update: if false;

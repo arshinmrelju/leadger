@@ -185,12 +185,6 @@ export function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-/** Collapse a value down to display text, guarding against objects/undefined. */
-export function displayText(value) {
-  if (value === null || value === undefined) return "";
-  return String(value);
-}
-
 export function debounce(fn, waitMs = 250) {
   let timer = null;
   return function debounced(...args) {
@@ -202,20 +196,9 @@ export function debounce(fn, waitMs = 250) {
   };
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-export function isValidEmail(value) {
-  return typeof value === "string" && EMAIL_REGEX.test(value.trim());
-}
-
 /** Human-friendly slash-separated ID, e.g. uid("txn") -> "txn_20260924_ab12cd34". */
 export function uid(prefix = "doc") {
   const rand = Math.random().toString(16).slice(2, 10);
   const t = Date.now().toString(36) + Math.floor(Math.random() * 0xfffff).toString(36);
   return `${prefix}_${t}_${rand}`;
-}
-
-/** Format a number with a group separator for the UI (e.g. quantities). */
-export function formatNumber(value) {
-  if (!Number.isFinite(value)) return "0";
-  return new Intl.NumberFormat("en-IN").format(value);
 }

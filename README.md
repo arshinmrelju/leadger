@@ -352,6 +352,16 @@ never accepted by the console — they are compared against different documents.
 - **Sign out** returns to the login screen. Because the browser stays a
   trusted device, it signs back in automatically — to stop that on a given
   computer, revoke it from the Developer console (or clear the site data).
+- **Known limitation — the admin gate is client-side.** `ADMIN_CODE` is a
+  default seed that ships inside `js/auth.js`, so it is readable by anyone
+  who opens DevTools on the deployed site. The rules do the real work
+  (a grant still requires an unused `scope: 'admin'` enrollment, and it is
+  bound to a device the owner can see and revoke), but **treat the admin
+  code as discoverable**: it is a convenience gate, not a secret. Closing
+  this properly means moving the comparison server-side — a Cloud Function,
+  or an App Check–backed callable — and redeploying, which is out of scope
+  for the current build. Firebase **App Check** is the cheapest real
+  improvement and is worth enabling for production.
 
 ## Tests
 
@@ -371,6 +381,23 @@ year and leap-day boundaries, the search/payment/status narrowing, the
 per-method day totals, cursor-page merging, and the Asia/Kolkata entry
 time.
 
+`tests/module-graph.mjs` guards the wiring instead, because there is no
+bundler to catch it: it walks the real import graph (HTML entry scripts
+AND JS → JS imports) and asserts that
+
+1. every named import resolves to a name the target module actually
+   exports — a missing export is a link-time error that kills the whole
+   module graph in the browser, which is how every protected screen once
+   sat on its spinner; and
+2. no module exports a name that nothing imports — the mirror image. Dead
+   exports are the cheapest kind of rot in a bundler-free app, so they
+   have to fail a test rather than quietly accumulate. `tests/` counts as
+   a real consumer, so helpers kept for their unit tests stay.
+
+There is no lint, type-check or build step, and no CI. `npm test` and
+`node --check` on each module are the whole safety net, so run both after
+touching a file.
+
 A Firestore emulator rules suite (signed-in-only access with per-document
 validation, money integrity, day-close enforcement) is planned for a later
 hardening pass.
@@ -389,10 +416,12 @@ hardening pass.
   `fetchDayState`, `updateTransaction`, `markTransactionPaid`,
   `deleteTransaction`.
 - UI helpers live in `js/app.js`:
-  `toast(msg, type)`, `confirm({...})`,
-  `setLoading(button, bool)`.
-- Logged-in pages bootstrap through `js/shell.js` `initAppShell({ page,
-  onReady, onDayChange, requireAdmin })` — renders the user chip, day rollover,
+  `toast(msg, type)`, `confirm({...})`, `setLoading(button, bool)`.
+  `confirm()` escapes its `message` for you — pass `htmlMessage` instead
+  when the body genuinely needs markup, and only with pre-escaped values
+  interpolated into it.
+- Logged-in pages bootstrap through `js/shell.js` `initAppShell({ onReady,
+  onDayChange, requireAdmin })` — renders the user chip, day rollover,
   global keys, and ensures the shop record exists. `requireAdmin: true`
   additionally resolves the console's admin grant into `ctx.isAdmin`.
 - The Developer console lives in `js/admin.js`:
@@ -400,20 +429,18 @@ hardening pass.
   `ctx.isAdmin` is false, otherwise service maintenance, the trust registry and
   the all-data browser.
 - Sign-in and trusted devices live in `js/auth.js`:
-  `SHOP_CODE` / `ADMIN_CODE` (the seeded defaults), `isCorrectCode()`,
-  `isCorrectAdminCode()`, `signInAnonymous()`,
+  `SHOP_CODE` / `ADMIN_CODE` (the seeded defaults), `signInAnonymous()`,
   `ensureShopRecord()` (silently creates `settings/general` and seeds
   `settings/security` + `settings/admin` on first use), `getGeneral()`,
   `enrollDevice({ label })` (server-verified, stores the credential),
   `checkTrustedDevice()` (capability read of `devices/<hash>`),
   `listTrustedDevices()`, `revokeDevice/restoreDevice/removeDevice`,
   `updateDeviceLastUsed(hash)`, `generateDeviceToken()`, plus the
-  IndexedDB helpers (`loadDeviceCredential`, `saveDeviceCredential`,
-  `clearDeviceCredential`) and `canStoreDeviceCredential()`.
+  IndexedDB helpers (`loadDeviceCredential`, `saveDeviceCredential`)
+  and `canStoreDeviceCredential()`.
 - The console gate lives in `js/auth.js` too:
   `checkAdminAccess()` (is this browser an admin?), `grantAdminAccess(code)`
-  (exchange the admin code for an `admins/{uid}` grant),
-  `revokeAdminAccess()` (drop this browser's own grant) and
+  (exchange the admin code for an `admins/{uid}` grant) and
   `listAdminGrants()` (which browsers are admins).
 - Ledger data lives in `js/ledger.js`:
   `fetchTodaySummary(dateKey?)`, `fetchServices({ includeInactive })`,
@@ -425,7 +452,7 @@ hardening pass.
   shell calls), `updateService(serviceId, { name, price, active })`,
   `fetchTransactions({ dateKey, limit })`,
   `fetchExpenses({ dateKey, limit })`, `flushPendingWrites()`,
-  `normalizeTxn()`, `isNetworkError(err)`.
+  `isNetworkError(err)`.
 - The service seed list is pure data in `js/service-catalog.js` (no Firebase
   import, so the tests require it directly): `SERVICE_CATALOG`,
   `SERVICE_CATALOG_GROUPS`, `SERVICE_SEED_PREFIX`, `DEFAULT_SERVICE_PRICE_RUPEES`,
@@ -437,8 +464,7 @@ hardening pass.
 ## Keyboard conventions
 
 - `Esc` closes any open modal or the mobile sidebar.
-- `Ctrl/⌘+N` jumps to the Transactions page (or focuses the entry form if
-  you're already there).
+- `Ctrl/⌘+N` opens the "Record a sale" dialog from anywhere in the app.
 
 ## Troubleshooting
 

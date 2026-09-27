@@ -103,10 +103,6 @@ async function bridge() {
   return b;
 }
 
-export function isAuthReady() {
-  return ready;
-}
-
 export function getCurrentUser() {
   return currentUser;
 }
@@ -151,16 +147,6 @@ export function normalizeCode(input) {
   return String(input || "").toUpperCase().replace(/\s+/g, "").trim();
 }
 
-/** True if the typed code matches the shop code (case/space tolerant). */
-export function isCorrectCode(input) {
-  return normalizeCode(input) === SHOP_CODE;
-}
-
-/** True if the typed code matches the Developer-console admin code. */
-export function isCorrectAdminCode(input) {
-  return normalizeCode(input) === ADMIN_CODE;
-}
-
 /* ---------------- Sign-in / sign-out ---------------- */
 
 /**
@@ -190,10 +176,6 @@ export async function signOut() {
     notify(null);
     redirecting = false;
   }
-}
-
-export function clearSession() {
-  /* Session is fully auth-owned in the single-code model. */
 }
 
 /* ---------------- Protected-page handling ---------------- */
@@ -380,16 +362,6 @@ async function idbSet(key, value) {
   });
 }
 
-async function idbDelete(key) {
-  const db = await idbOpen();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(DEVICE_STORE, "readwrite");
-    tx.objectStore(DEVICE_STORE).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
 export async function loadDeviceCredential() {
   if (!canStoreDeviceCredential()) return null;
   try {
@@ -408,15 +380,6 @@ export async function saveDeviceCredential(token) {
   } catch (err) {
     console.warn("[trustx-ledger] device credential save failed:", err);
     return false;
-  }
-}
-
-export async function clearDeviceCredential() {
-  if (!canStoreDeviceCredential()) return;
-  try {
-    await idbDelete(DEVICE_KEY);
-  } catch (err) {
-    console.warn("[trustx-ledger] device credential clear failed:", err);
   }
 }
 
@@ -759,19 +722,4 @@ export async function grantAdminAccess(code) {
   }
 
   return true;
-}
-
-/** Drop this browser's own admin grant (the console locks again). */
-export async function revokeAdminAccess() {
-  const user = getCurrentUser();
-  if (!user) return false;
-  const b = await bridge();
-  const fs = b.firestore;
-  try {
-    await fs.deleteDoc(fs.doc(b.db, "admins", user.uid));
-    return true;
-  } catch (err) {
-    if (err && err.code === "permission-denied") return false;
-    throw err;
-  }
 }

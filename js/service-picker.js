@@ -23,6 +23,7 @@
    ========================================================= */
 
 import { SERVICE_CATALOG_GROUPS } from "./service-catalog.js";
+import { escapeHtml } from "./utils.js";
 
 /* ---------------- Matching / arrangement (pure) ---------------- */
 
@@ -209,13 +210,12 @@ let seq = 0;
  * @param {HTMLElement} mount
  * @param {object} handlers
  * @param {Function} handlers.onSelect  (service|null) — the choice changed
- * @param {Function} [handlers.onOpen]  the list opened
  * @param {Function} [handlers.onCreate] (query) — the user asked to add a service
- * @returns {{setServices, setValue, getValue, open, close, focus, destroy}}
+ * @returns {{setServices, setValue}}
  */
 export function createServicePicker(
   mount,
-  { onSelect, onOpen, onCreate, inputId = "" } = {}
+  { onSelect, onCreate, inputId = "" } = {}
 ) {
   if (!mount) throw new Error("createServicePicker needs a mount element");
 
@@ -421,7 +421,6 @@ export function createServicePicker(
     if (selectedId && document.activeElement === input) input.select();
     render();
     scheduleReposition();
-    emit(onOpen);
   }
 
   function close() {
@@ -688,36 +687,10 @@ export function createServicePicker(
       }
       render();
     },
-    getValue() {
-      return selectedId;
-    },
-    isOpen() {
-      return open;
-    },
-    open: doOpen,
-    close,
-    focus() {
-      root.querySelector(".svc-pick-input").focus();
-    },
-    destroy() {
-      document.removeEventListener("mousedown", onDocMouseDown, true);
-      document.removeEventListener("scroll", onViewportChange, true);
-      window.removeEventListener("resize", onViewportChange);
-      root.remove();
-    },
   };
 }
 
 /* ---------------- Small local helpers ---------------- */
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 const rupees = (() => {
   const fmt = new Intl.NumberFormat("en-IN", {

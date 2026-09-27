@@ -21,7 +21,6 @@ import {
   requireAuth,
   guardPage,
   getCurrentUser,
-  onAuthStateChange,
   signOut,
   ensureShopRecord,
   getGeneral,
@@ -148,7 +147,6 @@ function registerGlobalKeys() {
 /**
  * Boot a protected page.
  * @param {object} opts
- * @param {string} [opts.page]   page name for the active nav (auto-detected otherwise)
  * @param {Function} opts.onReady  async (ctx) => render the page
  * @param {Function} [opts.onDayChange]  called when the Kolkata business day rolls over
  * @param {boolean} [opts.requireAdmin]  also resolve the Developer-console
@@ -207,10 +205,3 @@ export async function initAppShell({ onReady, onDayChange, requireAdmin = false 
     renderFatal(err);
   }
 }
-
-/* Redirect to login if the session disappears on this page. */
-onAuthStateChange((u) => {
-  if (!u && !window.location.pathname.endsWith("login.html")) {
-    window.location.replace("login.html");
-  }
-});

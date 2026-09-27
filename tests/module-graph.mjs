@@ -87,7 +87,7 @@ function* entryPoints() {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (entry.name !== "node_modules") yield* walk(full);
-      } else if (entry.name.endsWith(".js")) {
+      } else if (/\.(?:js|mjs)$/.test(entry.name)) {
         yield {
           label: path.relative(ROOT, full),
           full,
@@ -144,4 +144,96 @@ test("the day layer and the data layer agree on the date-key source", () => {
     /import\s*\{[^}]*\bisValidDateKey\b[^}]*\}\s*from\s*["']\.\/day-ledger\.js["']/,
     "js/ledger.js must not import isValidDateKey from ./day-ledger.js (it is not re-exported)",
   );
+});
+
+/* =========================================================
+   Dead-export guard (the mirror image of the check above).
+
+   An export nothing imports is the cheapest kind of rot in a bundled-
+   free app: it survives every refactor, still shows up in the module
+   graph, and quietly costs a reader's trust. A repo this size carried
+   fourteen of them until this test existed.
+
+   The bar is deliberately high, so the test does not cry wolf:
+     - tests/ counts as a real consumer, so helpers kept for their
+       unit tests (statusForMethod, MAX_*) stay;
+     - HTML entry scripts count, so page-level wiring stays;
+     - a name used inside its own module counts, because making a
+       module's internals importable is a deliberate act, not rot.
+   Anything else has to earn its place via the allowlist below.
+   ========================================================= */
+
+/** Exports that are public on purpose and have no importer. */
+const INTENTIONAL_PUBLIC = new Set([
+  /* The seeded default codes. auth.js uses both internally to write
+     settings/security and settings/admin; they are exported so the
+     values are discoverable and greppable from one place. */
+  "SHOP_CODE",
+  "ADMIN_CODE",
+]);
+
+test("no module exports a name that nothing imports", () => {
+  const points = [...entryPoints()];
+
+  /* Names each module exports, for every module (keyed by absolute path). */
+  const exportsByFile = new Map();
+  for (const { full } of points) {
+    if (!full.endsWith(".js")) continue;
+    exportsByFile.set(full, exportsOf(full));
+  }
+
+  /* usedBy: absolute path -> names some OTHER file imports from it. */
+  const usedBy = new Map();
+  for (const key of exportsByFile.keys()) usedBy.set(key, new Set());
+  const credit = (target, name) => {
+    if (!target) return;
+    const set = usedBy.get(target);
+    if (set) set.add(name);
+  };
+
+  for (const { full, code } of points) {
+    const re = /import\s+(?:(?:\*\s+as\s+\w+)|\{([^}]*)\}|(\w+))\s+from\s*["'](\.[^"']+)["']/g;
+    for (const m of code.matchAll(re)) {
+      if (!m[1]) continue; // namespace / default import
+      /* Credit the file the name comes FROM, not the one importing it. */
+      const target = path.resolve(path.dirname(full), m[3]);
+      for (const part of m[1].split(",")) {
+        const t = part.trim();
+        if (!t) continue;
+        credit(target, t.split(/\s+as\s+/)[0].trim());
+      }
+    }
+    // A re-export is a use of the name in the file it came from.
+    for (const m of code.matchAll(/export\s*\{([^}]*)\}\s*from\s*["'](\.[^"']+)["']/g)) {
+      const target = path.resolve(path.dirname(full), m[2]);
+      for (const part of m[1].split(",")) {
+        const t = part.trim();
+        if (!t) continue;
+        const alias = t.split(/\s+as\s+/);
+        credit(target, (alias[1] || alias[0]).trim());
+      }
+    }
+  }
+
+  const orphans = [];
+  for (const [full, exported] of exportsByFile) {
+    const label = path.relative(ROOT, full);
+    const code = fs.readFileSync(full, "utf8");
+    const names = usedBy.get(full);
+    for (const name of exported) {
+      if (name === "default" || INTENTIONAL_PUBLIC.has(name)) continue;
+      if (names.has(name)) continue;
+      // Used inside its own module? Fine - that is a private helper that
+      // happens to be exported; only flag names nothing references at all.
+      const body = code.replace(
+        new RegExp(`export\\s+(?:async\\s+)?(?:function|const|let|var|class)\\s+${name}\\b`),
+        "",
+      );
+      if (!new RegExp(`\\b${name}\\b`).test(body)) {
+        orphans.push(`${label}: export "${name}" is never used`);
+      }
+    }
+  }
+
+  assert.deepEqual(orphans, [], `unused exports:\n  ${orphans.join("\n  ")}`);
 });

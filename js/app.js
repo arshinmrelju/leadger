@@ -7,16 +7,7 @@
 import {
   escapeHtml,
   formatKolkataLong,
-  formatINR,
 } from "./utils.js";
-
-export const APP = {
-  name: "TrustX Ledger",
-  version: "0.9.0",
-  currency: "INR",
-  currencySymbol: "\u20B9",
-  timezone: "Asia/Kolkata",
-};
 
 /* ---------------- Toast notifications ---------------- */
 
@@ -48,7 +39,7 @@ export function toast(message, type = "info", duration = 4000) {
   };
 
   el.addEventListener("click", dismiss);
-  el.dataset.toastTimer = setTimeout(dismiss, duration);
+  setTimeout(dismiss, duration);
   return dismiss;
 }
 
@@ -85,14 +76,26 @@ export function closeModal(target) {
   if (overlay) closeOverlay(overlay);
 }
 
-export function closeAllModals() {
-  [...openOverlays].forEach(closeOverlay);
-}
+const CONFIRM_VARIANTS = new Set(["primary", "secondary", "danger"]);
 
 /**
- * Promise-based confirmation dialog. Resolve true/false.
+ * Promise-based confirmation dialog. Resolves true/false.
+ *
+ * `message` is rendered as plain text, so interpolated values (names, amounts,
+ * anything read back from Firestore) are escaped for you. Pass `htmlMessage`
+ * instead when the body genuinely needs markup - and only when every
+ * interpolated value inside it has already been escaped.
  */
-export function confirm({ title = "Confirm", message = "", confirmText = "Confirm", cancelText = "Cancel", variant = "danger", loadingText = null } = {}) {
+export function confirm({
+  title = "Confirm",
+  message = "",
+  htmlMessage = null,
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  variant = "danger",
+} = {}) {
+  const variantClass = CONFIRM_VARIANTS.has(variant) ? variant : "danger";
+  const body = htmlMessage === null ? escapeHtml(message) : htmlMessage;
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
@@ -104,10 +107,10 @@ export function confirm({ title = "Confirm", message = "", confirmText = "Confir
           <h3>${escapeHtml(title)}</h3>
           <button type="button" class="modal-close" data-close aria-label="Close">&times;</button>
         </div>
-        <div class="modal-body">${message}</div>
+        <div class="modal-body">${body}</div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-cancel>${escapeHtml(cancelText)}</button>
-          <button type="button" class="btn btn-${variant}" data-ok>${escapeHtml(confirmText)}</button>
+          <button type="button" class="btn btn-${variantClass}" data-ok>${escapeHtml(confirmText)}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -134,15 +137,7 @@ export function confirm({ title = "Confirm", message = "", confirmText = "Confir
     });
     overlay.querySelector("[data-close]").addEventListener("click", () => finish(false));
     overlay.querySelector("[data-cancel]").addEventListener("click", () => finish(false));
-    overlay.querySelector("[data-ok]").addEventListener("click", () => {
-      const okBtn = overlay.querySelector("[data-ok]");
-      if (loadingText) {
-        if (okBtn.classList.contains("is-loading")) return;
-        okBtn.classList.add("is-loading");
-        okBtn.textContent = loadingText;
-      }
-      finish(true);
-    });
+    overlay.querySelector("[data-ok]").addEventListener("click", () => finish(true));
   });
 }
 
@@ -248,9 +243,7 @@ window.addEventListener("unhandledrejection", (event) => {
   toast("Something went wrong. Please try again.", "error", 6000);
 });
 
-/* ---------------- Re-exports used by pages ---------------- */
-
-export { escapeHtml, formatINR };
+/* ---------------- Shell bootstrap ---------------- */
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initShell);
