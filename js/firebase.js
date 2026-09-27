@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    TrustX Ledger — Firebase bootstrap
    -----------------------------------------------------------------
    SECURITY NOTE
@@ -20,16 +20,15 @@
       (`firebase deploy --only firestore,database`).
 
    ONE PROJECT, TWO DATABASES
-   Firestore holds the money and nothing else, partitioned by day:
+   Firestore holds the transactions and the service catalog:
      dayHeads/{dateKey}                     one document per business day
      dayHeads/{dateKey}/transactions/{id}   that day's sales
-   Realtime Database holds everything the money does not need to sit
-   next to — the shop identity, the two access codes, the trusted-device
-   registry, the service catalog and expenses. It was chosen for them
-   because reads are whole-tree (a catalog, a device list) with no
-   paging, no serverTimestamp and no composite index to maintain, and
-   because its rules language can compare a submitted secret against a
-   server-held one — which is what the enrollment check needs.
+     services/{serviceId}                   the quick-service catalog
+   Realtime Database holds everything else — the shop identity (settings),
+   the two access codes, the trusted-device registry (devices, enrollments),
+   and expenses. It was chosen for them because its rules language can compare
+   a submitted secret against a server-held one — which is what the enrollment
+   check needs.
    ========================================================= */
 
 export const FIREBASE_CONFIG = {

@@ -115,26 +115,6 @@
       }
     },
 
-    "services": {
-      ".read": "auth != null",
-      ".write": false,
-      ".validate": false,
-      ".indexOn": ["sortOrder"],
-
-      "$serviceId": {
-        ".write": "auth != null && ((!data.exists() && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid) || (data.exists() && newData.child('createdAt').val() == data.child('createdAt').val() && newData.child('createdBy').val() == data.child('createdBy').val()))",
-        "serviceId": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,120}$/)" },
-        "name": { ".validate": "newData.isString() && newData.val().matches(/^.{1,80}$/)" },
-        "code": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,12}$/)" },
-        "pricePaise": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000000" },
-        "active": { ".validate": "newData.val() == true || newData.val() == false" },
-        "sortOrder": { ".validate": "newData.isNumber()" },
-        "createdAt": { ".validate": "newData.isNumber()" },
-        "createdBy": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" },
-        "updatedAt": { ".validate": "newData.isNumber() && newData.val() == now" },
-        "updatedBy": { ".validate": "newData.isString() && newData.val() == auth.uid" }
-      }
-    },
 
     "expenses": {
       ".read": "auth != null",

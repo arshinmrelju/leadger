@@ -3,19 +3,18 @@ rules_version = '2';
 // =============================================================
 // TRUSTX LEDGER — Cloud Firestore security rules
 // -------------------------------------------------------------
-// TRANSACTIONS ONLY. Every other collection in this app now lives in
-// the Realtime Database — see database.rules.json for:
+// TRANSACTIONS AND SERVICES. Realtime Database holds:
 //   settings/{general,security,admin}   shop identity and the two codes
 //   enrollments/{nonce}                 one-time proof-of-code
 //   devices/{tokenHash}                 trusted-device registry
 //   admins/{uid}                        Developer-console grants
-//   services/{serviceId}                the quick-service catalog
 //   expenses/{expId}                    spends (read-only this build)
 //
 // DATA MODEL COVERED HERE
 //   dayHeads/{dateKey}                        the independent head for
 //                                              one Asia/Kolkata business day
 //   dayHeads/{dateKey}/transactions/{txnId}   the sales recorded that day
+//   services/{serviceId}                      the quick-service catalog
 //
 // A HEAD PER DAY, NOT A dateKey FIELD
 //   The old model was one flat transactions collection with a dateKey
@@ -54,12 +53,10 @@ rules_version = '2';
 //   the rows, so the pages that matter never trust the counters.
 //
 // SERVICE CATALOG
-//   The catalog moved to the Realtime Database, and Firestore rules
-//   cannot read across. A sale therefore stores serviceId plus a
-//   SNAPSHOT of the serviceName it was sold under, validated as a
-//   bounded string; the client refuses to sell an archived service.
-//   The guarantee this gives up, deliberately: a sale's name can no
-//   longer be proven to equal a currently-live catalog row.
+//   The service catalog lives in Cloud Firestore under /services/{serviceId},
+//   alongside transactions. Because they share the same database, transaction
+//   rules directly verify via get() and exists() that the serviceId exists,
+//   is active, and matches serviceName.
 // =============================================================
 
 service cloud.firestore {
@@ -71,6 +68,10 @@ service cloud.firestore {
 
     function headPath(dk) {
       return /databases/$(database)/documents/dayHeads/$(dk);
+    }
+
+    function servicePath(svcId) {
+      return /databases/$(database)/documents/services/$(svcId);
     }
 
     // Field ranges, mirroring the client guards in js/utils.js so a bad
@@ -279,17 +280,10 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------------- Sales, inside their day ----------------
-    // Single-method sales. Money is integer paise; `rate` is paise per
-    // unit; `total` is always quantity x rate; `dateKey` must equal the
-    // head it is filed under, so a sale can never be filed under the
-    // wrong day; and `amounts` is the split the head counters follow.
-    //
-    // Editing is deliberately narrow: the descriptive fields move, but
-    // txnId / serviceId / dateKey / createdAt / createdBy / customerId
-    // stay pinned to the original row. Pinning dateKey is what keeps the
-    // day-close gate sound — a sale can never be dragged onto a closed
-    // day, nor pulled off one.
+    // Sales, inside their day. The service catalog now lives in the same
+    // Firestore database, so rules CAN verify via get() that the service
+    // exists and is active at write time — stronger than the old snapshot-
+    // only check that was needed when the catalog was on the RTDB.
     match /dayHeads/{dateKey}/transactions/{txnId} {
       function validTransactionDoc(doc) {
         return doc.keys().hasOnly([
@@ -302,8 +296,11 @@ service cloud.firestore {
           && doc.txnId == txnId
           && doc.serviceId is string
           && doc.serviceId.size() >= 1 && doc.serviceId.size() <= 120
+          && exists(servicePath(doc.serviceId))
+          && get(servicePath(doc.serviceId)).data.active == true
           && doc.serviceName is string
           && doc.serviceName.size() >= 1 && doc.serviceName.size() <= 80
+          && doc.serviceName == get(servicePath(doc.serviceId)).data.name
           && validQuantity(doc.quantity)
           && validRate(doc.rate)
           && validTotal(doc.total)
@@ -338,8 +335,11 @@ service cloud.firestore {
           && after.createdBy == before.createdBy
           && after.customerId == before.customerId
           && after.serviceId is string && after.serviceId.size() >= 1
+          && exists(servicePath(after.serviceId))
+          && get(servicePath(after.serviceId)).data.active == true
           && after.serviceName is string
           && after.serviceName.size() >= 1 && after.serviceName.size() <= 80
+          && after.serviceName == get(servicePath(after.serviceId)).data.name
           && validQuantity(after.quantity)
           && validRate(after.rate)
           && validTotal(after.total)
@@ -395,9 +395,63 @@ service cloud.firestore {
            );
     }
 
-    // Everything else is denied. The service catalog, expenses, devices,
-    // admins, enrollments and settings are all Realtime Database paths
-    // now, and anything unlisted here is not part of this app.
+    // ---------------- Services ----------------
+    // Any signed-in (code-gated) device may create, rename, re-price or
+    // archive services. Deletion is never allowed, so "removal" means
+    // setting active=false.
+    match /services/{serviceId} {
+      function validServiceDoc(doc) {
+        return doc.keys().hasOnly([
+              'serviceId', 'name', 'code', 'pricePaise',
+              'active', 'sortOrder', 'createdAt', 'createdBy',
+              'updatedAt', 'updatedBy'
+            ])
+          && doc.serviceId is string && doc.serviceId.size() <= 120
+          && doc.serviceId == serviceId
+          && doc.name is string && doc.name.size() >= 1 && doc.name.size() <= 80
+          && doc.code is string && doc.code.size() <= 12
+          && doc.pricePaise is number && doc.pricePaise >= 0 && doc.pricePaise <= 10000000
+          && doc.active is bool
+          && doc.sortOrder is number
+          && doc.createdBy == request.auth.uid
+          && doc.updatedBy == request.auth.uid
+          && doc.createdAt == request.time
+          && doc.updatedAt == request.time;
+      }
+
+      function validServiceUpdate(doc) {
+        return doc.keys().hasOnly([
+              'serviceId', 'name', 'code', 'pricePaise',
+              'active', 'sortOrder', 'createdAt', 'createdBy',
+              'updatedAt', 'updatedBy'
+            ])
+          && doc.serviceId is string && doc.serviceId.size() <= 120
+          && doc.serviceId == serviceId
+          && doc.name is string && doc.name.size() >= 1 && doc.name.size() <= 80
+          && doc.code is string && doc.code.size() <= 12
+          && doc.pricePaise is number && doc.pricePaise >= 0 && doc.pricePaise <= 10000000
+          && doc.active is bool
+          && doc.sortOrder is number
+          && doc.createdAt == resource.data.createdAt
+          && doc.createdBy == resource.data.createdBy
+          && doc.updatedAt == request.time
+          && doc.updatedBy == request.auth.uid;
+      }
+
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && validServiceDoc(request.resource.data);
+
+      allow update: if signedIn()
+        && validServiceUpdate(request.resource.data);
+
+      allow delete: if false;
+    }
+
+    // Everything else is denied. Expenses, devices, admins, enrollments
+    // and settings are all Realtime Database paths now, and anything
+    // unlisted here is not part of this app.
     match /{document=**} {
       allow read, write: if false;
     }

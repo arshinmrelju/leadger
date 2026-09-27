@@ -1,29 +1,32 @@
-﻿/* =========================================================
+/* =========================================================
    TrustX Ledger — Ledger data layer
    -----------------------------------------------------------------
    SPLIT ACROSS TWO DATABASES, ONE PROJECT.
 
-   Cloud Firestore holds the money and nothing else. The business day
-   IS the partition, so there is one independent head per day and that
-   day's sales are filed underneath it:
-     dayHeads/{dateKey}                       the day: its state, when it
-                                             opened and who closed it,
-                                             plus the running totals
-     dayHeads/{dateKey}/transactions/{txnId}  the sales for that day
+   Cloud Firestore holds the ledger and the service catalog.
+   Transactions are day-partitioned — the business day IS the path:
+     dayHeads/{dateKey}                       the day head: state, open/close
+                                             timestamps, and running counters
+     dayHeads/{dateKey}/transactions/{txnId}  the sales for that day only
+     services/{serviceId}                     the quick-service catalog
+
+   One busy day can never slow down another; reading a day's sales needs
+   no composite index; and the catalog lives alongside the ledger so a
+   Firestore rule can verify a service name on every write.
 
    Realtime Database holds everything the money does not need to sit
-   next to:
-     services/{serviceId}   quick-service catalog (seed list in service-catalog.js)
-     expenses/{dateKey}/{expId}  spends recorded on a business day
+   next to — shop identity, the two codes, device registry, and expenses:
+     settings/{general,security,admin}   shop identity and the two codes
+     enrollments/{nonce}                 one-time device proofs
+     devices/{tokenHash}                 trusted-device registry
+     expenses/{dateKey}/{expId}          spends recorded on a business day
 
    Two consequences worth knowing before reading the code:
      * A sale and the day's counters are written in ONE atomic batch,
        and firestore.rules checks the head moved by exactly that sale.
        A sale therefore cannot land without the day's totals following.
-     * The catalog is on the other database and Firestore rules cannot
-       read across, so a sale stores serviceId plus a SNAPSHOT of the
-       serviceName it was sold under. The client refuses to sell an
-       archived service; the rules only prove the name is a sane string.
+     * The catalog is in the same database as transactions, so the rules
+       CAN verify the service name on every sale write.
 
    All money is integer paise. Dates are Asia/Kolkata `YYYY-MM-DD`.
    Reads only touch the day being viewed — never the whole store.
@@ -234,14 +237,13 @@ function summaryFromRows(rows, expensesPaise) {
    Realtime Database reads (catalog + expenses)
    ------------------------------------------------------------------ */
 
-/** Best-effort read of the quick-service catalog, active first. */
+/** Best-effort read of the quick-service catalog from Firestore, active first. */
 export async function fetchServices({ includeInactive = false } = {}) {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-  const snap = await rt.get(rt.ref(b.rtdb, "services"));
-  const raw = snap.val() || {};
-  const list = Object.keys(raw)
-    .map((id) => normalizeService(id, raw[id]))
+  const b = await bridge();
+  const fs = b.firestore;
+  const snap = await fs.getDocs(fs.collection(b.db, "services"));
+  const list = snap.docs
+    .map((d) => normalizeService(d.id, d.data()))
     .sort(
       (x, y) =>
         (x.active ? 0 : 1) - (y.active ? 0 : 1) ||
@@ -671,8 +673,8 @@ export async function createTransaction({
  * @returns {Promise<{serviceId, name, pricePaise}>}
  */
 export async function createService({ name, price, code = "", sortOrder = 0, serviceId } = {}) {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
+  const b = await bridge();
+  const fs = b.firestore;
   const cleanName = String(name || "").trim();
   const pricePaise = rateToPaise(price);
   if (!cleanName || cleanName.length > 80) {
@@ -685,7 +687,7 @@ export async function createService({ name, price, code = "", sortOrder = 0, ser
   if (cleanCode.length > 12) {
     throw new Error("Service code must be 12 characters or fewer.");
   }
-  /* An id becomes a Realtime Database path, so a slash would silently
+  /* An id becomes a Firestore document path, so a slash would silently
      write somewhere else entirely. */
   const explicitId = String(serviceId == null ? "" : serviceId).trim();
   if (explicitId.length > 120 || explicitId.includes("/")) {
@@ -701,12 +703,12 @@ export async function createService({ name, price, code = "", sortOrder = 0, ser
     pricePaise,
     active: true,
     sortOrder: toSafe(sortOrder),
-    createdAt: rt.serverTimestamp(),
+    createdAt: fs.serverTimestamp(),
     createdBy: user.uid,
-    updatedAt: rt.serverTimestamp(),
+    updatedAt: fs.serverTimestamp(),
     updatedBy: user.uid,
   };
-  await rt.set(rt.ref(b.rtdb, "services", id), doc);
+  await fs.setDoc(fs.doc(b.db, "services", id), doc);
   return { serviceId: id, name: cleanName, pricePaise };
 }
 
@@ -790,10 +792,11 @@ export async function ensureCatalogSeeded() {
  * fields you want to change: `name`, `price` (rupees), `active`.
  */
 export async function updateService(serviceId, { name, price, active } = {}) {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
+  const b = await bridge();
+  const fs = b.firestore;
   if (!serviceId) throw new Error("Missing service id.");
   const user = b.auth.currentUser;
+  if (!user || !user.uid) throw new Error("You need to be signed in to update a service.");
 
   const patch = {};
   if (name !== undefined) {
@@ -809,9 +812,9 @@ export async function updateService(serviceId, { name, price, active } = {}) {
   if (active !== undefined) patch.active = active === true;
   if (!Object.keys(patch).length) return { serviceId };
 
-  patch.updatedAt = rt.serverTimestamp();
-  patch.updatedBy = user ? user.uid : "";
-  await rt.update(rt.ref(b.rtdb, "services", serviceId), patch);
+  patch.updatedAt = fs.serverTimestamp();
+  patch.updatedBy = user.uid;
+  await fs.updateDoc(fs.doc(b.db, "services", serviceId), patch);
   return { serviceId, ...patch };
 }
 
@@ -845,7 +848,6 @@ export async function updateTransaction(txnId, dateKey, patch = {}) {
 
   const b = await bridge();
   const fs = b.firestore;
-  const rt = b.rtdbMod;
   const user = b.auth.currentUser;
   if (!user || !user.uid) throw new Error("You need to be signed in to edit a sale.");
 
@@ -871,16 +873,12 @@ export async function updateTransaction(txnId, dateKey, patch = {}) {
   if (!serviceId) throw new Error("Choose a service for this sale.");
 
   let serviceName = String(patch.serviceName || "").trim();
-  if (!b.rtdb) {
-    if (!serviceName) throw new Error("That service no longer exists.");
-  } else {
-    const svcSnap = await rt.get(rt.ref(b.rtdb, "services", serviceId));
-    if (!svcSnap.exists()) throw new Error("That service no longer exists.");
-    const serviceDoc = svcSnap.val();
-    if (serviceDoc.active !== true) throw new Error("That service is archived and cannot be used.");
-    serviceName = String(serviceDoc.name || "").trim();
-    if (!serviceName) throw new Error("That service has no name.");
-  }
+  const svcSnap = await fs.getDoc(fs.doc(b.db, "services", serviceId));
+  if (!svcSnap.exists()) throw new Error("That service no longer exists.");
+  const serviceDoc = svcSnap.data();
+  if (serviceDoc.active !== true) throw new Error("That service is archived and cannot be used.");
+  serviceName = String(serviceDoc.name || "").trim();
+  if (!serviceName) throw new Error("That service has no name.");
 
   if (!isPaymentMethod(patch.paymentMethod)) {
     throw new Error("Choose a payment method (cash, UPI, card or due).");
