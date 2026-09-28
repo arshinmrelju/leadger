@@ -453,34 +453,54 @@ input.input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none
 }
 
 /* Green receipt submit CTA */
-.btn-receipt-pay {
+.btn-receipt-pay,
+.btn-save-txn {
   width: 100%;
   background: linear-gradient(180deg, #1f7a42 0%, #156133 100%);
   color: #ffffff;
+  font-family: inherit;
   font-weight: 800;
-  font-size: 0.98rem;
+  font-size: 0.95rem;
   letter-spacing: 0.05em;
-  padding: 0.78rem 1.25rem;
+  padding: 0.78rem 1.35rem;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  box-shadow: 0 4px 14px rgba(21, 97, 51, 0.28);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-  margin-top: 0.85rem;
+  gap: 0.55rem;
+  box-shadow: 0 4px 14px rgba(21, 97, 51, 0.3);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  margin-top: 0.9rem;
   box-sizing: border-box;
+  text-transform: uppercase;
 }
-.btn-receipt-pay:hover {
+.btn-receipt-pay:hover,
+.btn-save-txn:hover {
   background: linear-gradient(180deg, #248c4c 0%, #176f3a 100%);
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(21, 97, 51, 0.36);
+  box-shadow: 0 6px 18px rgba(21, 97, 51, 0.38);
 }
-.btn-receipt-pay:active {
+.btn-receipt-pay:active,
+.btn-save-txn:active {
   transform: translateY(1px);
   box-shadow: 0 2px 8px rgba(21, 97, 51, 0.25);
+}
+.btn-receipt-pay:disabled,
+.btn-save-txn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.btn-receipt-pay.is-loading > *,
+.btn-save-txn.is-loading > * {
+  opacity: 0;
+}
+.btn-receipt-pay.is-loading::after,
+.btn-save-txn.is-loading::after {
+  border-top-color: #ffffff;
 }
 
 /* "HAVE A NICE DAY!" text */

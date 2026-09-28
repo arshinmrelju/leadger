@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    TrustX Ledger — Record a sale (shared modal)
    -----------------------------------------------------------------
    There is exactly ONE sale-entry form and it lives in a modal.
@@ -126,8 +126,9 @@ function saleFormMarkup() {
     "</span>" +
     "</div>" +
 
-    '<button type="submit" class="btn btn-primary btn-lg btn-block mt-1" id="saveBtn">' +
-    "Save transaction" +
+    '<button type="submit" class="btn-save-txn btn-receipt-pay" id="saveBtn">' +
+    ICON_PLUS +
+    '<span>SAVE TRANSACTION</span>' +
     "</button>" +
     "</form>"
   );

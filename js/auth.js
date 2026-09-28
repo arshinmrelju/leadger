@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    TrustX Ledger — Single-code sign-in
    -----------------------------------------------------------------
    The whole app opens with one shared code (SHOP_CODE, "TRUSTX").
@@ -266,7 +266,7 @@ const DEFAULT_SHOP = {
 export async function getGeneral() {
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
-  const snap = await rt.get(rt.ref(b.rtdb, "settings", "general"));
+  const snap = await rt.get(rt.ref(b.rtdb, "settings/general"));
   return snap.exists() ? snap.val() : null;
 }
 
@@ -284,11 +284,26 @@ export async function ensureShopRecord() {
   const user = getCurrentUser();
   if (!user) throw new AuthError("not-signed-in", friendly("not-signed-in"));
 
-  const generalSnap = await rt.get(rt.ref(b.rtdb, "settings", "general"));
-  let general = generalSnap.exists() ? generalSnap.val() : null;
+  /* Reading the shop record is best-effort. The rules allow it for any
+     signed-in device, but a denial here must not become a failed
+     sign-in: the create below is the real decision (the rules refuse a
+     second create anyway), and enrollment never needs this record — it
+     needs settings/security, which is deliberately unreadable. */
+  const generalRef = rt.ref(b.rtdb, "settings/general");
+  const readGeneral = async () => {
+    try {
+      const snap = await rt.get(generalRef);
+      return snap.exists() ? snap.val() : null;
+    } catch (err) {
+      if (!isPermissionDenied(err)) throw err;
+      return null;
+    }
+  };
+
+  let general = await readGeneral();
   if (!general) {
     try {
-      await rt.set(rt.ref(b.rtdb, "settings", "general"), {
+      await rt.set(generalRef, {
         ...DEFAULT_SHOP,
         createdAt: rt.serverTimestamp(),
         createdBy: user.uid,
@@ -299,8 +314,7 @@ export async function ensureShopRecord() {
       }
       // Lost the race — another device created it first.
     }
-    const again = await rt.get(rt.ref(b.rtdb, "settings", "general"));
-    general = again.exists() ? again.val() : general;
+    general = (await readGeneral()) || general;
   }
 
   /* Seed the access code once (the rules verify an enrollment against
@@ -310,7 +324,7 @@ export async function ensureShopRecord() {
      "denied" simply means another device already seeded it. Same story
      for the admin code. */
   try {
-    await rt.set(rt.ref(b.rtdb, "settings", "security"), {
+    await rt.set(rt.ref(b.rtdb, "settings/security"), {
       accessCode: SHOP_CODE,
       createdAt: rt.serverTimestamp(),
       createdBy: user.uid,
@@ -320,7 +334,7 @@ export async function ensureShopRecord() {
   }
 
   try {
-    await rt.set(rt.ref(b.rtdb, "settings", "admin"), {
+    await rt.set(rt.ref(b.rtdb, "settings/admin"), {
       adminCode: ADMIN_CODE,
       createdAt: rt.serverTimestamp(),
       createdBy: user.uid,
@@ -489,37 +503,43 @@ function defaultDeviceLabel() {
  * each run, so re-verifying after a revocation creates a brand-new
  * credential.
  */
-export async function enrollDevice({ label } = {}) {
+export async function enrollDevice({ label, code } = {}) {
   if (!canStoreDeviceCredential()) {
     throw new AuthError("device-store-unavailable", friendly("device-store-unavailable"));
   }
   const user = await signInAnonymous();
+  console.log("[trustx-ledger] enrollDevice: signed in as", user.uid);
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
 
   await ensureShopRecord();
+  console.log("[trustx-ledger] enrollDevice: shop record ensured");
 
   const token = generateDeviceToken();
   const tokenHash = await hashToken(token);
   const nonce = nonceHex();
+  const typedCode = normalizeCode(code) || SHOP_CODE;
+  console.log("[trustx-ledger] enrollDevice: using verifiedCode =", typedCode, "| nonce =", nonce);
 
   /* One-time proof-of-code; the rules compare against settings/security. */
   try {
-    await rt.set(rt.ref(b.rtdb, "enrollments", nonce), {
+    await rt.set(rt.ref(b.rtdb, `enrollments/${nonce}`), {
       scope: "shop",
-      verifiedCode: SHOP_CODE,
+      verifiedCode: typedCode,
       createdAt: rt.serverTimestamp(),
       createdBy: user.uid,
       used: false,
     });
+    console.log("[trustx-ledger] enrollDevice: enrollment write OK");
   } catch (err) {
+    console.error("[trustx-ledger] enrollDevice: enrollment write FAILED", err.code, err.message, err);
     if (isPermissionDenied(err)) {
       throw new AuthError("code-invalid", friendly("code-invalid"));
     }
     throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
   }
 
-  const deviceRef = rt.ref(b.rtdb, "devices", tokenHash);
+  const deviceRef = rt.ref(b.rtdb, `devices/${tokenHash}`);
   const client = {
     ua: shortUA(navigator.userAgent),
     lang: (typeof navigator !== "undefined" && navigator.language) || "",
@@ -549,7 +569,7 @@ export async function enrollDevice({ label } = {}) {
 
   /* Burn the one-time enrollment. */
   try {
-    await rt.update(rt.ref(b.rtdb, "enrollments", nonce), {
+    await rt.update(rt.ref(b.rtdb, `enrollments/${nonce}`), {
       used: true,
       deviceHash: tokenHash,
     });
@@ -559,8 +579,21 @@ export async function enrollDevice({ label } = {}) {
 
   await saveDeviceCredential(token);
 
-  const deviceSnap = await rt.get(deviceRef);
-  return { tokenHash, token, device: deviceSnap.val() || {} };
+  /* Reading the record back is cosmetic — the device is already on disk
+     and the credential is already stored, so a denied or offline read
+     must NOT fail a sign-in that actually worked. Left unguarded it
+     threw straight out of here, and the login screen rendered the raw
+     "the ledger rejected that request, deploy the latest rules" text
+     for a request the rules had in fact approved. */
+  let device = {};
+  try {
+    const deviceSnap = await rt.get(deviceRef);
+    device = deviceSnap.val() || {};
+  } catch (err) {
+    console.warn("[trustx-ledger] device read-back skipped:", err);
+  }
+
+  return { tokenHash, token, device };
 }
 
 /**
@@ -590,7 +623,7 @@ export async function checkTrustedDevice() {
   try {
     const b = await rtdbBridge();
     const rt = b.rtdbMod;
-    const snap = await rt.get(rt.ref(b.rtdb, "devices", tokenHash));
+    const snap = await rt.get(rt.ref(b.rtdb, `devices/${tokenHash}`));
     if (!snap.exists()) return { trusted: false, reason: "not-found", tokenHash };
     const d = snap.val();
     if (d.active !== true) return { trusted: false, reason: "revoked", tokenHash, device: d };
@@ -608,7 +641,7 @@ export async function updateDeviceLastUsed(tokenHash) {
   try {
     const b = await rtdbBridge();
     const rt = b.rtdbMod;
-    await rt.update(rt.ref(b.rtdb, "devices", tokenHash), {
+    await rt.update(rt.ref(b.rtdb, `devices/${tokenHash}`), {
       lastUsedAt: rt.serverTimestamp(),
       lastUsedNetwork: collectNetwork(),
     });
@@ -635,14 +668,14 @@ export async function listTrustedDevices() {
 export async function revokeDevice(tokenHash) {
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
-  await rt.update(rt.ref(b.rtdb, "devices", tokenHash), { active: false });
+  await rt.update(rt.ref(b.rtdb, `devices/${tokenHash}`), { active: false });
 }
 
 /** Reactivate a device (admin grant required; rules enforce). */
 export async function restoreDevice(tokenHash) {
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
-  await rt.update(rt.ref(b.rtdb, "devices", tokenHash), {
+  await rt.update(rt.ref(b.rtdb, `devices/${tokenHash}`), {
     active: true,
     lastUsedAt: rt.serverTimestamp(),
     lastUsedNetwork: collectNetwork(),
@@ -653,7 +686,7 @@ export async function restoreDevice(tokenHash) {
 export async function removeDevice(tokenHash) {
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
-  await rt.remove(rt.ref(b.rtdb, "devices", tokenHash));
+  await rt.remove(rt.ref(b.rtdb, `devices/${tokenHash}`));
 }
 
 /* =========================================================
@@ -674,7 +707,7 @@ export async function checkAdminAccess() {
     const rt = b.rtdbMod;
     const user = getCurrentUser();
     if (!user) return false;
-    const snap = await rt.get(rt.ref(b.rtdb, "admins", user.uid));
+    const snap = await rt.get(rt.ref(b.rtdb, `admins/${user.uid}`));
     return snap.exists() === true;
   } catch (err) {
     /* Offline or rules denied: fail closed — the console stays shut. */
@@ -719,7 +752,7 @@ export async function grantAdminAccess(code) {
   /* One-time proof of the ADMIN code; the rules compare it to
      settings/admin.adminCode, so a wrong code is refused server-side. */
   try {
-    await rt.set(rt.ref(b.rtdb, "enrollments", nonce), {
+    await rt.set(rt.ref(b.rtdb, `enrollments/${nonce}`), {
       scope: "admin",
       verifiedCode: typed,
       createdAt: rt.serverTimestamp(),
@@ -734,7 +767,7 @@ export async function grantAdminAccess(code) {
   }
 
   try {
-    await rt.set(rt.ref(b.rtdb, "admins", user.uid), {
+    await rt.set(rt.ref(b.rtdb, `admins/${user.uid}`), {
       uid: user.uid,
       deviceHash: tokenHash,
       enrollmentId: nonce,
@@ -748,7 +781,7 @@ export async function grantAdminAccess(code) {
 
   /* Burn the one-time proof. */
   try {
-    await rt.update(rt.ref(b.rtdb, "enrollments", nonce), {
+    await rt.update(rt.ref(b.rtdb, `enrollments/${nonce}`), {
       used: true,
       deviceHash: tokenHash,
     });
