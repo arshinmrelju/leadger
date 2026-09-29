@@ -61,7 +61,7 @@
           </div>
           <div class="receipt-item-row">
             <span class="receipt-item-label">SECURITY PROTOCOL</span>
-            <span class="receipt-item-val">DEVICE TRUST TOKEN</span>
+            <span class="receipt-item-val">SHOP PASSCODE</span>
           </div>
           <div class="receipt-item-row">
             <span class="receipt-item-label">TIMESTAMP</span>
@@ -112,10 +112,9 @@
   <script type="module">
     import { isConfigured, initFirebase } from "./js/firebase.js";
     import {
-      initAuth,
       signInAnonymous,
-      enrollDevice,
-      signOut,
+      normalizeCode,
+      SHOP_CODE,
       reportError,
     } from "./js/auth.js";
 
@@ -172,28 +171,11 @@
         codeSubmitBtn.disabled = true;
         return;
       }
-      initFirebase().catch(() => {});
 
       const params = new URLSearchParams(window.location.search);
       if (params.get("reason") === "signedout") {
         showAlert("You have been signed out.", "info");
-      } else if (params.get("reason") === "untrusted") {
-        showAlert("This browser is no longer trusted. Enter the shop code to trust it again.", "info");
       }
-
-      try {
-        await initAuth();
-      } catch (err) {
-        console.error("[trustx-ledger] auth init failed:", err);
-        showAlert(reportError(err), "warning");
-        codeSubmitBtn.disabled = true;
-        return;
-      }
-
-      /* Deliberately NO auto-redirect on an existing session: a revoked
-         device may still carry a persisted anonymous session, and the
-         only way back in is the code. The index.html trust gate routes
-         here whenever this browser is not an active trusted device. */
     }
 
     boot();
@@ -208,14 +190,14 @@
       }
       setBtnLoading(true);
       try {
-        /* The session is created only to satisfy the enrollment rules;
-           whether the code is actually right is decided server-side.
-           On failure we drop the provisional session again. */
+        const normalized = normalizeCode(code);
+        if (normalized !== SHOP_CODE) {
+          throw new Error("That code is not recognised. Check with the shop administrator.");
+        }
+        await initFirebase();
         await signInAnonymous();
-        await enrollDevice({ label: "", code });
         goDashboard();
       } catch (err) {
-        await signOut().catch(() => {});
         showAlert(reportError(err));
         codeInput.focus();
         codeInput.select();

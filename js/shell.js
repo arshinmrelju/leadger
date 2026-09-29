@@ -4,18 +4,17 @@
    Shared by dashboard.html, transactions.html, ledger.html and
    admin.html. Owns:
      - auth guard + session-loss redirect
-     - trusted-device gate (revocation enforced even with a session)
-      - optional admin-grant check for the Developer console
-      - default service catalog seed (so quick entry is never empty)
-      - user chip + shop name + date pill
+     - optional admin-grant check for the Developer console
+     - default service catalog seed (so quick entry is never empty)
+     - user chip + shop name + date pill
      - Kolkata day rollover
      - Ctrl/Cmd+N "new transaction" shortcut
    Pages call initAppShell(...) and receive a rendering context once
-   the trusted-device session is active.
+   the session is active.
    ========================================================= */
 
 import { toast, confirm } from "./app.js";
-import { escapeHtml, formatKolkataLong, todayKolkata, debounce } from "./utils.js";
+import { escapeHtml, formatKolkataLong, todayKolkata } from "./utils.js";
 import { ensureCatalogSeeded } from "./ledger.js";
 import {
   requireAuth,
@@ -24,8 +23,6 @@ import {
   signOut,
   ensureShopRecord,
   getGeneral,
-  checkTrustedDevice,
-  updateDeviceLastUsed,
   checkAdminAccess,
   reportError,
 } from "./auth.js";
@@ -159,16 +156,6 @@ export async function initAppShell({ onReady, onDayChange, requireAdmin = false 
   guardPage("login.html");
   registerGlobalKeys();
 
-  /* Trust gate: a protected page must belong to an active trusted
-     device — even when a session exists. A revoked device still has a
-     persisted anonymous session, so this check (not the auth state) is
-     what forces it to the code screen. */
-  const trust = await checkTrustedDevice();
-  if (!trust.trusted) {
-    window.location.replace("login.html?reason=untrusted");
-    return;
-  }
-
   const real = getCurrentUser() || user;
   renderUserChip(real);
 
@@ -187,18 +174,12 @@ export async function initAppShell({ onReady, onDayChange, requireAdmin = false 
     renderShopName(general);
     wireConnection(typeof onDayChange === "function" ? onDayChange : null);
 
-    /* Fire-and-forget heartbeat so the admin device list stays fresh. */
-    const beat = debounce(() => updateDeviceLastUsed(trust.tokenHash), 400);
-    beat();
-    setInterval(beat, 5 * 60 * 1000);
-
     const ctx = {
       user: real,
       general,
       /* True only for a browser holding an admins/{uid} grant. Pages that
          do not ask for it never pay for the read. */
       isAdmin: requireAdmin ? await checkAdminAccess() : false,
-      trust,
     };
     await onReady(ctx);
   } catch (err) {
