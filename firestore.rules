@@ -108,6 +108,13 @@ service cloud.firestore {
     // A browser is trusted iff it holds a grant that is still active.
     // Every money rule calls this, so revoking a grant takes effect on
     // the very next request without touching the session.
+    //
+    // The `exists()` half is load-bearing, not decoration: `get()` on a
+    // document that is not there returns null, and touching a field of
+    // null raises an evaluation error rather than yielding false. The
+    // error still denies, so this is not a way in either way — but a
+    // browser with no grant is an ordinary state, and it should be
+    // refused for the ordinary reason.
     function isTrusted(uid) {
       return exists(grantPath(uid)) && get(grantPath(uid)).data.active == true;
     }
@@ -162,7 +169,7 @@ service cloud.firestore {
     // their OWN uid, only once, and only carrying a hash that equals the
     // server-held hash for the scope they asked for. A wrong code simply
     // fails to match, so the write is denied and nothing is created.
-    function validEnrollment(uid, doc) {
+    function validEnrollment(doc) {
       return doc.keys().hasOnly(['scope', 'codeHash', 'createdAt', 'createdBy'])
         && doc.scope in ['shop', 'admin']
         && doc.codeHash is string
@@ -199,7 +206,7 @@ service cloud.firestore {
       return signedIn()
         && request.auth.uid == uid
         && !isTrusted(uid)
-        && validEnrollment(uid, request.resource.data);
+        && validEnrollment(request.resource.data);
     }
 
     // The one way an ALREADY-trusted browser may touch its proof: replace
@@ -219,7 +226,7 @@ service cloud.firestore {
         && exists(enrollPath(uid))
         && get(enrollPath(uid)).data.scope == 'shop'
         && request.resource.data.scope == 'admin'
-        && validEnrollment(uid, request.resource.data);
+        && validEnrollment(request.resource.data);
     }
 
     match /enrollments/{uid} {
@@ -328,22 +335,6 @@ service cloud.firestore {
 
     function servicePath(svcId) {
       return /databases/$(database)/documents/services/$(svcId);
-    }
-
-    // The day, and the sale id, a write is happening UNDER — read off
-    // the path instead of trusted from the document, so a client cannot
-    // claim to be filing a sale into a day other than the one it
-    // addressed (the old flat model let it, and the head would then be
-    // advanced on the wrong day's register).
-    // `path` is ['dayHeads', '<date>', 'transactions', '<txnId>'], so the
-    // guards keep a call from a shallower path a clean `false` instead of
-    // an out-of-range evaluation error.
-    function dateKey() {
-      return path.size() > 1 ? path[1] : null;
-    }
-
-    function txnId() {
-      return path.size() > 3 ? path[3] : null;
     }
 
     // Field ranges, mirroring the client guards in js/utils.js so a bad
@@ -638,6 +629,7 @@ service cloud.firestore {
       allow create: if trusted()
         && dayOpen(dateKey)
         && validTransactionDoc(request.resource.data)
+        && exists(headPath(dateKey))
         && headSteppedBy(
              get(headPath(dateKey)).data.counters,
              getAfter(headPath(dateKey)).data.counters,
@@ -650,6 +642,7 @@ service cloud.firestore {
       allow update: if trusted()
         && dayOpen(dateKey)
         && validTransactionEdit(resource.data, request.resource.data)
+        && exists(headPath(dateKey))
         && headShiftedBy(
              get(headPath(dateKey)).data.counters,
              getAfter(headPath(dateKey)).data.counters,
@@ -660,6 +653,7 @@ service cloud.firestore {
       // Deleting retreats the counters by exactly this sale.
       allow delete: if trusted()
         && dayOpen(dateKey)
+        && exists(headPath(dateKey))
         && headSteppedBy(
              get(headPath(dateKey)).data.counters,
              getAfter(headPath(dateKey)).data.counters,

@@ -1,26 +1,4 @@
 {
-  "//": [
-    "TrustX Ledger — Realtime Database rules.",
-    "",
-    "This database no longer holds anything that decides access. The two access",
-    "codes, the proof-of-code records, the trusted-browser registry and the admin",
-    "grants all moved to Cloud Firestore, NEXT TO THE MONEY, because Firestore rules",
-    "can read a document (accessGrants/{uid}) while Realtime Database rules cannot —",
-    "a database that cannot see the trust record cannot enforce it.",
-    "",
-    "The old paths below are kept DENIED on purpose rather than deleted, so a stale",
-    "deploy that still points at this file fails closed instead of quietly",
-    "re-opening the shop to every anonymous Firebase user. Their data can be deleted",
-    "once the new rules are deployed; see the README (Migration).",
-    "",
-    "KNOWN GAP — expenses. expenses/{dateKey}/{expId} is still here, and",
-    "'auth != null' is the strongest condition this rule language can express, so ANY",
-    "anonymous Firebase user can READ the shop's expenses. They cannot write them",
-    "(.write is false), and no rule anywhere trusts this data for money arithmetic.",
-    "Moving expenses into Firestore so they sit behind the same trusted() gate is",
-    "tracked as the next step; it is called out in the README's known-risks section",
-    "rather than left to be discovered."
-  ],
   "rules": {
     ".read": false,
     ".write": false,
@@ -30,42 +8,35 @@
       ".write": false,
 
       "general": {
-        "//": "Moved to Firestore shop/general. Denied here so a stale deploy cannot rewrite it.",
         ".read": false,
         ".write": false
       },
       "security": {
-        "//": "Held the PLAINTEXT shop code. No longer written; the hash lives in Firestore securitySecrets/shop.",
         ".read": false,
         ".write": false
       },
       "admin": {
-        "//": "Held the PLAINTEXT admin code. No longer written; the hash lives in Firestore securitySecrets/admin.",
         ".read": false,
         ".write": false
       }
     },
 
     "enrollments": {
-      "//": "Moved to Firestore enrollments/{uid}, where the code is compared against securitySecrets.",
       ".read": false,
       ".write": false
     },
 
     "devices": {
-      "//": "Moved to Firestore accessGrants/{uid}. The old tokenHash-keyed registry is dead.",
       ".read": false,
       ".write": false
     },
 
     "admins": {
-      "//": "Moved to Firestore accessGrants/{uid}.role. There is no separate admin collection any more.",
       ".read": false,
       ".write": false
     },
 
     "expenses": {
-      "//": "Read-only, and readable by any signed-in user — see KNOWN GAP at the top of this file.",
       ".read": "auth != null",
       ".write": false,
 

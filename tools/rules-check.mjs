@@ -52,6 +52,7 @@ const NOBODY = "u5";
 
 let pass = 0;
 let fail = 0;
+let traceCount = 0;
 const failures = [];
 
 const COUNTER_KEYS = ["txnCount", "grossPaise", "cashPaise", "upiPaise", "cardPaise", "duePaise", "collectedPaise"];
@@ -112,10 +113,10 @@ const headWrite = ({ day = head.dateKey, state = head.state, counters = head.cou
   return { update: { name: `${DOCS}/dayHeads/${day}`, fields } };
 };
 
-const baseTxn = (id, { total = 5000, quantity = 1, rate = total, method = "cash", status = "paid", createdBy = UID, amountsOverride = null } = {}) => ({
+const baseTxn = (id, { total = 5000, quantity = 1, rate = total, method = "cash", status = "paid", createdBy = UID, amountsOverride = null, serviceId = "svc_a", serviceName = "Photocopy" } = {}) => ({
   txnId: id,
-  serviceId: "svc_a",
-  serviceName: "Photocopy",
+  serviceId,
+  serviceName,
   quantity,
   rate,
   total,
@@ -171,9 +172,12 @@ async function expect(name, writes, shouldPass, uid = UID) {
      the same path, which trips over the missing `resource.data` and reports
      an evaluation error. The verdict is still a refusal — an evaluation error
      denies in production too — so only the ALLOW path treats a trace error as
-     a harness bug, which is what catches a broken rule substitution. */
-  const broke = /evaluation error|Function not found|Incorrect number of arguments|Unexpected/.test(body);
-  if (broke && shouldPass) {
+     a harness bug, which is what catches a broken rule substitution.
+     A trace error on a REFUSED write is counted as a pass, but it is
+     reported, because a rule that errors instead of answering is a rule
+     nobody can reason about — that is how a whole class of bug hid here. */
+  const trace = /evaluation error|Null value error|Function not found|Incorrect number of arguments|Unexpected/.test(body);
+  if (trace && shouldPass) {
     fail++;
     failures.push(name);
     console.log(`  BADRQ ${name} -> the rules failed to evaluate, not a verdict: ${body.slice(0, 700)}`);
@@ -181,7 +185,12 @@ async function expect(name, writes, shouldPass, uid = UID) {
   }
   if ((res.ok) === shouldPass) {
     pass++;
-    console.log(`  ok   ${name}`);
+    if (trace) {
+      traceCount++;
+      console.log(`  ok   ${name}   (denied by an evaluation error, not by a plain false)`);
+    } else {
+      console.log(`  ok   ${name}`);
+    }
   } else {
     fail++;
     failures.push(name);
@@ -491,6 +500,22 @@ async function run() {
   await expectSale('refuse a sale whose total is not quantity x rate ("t8")', { quantity: 2, rate: 3000, total: 5000 }, false);
   await expectSale('accept a multi-unit sale priced consistently ("t9")', { quantity: 2, rate: 2500, total: 5000 }, true);
 
+  console.log("\nthe service catalog is not a suggestion:");
+  /* A serviceId that does not exist used to raise an evaluation error
+     rather than a plain denial: `exists(p) && get(p).data.x` does not
+     short-circuit, so the missing field surfaced anyway. An errored rule
+     still denies, so this was never a way in — but it made every refusal
+     unreadable, and it hid this whole class of bug from the tests. */
+  await expectSale('refuse a sale against a service that does not exist ("tS")', { serviceId: "svc_missing", serviceName: "Ghost" }, false);
+  await expectSale('refuse a sale whose serviceName does not match ("tM")', { serviceName: "Lying" }, false);
+  {
+    /* And a deactivated service stops selling, which is the whole point of
+       keeping the catalog in the same database. */
+    await expect("deactivate the service (as an admin)", [{ update: { name: `${DOCS}/services/svc_a`, fields: { serviceId: str("svc_a"), name: str("Photocopy"), code: str("PC"), pricePaise: num(5000), active: bool(false), sortOrder: num(100), createdAt: ts(), createdBy: str(UID), updatedAt: ts(), updatedBy: str(UID) } } }], true, UID);
+    await expectSale('refuse a sale against a deactivated service ("tD")', {}, false);
+    await expect("reactivate the service", [{ update: { name: `${DOCS}/services/svc_a`, fields: { serviceId: str("svc_a"), name: str("Photocopy"), code: str("PC"), pricePaise: num(5000), active: bool(true), sortOrder: num(100), createdAt: ts(), createdBy: str(UID), updatedAt: ts(), updatedBy: str(UID) } } }], true, UID);
+  }
+
   console.log("\ncorrecting a sale:");
   const t1 = rows.get("t1");
   const t1Up = { ...t1, total: 6000, rate: 6000, amounts: amounts(6000, "cash") };
@@ -577,6 +602,11 @@ try {
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-if (failures.length) console.log("failing: " + failures.join(" | "));
+  console.log(`\n${pass} passed, ${fail} failed`);
+  if (failures.length) console.log("failing: " + failures.join(" | "));
+  if (traceCount) {
+    console.log(`\n${traceCount} of those refusals came from a rule that raised an evaluation`);
+    console.log("error instead of answering false. Each still denies, so none is a way in,");
+    console.log("but a denial nobody can read is a denial nobody can test. Worth a look.");
+  }
 process.exit(code);
