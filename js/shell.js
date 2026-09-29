@@ -17,13 +17,12 @@ import { toast, confirm } from "./app.js";
 import { escapeHtml, formatKolkataLong, todayKolkata } from "./utils.js";
 import { ensureCatalogSeeded } from "./ledger.js";
 import {
-  requireAuth,
+  requireAccess,
   guardPage,
   getCurrentUser,
   signOut,
   ensureShopRecord,
   getGeneral,
-  checkAdminAccess,
   reportError,
 } from "./auth.js";
 
@@ -143,24 +142,30 @@ function registerGlobalKeys() {
 
 /**
  * Boot a protected page.
+ *
+ * `requireAccess` is the gate: it needs both a session AND an active
+ * access grant, so a browser that was revoked in the Developer console
+ * never reaches the render — and even if it skipped this, the money
+ * rules would refuse it anyway.
+ *
  * @param {object} opts
  * @param {Function} opts.onReady  async (ctx) => render the page
  * @param {Function} [opts.onDayChange]  called when the Kolkata business day rolls over
  * @param {boolean} [opts.requireAdmin]  also resolve the Developer-console
- *        admin grant into ctx.isAdmin (one extra read, console only)
+ *        admin role into ctx.isAdmin (one extra read, console only)
  */
 export async function initAppShell({ onReady, onDayChange, requireAdmin = false } = {}) {
-  const user = await requireAuth();
-  if (!user) return; // redirect handled inside requireAuth
+  const grant = await requireAccess("login.html");
+  if (!grant) return; // redirect handled inside requireAccess
 
   guardPage("login.html");
   registerGlobalKeys();
 
-  const real = getCurrentUser() || user;
+  const real = getCurrentUser();
   renderUserChip(real);
 
   try {
-    /* Every signed-in device shares the shop; create its record once. */
+    /* Every signed-in browser shares the shop; create its record once. */
     const general = (await ensureShopRecord()) || (await getGeneral());
 
     /* A shop that has never sold anything still needs its counter's
@@ -177,9 +182,11 @@ export async function initAppShell({ onReady, onDayChange, requireAdmin = false 
     const ctx = {
       user: real,
       general,
-      /* True only for a browser holding an admins/{uid} grant. Pages that
-         do not ask for it never pay for the read. */
-      isAdmin: requireAdmin ? await checkAdminAccess() : false,
+      /* This browser's own access record (uid, role, label, last seen). */
+      grant,
+      /* True only for a browser holding role == 'admin'. Pages that do
+         not ask for it never pay for the read. */
+      isAdmin: requireAdmin ? grant.role === "admin" : false,
     };
     await onReady(ctx);
   } catch (err) {

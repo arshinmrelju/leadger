@@ -30,12 +30,12 @@ import {
 import { findMissingCatalogServices, SERVICE_CATALOG } from "./service-catalog.js";
 import {
   reportError,
-  listTrustedDevices,
-  listAdminGrants,
-  revokeDevice,
-  restoreDevice,
-  removeDevice,
+  listAccessGrants,
+  revokeGrant,
+  restoreGrant,
+  removeGrant,
   grantAdminAccess,
+  checkAdminAccess,
 } from "./auth.js";
 
 function svg(id) {
@@ -85,8 +85,13 @@ function renderAdminGate(mainContent) {
     setLoading(btn, true);
     try {
       await grantAdminAccess(input.value);
-      /* The grant now lives server-side, so a reload picks it up and the
-         console renders for real. */
+      /* The role now lives server-side on this browser's own grant, so a
+         reload picks it up and the console renders for real. Confirm
+         first — a silent no-op here would just bounce back to this card
+         with no explanation. */
+      if (!(await checkAdminAccess())) {
+        throw new Error("The admin role was not granted. Please try again.");
+      }
       window.location.reload();
     } catch (err) {
       toast(reportError(err), "error");
@@ -114,14 +119,15 @@ export async function renderAdminPage(ctx) {
   if (!mainContent) return;
 
   /* Second gate: the shop code opens the ledger, the admin code opens
-     this console. Without a grant we show the unlock card instead of the
-     console — the rules would refuse the device management anyway. */
+     this console. Without the admin role on this browser's own grant we
+     show the unlock card instead — and the rules would refuse the access
+     management anyway. */
   if (!ctx.isAdmin) {
     renderAdminGate(mainContent);
     return;
   }
 
-  thisDeviceHash = ctx.trust ? ctx.trust.tokenHash : null;
+  thisUid = ctx.grant ? ctx.grant.uid : null;
 
   mainContent.innerHTML =
     '<div class="dash-head">' +
@@ -150,7 +156,7 @@ export async function renderAdminPage(ctx) {
     "</div></section>" +
 
     '<section class="card mt-2" id="devicesCard">' +
-    '<div class="card-header"><h3>' + svg("devices") + "Trusted devices</h3>" +
+    '<div class="card-header"><h3>' + svg("devices") + "Trusted browsers</h3>" +
     '<div class="card-actions">' +
     '<button type="button" class="btn btn-sm btn-secondary" id="devicesRefreshBtn">Refresh</button>' +
     "</div></div>" +
@@ -393,70 +399,77 @@ async function loadServicesList() {
 }
 
 /* =========================================================
-   Trusted devices
+   Trusted browsers
+   -----------------------------------------------------------------
+   These rows are `accessGrants/{uid}` — the same records firestore.rules
+   checks before it serves any money, so Revoke here is not a UI state:
+   the very next read that browser makes is denied by the backend.
    ========================================================= */
-let thisDeviceHash = null;
+let thisUid = null;
 
 function wireDevices() {
   const list = document.getElementById("devicesList");
-  document.getElementById("devicesRefreshBtn").addEventListener("click", loadTrustedDevices);
+  document.getElementById("devicesRefreshBtn").addEventListener("click", loadAccessGrants);
 
   list.addEventListener("click", async (event) => {
-    const btn = event.target.closest("button[data-dev-action]");
+    const btn = event.target.closest("button[data-grant-action]");
     if (!btn) return;
-    const { devAction, devHash } = btn.dataset;
-    if (!devHash) return;
+    const { grantAction, grantUid } = btn.dataset;
+    if (!grantUid) return;
 
-    const isThis = devHash === thisDeviceHash;
-    if (devAction === "revoke") {
+    const isThis = grantUid === thisUid;
+    if (grantAction === "revoke") {
       const ok = await confirm({
-        title: "Revoke this device?",
+        title: "Revoke this browser?",
         message:
           (isThis ? "This browser will need the shop code on its next visit. " : "") +
-          "The device cannot open the ledger without the code until it is restored.",
+          "It cannot read or record anything until it is restored or signs in with the code again.",
         confirmText: "Revoke",
         variant: "danger",
       });
       if (!ok) return;
       try {
-        await revokeDevice(devHash);
-        toast(isThis ? "This browser revoked. It will need the code next time." : "Device revoked.", "success");
+        await revokeGrant(grantUid);
+        toast(isThis ? "This browser revoked. It will need the code next time." : "Browser revoked.", "success");
       } catch (err) {
         toast(reportError(err), "error");
       }
-    } else if (devAction === "restore") {
+    } else if (grantAction === "restore") {
       const ok = await confirm({
-        title: "Restore this device?",
+        title: "Restore this browser?",
         message: "It will open the ledger without the code again.",
         confirmText: "Restore",
         variant: "primary",
       });
       if (!ok) return;
       try {
-        await restoreDevice(devHash);
-        toast("Device restored.", "success");
+        await restoreGrant(grantUid);
+        toast("Browser restored.", "success");
       } catch (err) {
         toast(reportError(err), "error");
       }
-    } else if (devAction === "remove") {
+    } else if (grantAction === "remove") {
       const ok = await confirm({
-        title: "Remove this device?",
+        title: "Remove this browser?",
         message:
           (isThis ? "This browser will need the shop code on its next visit. " : "") +
-          "Its trust record is deleted and cannot be restored — it must be enrolled again.",
+          "Its trust record is deleted and cannot be restored — it must be enrolled again with the code.",
         confirmText: "Remove",
         variant: "danger",
       });
       if (!ok) return;
       try {
-        await removeDevice(devHash);
-        toast("Device removed.", "success");
+        await removeGrant(grantUid);
+        toast("Browser removed.", "success");
       } catch (err) {
         toast(reportError(err), "error");
       }
     }
-    loadTrustedDevices();
+    loadAccessGrants();
   });
+
+  /* Paint the list on open, not only after a button is pressed. */
+  loadAccessGrants();
 }
 
 function fmtTs(ts) {
@@ -466,21 +479,12 @@ function fmtTs(ts) {
   return escapeHtml(formatKolkataLong(dt) + ", " + formatKolkataTime(dt));
 }
 
-function networkSummary(d) {
-  const n = d.network || {};
-  const bits = [];
-  if (n.type) bits.push(escapeHtml(n.type));
-  if (n.saveData) bits.push("data saver");
-  if (typeof n.online === "boolean") bits.push("online");
-  return bits.join(" &middot; ");
-}
-
-function deviceRow(d, adminUids) {
-  const isThis = d.tokenHash === thisDeviceHash;
-  const isAdmin = Array.isArray(adminUids) && adminUids.includes(d.uid);
-  const label = String(d.label || "Untitled device").trim() || "Untitled device";
-  const ua = (d.client && d.client.ua) || "";
-  const subBits = [ua, networkSummary(d)].filter(Boolean);
+function grantRow(g) {
+  const isThis = g.uid === thisUid;
+  const isAdmin = g.role === "admin";
+  const label = String(g.label || "Unnamed browser").trim() || "Unnamed browser";
+  const ua = (g.client && g.client.ua) || "";
+  const subBits = [ua, g.client && g.client.lang ? g.client.lang : ""].filter(Boolean);
   return (
     '<div class="dev-row">' +
     '<div class="dev-main">' +
@@ -489,39 +493,31 @@ function deviceRow(d, adminUids) {
     (isAdmin ? ' <span class="badge badge-neutral">Admin</span>' : "") +
     "</div>" +
     '<div class="dev-sub">' + escapeHtml(subBits.join(" &middot; ")) + "</div>" +
-    '<div class="dev-sub small muted">Trusted ' + fmtTs(d.createdAt || d.lastUsedAt) +
-    ' &middot; Last used ' + fmtTs(d.lastUsedAt) + "</div>" +
+    '<div class="dev-sub small muted">Trusted ' + fmtTs(g.createdAt) +
+    ' &middot; Last used ' + fmtTs(g.lastUsedAt) + "</div>" +
     "</div>" +
     '<div class="dev-side">' +
-    '<span class="badge ' + (d.active ? "badge-success" : "badge-neutral") + '">' +
-    (d.active ? "Active" : "Revoked") + "</span>" +
-    (d.active
-      ? '<button type="button" class="btn btn-secondary btn-sm" data-dev-action="revoke" data-dev-hash="' + escapeHtml(d.tokenHash) + '">Revoke</button>'
-      : '<button type="button" class="btn btn-primary btn-sm" data-dev-action="restore" data-dev-hash="' + escapeHtml(d.tokenHash) + '">Restore</button>') +
-    '<button type="button" class="btn btn-secondary btn-sm" data-dev-action="remove" data-dev-hash="' + escapeHtml(d.tokenHash) + '">Remove</button>' +
+    '<span class="badge ' + (g.active ? "badge-success" : "badge-neutral") + '">' +
+    (g.active ? "Active" : "Revoked") + "</span>" +
+    (g.active
+      ? '<button type="button" class="btn btn-secondary btn-sm" data-grant-action="revoke" data-grant-uid="' + escapeHtml(g.uid) + '">Revoke</button>'
+      : '<button type="button" class="btn btn-primary btn-sm" data-grant-action="restore" data-grant-uid="' + escapeHtml(g.uid) + '">Restore</button>') +
+    '<button type="button" class="btn btn-secondary btn-sm" data-grant-action="remove" data-grant-uid="' + escapeHtml(g.uid) + '">Remove</button>' +
     "</div>" +
     "</div>"
   );
 }
 
-async function loadTrustedDevices() {
+async function loadAccessGrants() {
   const list = document.getElementById("devicesList");
   if (!list) return;
   try {
-    const devices = await listTrustedDevices();
-    /* Best effort: the rules only allow this list to admins, and we are
-       already behind the admin gate — but never let it break the list. */
-    let adminUids = [];
-    try {
-      adminUids = await listAdminGrants();
-    } catch (err) {
-      console.warn("[trustx-ledger] admin grants list unavailable:", err);
-    }
-    list.innerHTML = devices.length
-      ? devices.map((d) => deviceRow(d, adminUids)).join("")
-      : '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No trusted devices yet. The first browser to enter the shop code appears here.</p></div>';
+    const grants = await listAccessGrants();
+    list.innerHTML = grants.length
+      ? grants.map((g) => grantRow(g)).join("")
+      : '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No trusted browsers yet. The first browser to enter the shop code appears here.</p></div>';
   } catch (err) {
-    console.error("[trustx-ledger] devices:", err);
+    console.error("[trustx-ledger] access grants:", err);
     list.innerHTML = '<div class="state is-error"><p class="muted">' + escapeHtml(reportError(err)) + "</p></div>";
   }
 }

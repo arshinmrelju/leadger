@@ -1,36 +1,35 @@
 /* =========================================================
-   TrustX Ledger — Single-code sign-in
+   TrustX Ledger — Sign-in and trusted-browser access
    -----------------------------------------------------------------
-   The whole app opens with one shared code (SHOP_CODE, "TRUSTX").
-   Entering it signs the browser in anonymously and grants full access
-   to the ledger itself — there are no accounts, roles or memberships.
+   The app opens with a shared SHOP CODE, and the Developer console
+   (admin.html) with a separate ADMIN CODE. Neither code is in this
+   file, in any other file in the repository, or in the deployed
+   bundle — a code that ships to the browser is a code that is
+   published.
 
-   The Developer console (admin.html) sits behind a SECOND code
-   (ADMIN_CODE). It is not linked from the public navigation and the
-   shop code alone cannot open it: a browser must additionally present
-   the admin code, which the rules exchange for an `admins/{uid}`
-   grant. That grant is what the rules check before allowing device
-   management.
+   HOW A CODE BECOMES ACCESS (all of it server-side, in firestore.rules)
+     1. The browser hashes what was typed: sha256(code) via Web Crypto.
+        Only that 64-char hash is sent.
+     2. firestore.rules accepts enrollments/{uid} only when the hash
+        equals the stored securitySecrets/{shop|admin}.codeHash, which
+        only the Admin SDK (tools/bootstrap-access.mjs) can write. A
+        wrong code simply does not match, so nothing is created.
+     3. The matching proof buys accessGrants/{uid} — a server-side
+        record that every money rule re-reads on every request. An
+        anonymous Firebase session on its own grants nothing, because
+        signing in anonymously is free and open to anybody.
+     4. Revoking a grant in the Developer console locks that browser
+        out on its very next request.
 
-   WHAT LIVES WHERE
-   The identity and trust registry are REALTIME DATABASE paths now
-   (settings/*, enrollments, devices, admins) — see database.rules.json.
-   The money is in Firestore, partitioned by day. This module never
-   touches Firestore: it only decides who is allowed in, and the two
-   rule sets agree on `request.auth != null` plus the device grant.
-
-   Both code checks are CONVENIENCE gates for the UI. Real record
-   integrity is enforced by the rule files (signed-in user, every
-   document typed and non-forgeable: createdBy == uid, createdAt ==
-   the server clock, admin grants require an unused admin-scope
-   enrollment, and in Firestore total == quantity * rate with the day's
-   counters moving by exactly the sale that moved them).
+   The codes are therefore only ever *proven*, never *compared*, on the
+   client. The remaining weakness is stated plainly in the README: a
+   code can still be guessed online, so Firebase App Check (or moving
+   the check into a callable function) is the production control for
+   that. What the rules buy is that the ledger is no longer open to
+   every anonymous Firebase user in existence.
    ========================================================= */
 
 import { getFirebridge } from "./firebase.js";
-
-export const SHOP_CODE = "TRUSTX";
-export const ADMIN_CODE = "TRUSTXADMIN";
 
 /* ---------------- Errors ---------------- */
 
@@ -46,21 +45,26 @@ const AUTH_MESSAGES = {
   "not-configured":
     "Firebase is not configured yet. Add your web app config in js/firebase.js.",
   "not-signed-in": "You are not signed in.",
-  "network-request-failed": "Network problem. Check your connection and try again.",
+  "network-request-failed":
+    "Network problem. Check your connection and try again.",
   "operation-not-allowed":
     "Anonymous sign-in is not enabled for this Firebase project. Enable it under Authentication → Sign-in method.",
   "too-many-requests": "Too many attempts. Please wait a few minutes and try again.",
-  "code-invalid": "That code is not recognised. Check with the shop administrator.",
+  "code-invalid":
+    "That code is not recognised. Check with the shop administrator — and if this shop has never been set up, the access codes still have to be created once (see the README).",
   "admin-code-invalid": "That admin code is not recognised.",
   "admin-grant-failed": "Could not unlock the developer console. Please try again.",
   "admin-not-trusted":
-    "This browser is not a trusted device yet. Sign in with the shop code first, then unlock the console.",
-  "enrollment-failed": "Could not register this device. Please try again.",
-  "device-store-unavailable":
-    "This browser cannot store a trusted-device credential, so every sign-in will require the code.",
+    "Sign in with the shop code on this browser first, then unlock the console.",
+  "enrollment-failed": "Could not complete sign-in. Please try again.",
+  "access-not-ready":
+    "This browser is not enrolled yet. Sign in with the shop code.",
+  "access-revoked":
+    "This browser's access was revoked. Sign in with the shop code again.",
   "database-unavailable":
     "Realtime Database is not reachable. Check databaseURL in js/firebase.js and that database.rules.json is deployed.",
 };
+
 
 function friendly(code, fallback) {
   const msg = AUTH_MESSAGES[code];
@@ -109,6 +113,15 @@ function isPermissionDenied(err) {
 
 /* ---------------- Internal state ---------------- */
 
+/** Firestore Timestamps, and the odd plain number, as epoch millis. */
+function toMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  if (typeof value === "number") return value;
+  return 0;
+}
+
 let bridgeCache = null;
 let currentUser = null;
 let ready = false;
@@ -124,21 +137,26 @@ async function bridge() {
 }
 
 /**
- * The Firebase bridge with Realtime Database resolved. Everything in
- * this module is an identity/trust path, so unlike the ledger there is
- * nothing here worth degrading to a half-working state: if the database
- * is unreachable the shop cannot be verified at all, and a clear error
- * beats a silent one.
+ * The Firestore handle. Trust and the shop record live in the same
+ * database as the money precisely so the rules can gate them on the same
+ * grant, so this is the bridge every access function below uses. A broken
+ * `databaseURL` must not be able to block sign-in: only expenses, which
+ * are still on the Realtime Database, degrade without it.
  */
-async function rtdbBridge() {
-  const b = await bridge();
-  if (!b.rtdb) {
-    throw new AuthError(
-      "database-unavailable",
-      "Realtime Database is not reachable. Check databaseURL in js/firebase.js and that database.rules.json is deployed."
-    );
-  }
-  return b;
+async function storeBridge() {
+  return bridge();
+}
+
+function grantRef(fs, db, uid) {
+  return fs.doc(db, "accessGrants", uid);
+}
+
+function enrollRef(fs, db, uid) {
+  return fs.doc(db, "enrollments", uid);
+}
+
+function shopRef(fs, db) {
+  return fs.doc(db, "shop", "general");
 }
 
 export function getCurrentUser() {
@@ -237,6 +255,41 @@ export async function requireAuth(redirectTo = "login.html") {
 }
 
 /**
+ * THE gate every protected page goes through.
+ *
+ * A session is not access: it only proves the browser is signed in, and
+ * signing in anonymously is something anyone can do. This reads the
+ * browser's own `accessGrants/{uid}` record — the same record
+ * firestore.rules consults before it will serve a single rupee — and
+ * sends anything without an active grant back to the login screen. So a
+ * revoked browser is out on its very next page load, and a browser that
+ * somehow holds a session it was never granted cannot read the ledger
+ * even if it skips this function.
+ *
+ * @param {string} [redirectTo]
+ * @param {object}  [opts]
+ * @param {boolean} [opts.touch] refresh the grant's last-seen stamp
+ * @returns {Promise<object|null>} the grant, or null once redirected
+ */
+export async function requireAccess(redirectTo = "login.html", { touch = true } = {}) {
+  const user = await requireAuth(redirectTo);
+  if (!user) return null;
+
+  const grant = await getAccessGrant();
+  if (!grant) {
+    if (!redirecting) window.location.replace(redirectTo + "?reason=not-enrolled");
+    return null;
+  }
+  if (grant.active !== true) {
+    if (!redirecting) window.location.replace(redirectTo + "?reason=revoked");
+    return null;
+  }
+
+  if (touch) touchAccessGrant();
+  return grant;
+}
+
+/**
  * Auto-redirect a protected page to the login screen if the session
  * disappears (logout here or in another tab, expired session, etc.).
  * Call once per page after requireAuth() succeeded.
@@ -262,191 +315,110 @@ const DEFAULT_SHOP = {
   active: true,
 };
 
-/** The single shop's settings/general record, or null if not created. */
+/** The single shop's record, or null if it has not been created yet. */
 export async function getGeneral() {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-  const snap = await rt.get(rt.ref(b.rtdb, "settings/general"));
-  return snap.exists() ? snap.val() : null;
-}
-
-/**
- * Silently ensure the shop record exists (first code login on a fresh
- * project). There is no setup screen: the shop is created with the
- * default identity, and the access code setting is seeded with the
- * default SHOP_CODE so device enrollment is server-verified right away.
- * Rules allow each create only while the record is absent, so concurrent
- * first-runs cannot double-create.
- */
-export async function ensureShopRecord() {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-  const user = getCurrentUser();
-  if (!user) throw new AuthError("not-signed-in", friendly("not-signed-in"));
-
-  /* Reading the shop record is best-effort. The rules allow it for any
-     signed-in device, but a denial here must not become a failed
-     sign-in: the create below is the real decision (the rules refuse a
-     second create anyway), and enrollment never needs this record — it
-     needs settings/security, which is deliberately unreadable. */
-  const generalRef = rt.ref(b.rtdb, "settings/general");
-  const readGeneral = async () => {
-    try {
-      const snap = await rt.get(generalRef);
-      return snap.exists() ? snap.val() : null;
-    } catch (err) {
-      if (!isPermissionDenied(err)) throw err;
-      return null;
-    }
-  };
-
-  let general = await readGeneral();
-  if (!general) {
-    try {
-      await rt.set(generalRef, {
-        ...DEFAULT_SHOP,
-        createdAt: rt.serverTimestamp(),
-        createdBy: user.uid,
-      });
-    } catch (err) {
-      if (!isPermissionDenied(err)) {
-        throw err;
-      }
-      // Lost the race — another device created it first.
-    }
-    general = (await readGeneral()) || general;
-  }
-
-  /* Seed the access code once (the rules verify an enrollment against
-     it). settings/security is never client-readable, so we must NOT probe
-     it with a get(): the rules deny that read and it would fail on every
-     sign-in. The write rule only allows it while the record is absent, so
-     "denied" simply means another device already seeded it. Same story
-     for the admin code. */
   try {
-    await rt.set(rt.ref(b.rtdb, "settings/security"), {
-      accessCode: SHOP_CODE,
-      createdAt: rt.serverTimestamp(),
-      createdBy: user.uid,
-    });
+    const b = await storeBridge();
+    const fs = b.firestore;
+    const snap = await fs.getDoc(shopRef(fs, b.db));
+    return snap.exists() ? snap.data() : null;
   } catch (err) {
-    if (!isPermissionDenied(err)) throw err;
-  }
-
-  try {
-    await rt.set(rt.ref(b.rtdb, "settings/admin"), {
-      adminCode: ADMIN_CODE,
-      createdAt: rt.serverTimestamp(),
-      createdBy: user.uid,
-    });
-  } catch (err) {
-    if (!isPermissionDenied(err)) throw err;
-  }
-
-  return general;
-}
-
-/* =========================================================
-   Trusted devices (auto-login)
-   -----------------------------------------------------------------
-   A recognized browser holds a cryptographically secure 256-bit token
-   stored ONLY in IndexedDB (firebase-managed sessions already use it;
-   localStorage is avoided for long-lived credentials). Its SHA-256 is
-   the Realtime Database key under devices/<tokenHash>, so the token is
-   never transmitted or stored server-side — a revoked or absent active
-   record simply stops auto-login. Enrollment is server-verified against
-   settings/security via a single-use enrollments/<nonce> record.
-   ========================================================= */
-
-const TOKEN_BYTES = 32; // 256 bits
-
-function nonceHex() {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/** True when the browser can keep the credential + hash tokens (HTTPS/localhost). */
-export function canStoreDeviceCredential() {
-  return typeof window !== "undefined"
-    && typeof indexedDB !== "undefined"
-    && (window.isSecureContext === undefined || window.isSecureContext === true)
-    && typeof crypto !== "undefined"
-    && typeof crypto.subtle !== "undefined";
-}
-
-/* ---------- IndexedDB credential store ---------- */
-
-const DEVICE_DB = "trustx-ledger";
-const DEVICE_STORE = "kv";
-const DEVICE_KEY = "seva.device";
-
-function idbOpen() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DEVICE_DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(DEVICE_STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function idbGet(key) {
-  const db = await idbOpen();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(DEVICE_STORE, "readonly");
-    const req = tx.objectStore(DEVICE_STORE).get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function idbSet(key, value) {
-  const db = await idbOpen();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(DEVICE_STORE, "readwrite");
-    tx.objectStore(DEVICE_STORE).put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-export async function loadDeviceCredential() {
-  if (!canStoreDeviceCredential()) return null;
-  try {
-    return (await idbGet(DEVICE_KEY)) || null;
-  } catch (err) {
-    console.warn("[trustx-ledger] device credential read failed:", err);
+    console.warn("[trustx-ledger] shop record read failed:", err);
     return null;
   }
 }
 
-export async function saveDeviceCredential(token) {
-  if (!canStoreDeviceCredential()) return false;
+/**
+ * Silently ensure the shop record exists (first sign-in on a fresh
+ * project). There is no setup screen: the shop is created with the
+ * default identity, behind the same trusted() gate as everything else.
+ *
+ * The access codes are NOT seeded here. They used to be written into
+ * Realtime Database on first run, which meant the plaintext ended up in a
+ * database and the default was in the source. Both codes now live only
+ * in Firestore `securitySecrets`, written by tools/bootstrap-access.mjs.
+ */
+export async function ensureShopRecord() {
+  const user = getCurrentUser();
+  if (!user) throw new AuthError("not-signed-in", friendly("not-signed-in"));
+
+  const b = await storeBridge();
+  const fs = b.firestore;
+  const ref = shopRef(fs, b.db);
+  const now = fs.serverTimestamp();
+
   try {
-    await idbSet(DEVICE_KEY, token);
-    return true;
+    const snap = await fs.getDoc(ref);
+    if (snap.exists()) return snap.data();
   } catch (err) {
-    console.warn("[trustx-ledger] device credential save failed:", err);
-    return false;
+    /* Best effort: the create below is the real decision. */
+    console.warn("[trustx-ledger] shop record probe skipped:", err);
+  }
+
+  const doc = {
+    ...DEFAULT_SHOP,
+    createdAt: now,
+    createdBy: user.uid,
+    updatedAt: now,
+    updatedBy: user.uid,
+  };
+  try {
+    await fs.setDoc(ref, doc);
+    return doc;
+  } catch (err) {
+    if (!isPermissionDenied(err)) throw err;
+    /* Lost the race — another browser created it first. */
+    try {
+      const snap = await fs.getDoc(ref);
+      return snap.exists() ? snap.data() : null;
+    } catch (readErr) {
+      return null;
+    }
   }
 }
 
-/* ---------- Token + hashing ---------- */
+/* =========================================================
+   Trusted browsers (access grants)
+   -----------------------------------------------------------------
+   A trusted browser is one that proved the shop code and holds an
+   active `accessGrants/{uid}` record in Firestore. There is no
+   separate device secret: the anonymous session's uid IS the browser's
+   identity, because uid is the only thing firestore.rules can check.
+   That is also what makes revocation instant — the console flips
+   `active`, and the very next read of the ledger is denied.
 
-/** A 256-bit random token, hex-encoded (64 chars). */
-export function generateDeviceToken() {
-  const bytes = new Uint8Array(TOKEN_BYTES);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+   Clearing a browser's site data destroys the session, so the uid is
+   gone and that machine needs the code again. That is the same
+   behaviour the old IndexedDB device token had, with one authority
+   instead of two.
+   ========================================================= */
 
-/** SHA-256 of the token — the Realtime Database key. Never reversed server-side. */
-export async function hashToken(token) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+/* How stale a grant's last-seen stamp may get before we spend a write
+   on refreshing it. A page open all afternoon updates it at most once
+   an hour, which is plenty for "which machines are actually in use". */
+const HEARTBEAT_MS = 60 * 60 * 1000;
+
+/**
+ * SHA-256 of the normalized code, lowercase hex — exactly what
+ * firestore.rules compares against securitySecrets/{scope}.codeHash.
+ *
+ * The plaintext never leaves this function: it is hashed in the browser
+ * and only the digest is written. `tools/bootstrap-access.mjs` hashes
+ * the code the same way, so the two agree byte for byte.
+ */
+export async function hashAccessCode(code) {
+  const normalized = normalizeCode(code);
+  if (!normalized) throw new AuthError("code-invalid", friendly("code-invalid"));
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* ---------- Device metadata (privacy: no IP, no fingerprinting) ---------- */
+/* ---------- IndexedDB credential store ---------- */
+
+/* ---------- Browser label (privacy: no IP, no fingerprinting) ---------- */
 
 function shortUA(userAgent) {
   const ua = typeof userAgent === "string" ? userAgent : "";
@@ -481,283 +453,258 @@ function shortUA(userAgent) {
   return (os + " · " + browser).slice(0, 100);
 }
 
-function collectNetwork() {
-  const conn = typeof navigator !== "undefined" ? navigator.connection : null;
-  return {
-    type: conn && typeof conn.type === "string" ? conn.type : "",
-    saveData: Boolean(conn && conn.saveData),
-    online: typeof navigator !== "undefined" ? navigator.onLine : true,
-  };
-}
-
 function defaultDeviceLabel() {
   return shortUA(typeof navigator !== "undefined" ? navigator.userAgent : "");
+}
+
+function clientInfo() {
+  return {
+    ua: shortUA(typeof navigator !== "undefined" ? navigator.userAgent : ""),
+    lang: (typeof navigator !== "undefined" && navigator.language) || "",
+  };
 }
 
 /* ---------- Enrollment + management ---------- */
 
 /**
- * Register THIS browser as a trusted device and store its credential.
- * Requires a signed-in anonymous session (the rules ensure an enrollment
- * only exists after this device proved the code). Generates a fresh token
- * each run, so re-verifying after a revocation creates a brand-new
- * credential.
+ * Enroll THIS browser as trusted, by proving the shop code.
+ *
+ * Three steps, and the code is only ever proven in the middle one:
+ *
+ *   1. sign in anonymously — a session on its own grants nothing;
+ *   2. write enrollments/{uid} carrying sha256(code). The rules accept
+ *      it only if that hash equals securitySecrets/shop.codeHash, so a
+ *      wrong code is denied here and nothing further happens;
+ *   3. write accessGrants/{uid}, which the rules allow only while that
+ *      proof exists and the caller is not already trusted.
+ *
+ * Everything is keyed by the caller's own uid, so two browsers enrolling
+ * at the same moment cannot collide.
+ *
+ * @param {object} opts
+ * @param {string} opts.code  the typed shop code (never stored)
+ * @param {string} [opts.label] a name for this machine in the console
+ * @returns {Promise<object>} the access grant
+ * @throws {AuthError} code-invalid when the rules refuse the proof
  */
-export async function enrollDevice({ label, code } = {}) {
-  if (!canStoreDeviceCredential()) {
-    throw new AuthError("device-store-unavailable", friendly("device-store-unavailable"));
-  }
+export async function enrollBrowser({ code, label } = {}) {
   const user = await signInAnonymous();
-  console.log("[trustx-ledger] enrollDevice: signed in as", user.uid);
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
+  const b = await storeBridge();
+  const fs = b.firestore;
 
-  await ensureShopRecord();
-  console.log("[trustx-ledger] enrollDevice: shop record ensured");
+  const codeHash = await hashAccessCode(code);
 
-  const token = generateDeviceToken();
-  const tokenHash = await hashToken(token);
-  const nonce = nonceHex();
-  const typedCode = normalizeCode(code) || SHOP_CODE;
-  console.log("[trustx-ledger] enrollDevice: using verifiedCode =", typedCode, "| nonce =", nonce);
-
-  /* One-time proof-of-code; the rules compare against settings/security. */
+  /* Step 2 — the server-side code check. */
   try {
-    await rt.set(rt.ref(b.rtdb, `enrollments/${nonce}`), {
+    await fs.setDoc(enrollRef(fs, b.db, user.uid), {
       scope: "shop",
-      verifiedCode: typedCode,
-      createdAt: rt.serverTimestamp(),
+      codeHash,
+      createdAt: fs.serverTimestamp(),
       createdBy: user.uid,
-      used: false,
     });
-    console.log("[trustx-ledger] enrollDevice: enrollment write OK");
   } catch (err) {
-    console.error("[trustx-ledger] enrollDevice: enrollment write FAILED", err.code, err.message, err);
     if (isPermissionDenied(err)) {
+      /* Either the code was wrong or securitySecrets/{scope} does not
+         exist yet. The rules cannot tell us which, and deliberately do
+         not — but they are the same user action, so one message covers
+         both, with the setup case named. */
       throw new AuthError("code-invalid", friendly("code-invalid"));
     }
-    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
+    throw toAuthError(err);
   }
 
-  const deviceRef = rt.ref(b.rtdb, `devices/${tokenHash}`);
-  const client = {
-    ua: shortUA(navigator.userAgent),
-    lang: (typeof navigator !== "undefined" && navigator.language) || "",
+  /* Step 3 — trade the proof for access. A browser enrolling for the
+     first time gets a new grant record; one coming back after a
+     revocation already has one, and reactivates it. The rules pin which
+     of the two is allowed. */
+  const now = fs.serverTimestamp();
+  const existing = await getAccessGrant();
+  if (existing) {
+    try {
+      await fs.updateDoc(grantRef(fs, b.db, user.uid), {
+        active: true,
+        lastUsedAt: now,
+        updatedAt: now,
+        updatedBy: user.uid,
+      });
+    } catch (err) {
+      console.error("[trustx-ledger] access restore refused:", err);
+      throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
+    }
+    return { ...existing, active: true };
+  }
+
+  const grant = {
+    active: true,
+    role: "shop",
+    label: String(label || defaultDeviceLabel()).trim().slice(0, 80) || defaultDeviceLabel(),
+    client: clientInfo(),
+    lastUsedAt: now,
+    createdAt: now,
+    createdBy: user.uid,
+    updatedAt: now,
+    updatedBy: user.uid,
   };
-  const network = collectNetwork();
-
   try {
-    await rt.set(deviceRef, {
-      tokenHash,
-      uid: user.uid,
-      label: String(label || defaultDeviceLabel()).trim().slice(0, 80) || defaultDeviceLabel(),
-      client,
-      network,
-      createdAt: rt.serverTimestamp(),
-      createdBy: user.uid,
-      lastUsedAt: rt.serverTimestamp(),
-      lastUsedNetwork: network,
-      active: true,
-      enrollmentId: nonce,
-    });
+    await fs.setDoc(grantRef(fs, b.db, user.uid), grant);
   } catch (err) {
-    /* Never let a raw "permission denied" reach the login screen — the
-       rules rejected the registry write for one of our own reasons. */
-    console.error("[trustx-ledger] device registration rejected:", err);
+    console.error("[trustx-ledger] access grant refused:", err);
     throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
   }
 
-  /* Burn the one-time enrollment. */
-  try {
-    await rt.update(rt.ref(b.rtdb, `enrollments/${nonce}`), {
-      used: true,
-      deviceHash: tokenHash,
-    });
-  } catch (err) {
-    console.warn("[trustx-ledger] enrollment mark-used failed:", err);
-  }
-
-  await saveDeviceCredential(token);
-
-  /* Reading the record back is cosmetic — the device is already on disk
-     and the credential is already stored, so a denied or offline read
-     must NOT fail a sign-in that actually worked. Left unguarded it
-     threw straight out of here, and the login screen rendered the raw
-     "the ledger rejected that request, deploy the latest rules" text
-     for a request the rules had in fact approved. */
-  let device = {};
-  try {
-    const deviceSnap = await rt.get(deviceRef);
-    device = deviceSnap.val() || {};
-  } catch (err) {
-    console.warn("[trustx-ledger] device read-back skipped:", err);
-  }
-
-  return { tokenHash, token, device };
+  return grant;
 }
 
 /**
- * Check whether THIS browser is a trusted device. Runs on every load —
- * even when an anonymous session already exists — so revocation takes
- * effect immediately.
+ * This browser's own access grant, or null when it has never been
+ * enrolled. Reading your own record is always allowed, revoked or not —
+ * that is how a browser learns it has been locked out.
  *
- * The read of a single device is a CAPABILITY read: the key is the
- * sha256 of a 256-bit token only this browser holds, so the rules let an
- * unauthenticated visitor read exactly that one record to run the gate
- * BEFORE any session exists.
- *
- * @returns {Promise<{trusted: boolean, reason: string, device?: object, tokenHash?: string}>}
+ * @returns {Promise<object|null>}
  */
-export async function checkTrustedDevice() {
-  if (!canStoreDeviceCredential()) return { trusted: false, reason: "store-unavailable" };
-  const token = await loadDeviceCredential();
-  if (!token) return { trusted: false, reason: "no-credential" };
-
-  let tokenHash;
+export async function getAccessGrant() {
+  const user = getCurrentUser();
+  if (!user) return null;
   try {
-    tokenHash = await hashToken(token);
+    const b = await storeBridge();
+    const fs = b.firestore;
+    const snap = await fs.getDoc(grantRef(fs, b.db, user.uid));
+    return snap.exists() ? { uid: snap.id, ...snap.data() } : null;
   } catch (err) {
-    return { trusted: false, reason: "hash-failed", error: err };
-  }
-
-  try {
-    const b = await rtdbBridge();
-    const rt = b.rtdbMod;
-    const snap = await rt.get(rt.ref(b.rtdb, `devices/${tokenHash}`));
-    if (!snap.exists()) return { trusted: false, reason: "not-found", tokenHash };
-    const d = snap.val();
-    if (d.active !== true) return { trusted: false, reason: "revoked", tokenHash, device: d };
-    return { trusted: true, reason: "ok", tokenHash, device: d };
-  } catch (err) {
-    /* Transient failure / rules deny: fall back to verification, never
-       leave the user stuck (the login page handles it gracefully). */
-    return { trusted: false, reason: "error", error: err, tokenHash };
+    /* Offline or rules denied: fail closed. A browser that cannot prove
+       it is trusted must not be treated as trusted. */
+    console.warn("[trustx-ledger] access grant read failed:", err);
+    return null;
   }
 }
 
-/** Fire-and-forget heartbeat so the admin list shows last-used times. */
-export async function updateDeviceLastUsed(tokenHash) {
-  if (!tokenHash) return;
+/**
+ * Refresh the grant's last-seen stamp, at most once an hour. This is the
+ * one field a browser may move on its own record, and it is display-only
+ * — it cannot restore trust or change a role (see firestore.rules).
+ */
+export async function touchAccessGrant() {
+  const user = getCurrentUser();
+  if (!user) return;
   try {
-    const b = await rtdbBridge();
-    const rt = b.rtdbMod;
-    await rt.update(rt.ref(b.rtdb, `devices/${tokenHash}`), {
-      lastUsedAt: rt.serverTimestamp(),
-      lastUsedNetwork: collectNetwork(),
+    const b = await storeBridge();
+    const fs = b.firestore;
+    const ref = grantRef(fs, b.db, user.uid);
+    const snap = await fs.getDoc(ref);
+    if (!snap.exists()) return;
+    const last = snap.data().lastUsedAt;
+    const millis = last && typeof last.toMillis === "function" ? last.toMillis() : 0;
+    if (Date.now() - millis < HEARTBEAT_MS) return;
+    await fs.updateDoc(ref, {
+      lastUsedAt: fs.serverTimestamp(),
+      updatedAt: fs.serverTimestamp(),
+      updatedBy: user.uid,
     });
   } catch (err) {
-    /* Non-fatal: a revoked/removed device just stops heartbeating. */
-    console.warn("[trustx-ledger] device heartbeat failed:", err);
+    /* Cosmetic: never let a missed heartbeat interrupt the shop. */
+    console.warn("[trustx-ledger] access heartbeat failed:", err);
   }
 }
 
-/* ---------- Device management (Developer console) ---------- */
+/* ---------- Access management (Developer console) ---------- */
 
-/** All trusted devices, newest first. */
-export async function listTrustedDevices() {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-  const snap = await rt.get(rt.ref(b.rtdb, "devices"));
-  const raw = snap.val() || {};
-  return Object.keys(raw)
-    .map((key) => ({ tokenHash: key, ...raw[key] }))
-    .sort((a, x) => Number(x.createdAt || 0) - Number(a.createdAt || 0));
+/**
+ * Every trusted browser, newest first. Listing the registry is an admin
+ * capability in the rules, so a stolen shop code cannot enumerate the
+ * shop's machines.
+ *
+ * @returns {Promise<Array<object & {uid: string}>>}
+ */
+export async function listAccessGrants() {
+  const b = await storeBridge();
+  const fs = b.firestore;
+  const snap = await fs.getDocs(fs.collection(b.db, "accessGrants"));
+  return snap.docs
+    .map((d) => ({ uid: d.id, ...d.data() }))
+    .sort((a, x) => toMillis(x.createdAt) - toMillis(a.createdAt));
 }
 
-/** Revoke a device's trust (admin grant required; rules enforce). */
-export async function revokeDevice(tokenHash) {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-  await rt.update(rt.ref(b.rtdb, `devices/${tokenHash}`), { active: false });
+/** Revoke a browser's trust (admin grant required; the rules enforce it). */
+export async function revokeGrant(uid) {
+  return patchGrant(uid, { active: false });
 }
 
-/** Reactivate a device (admin grant required; rules enforce). */
-export async function restoreDevice(tokenHash) {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-  await rt.update(rt.ref(b.rtdb, `devices/${tokenHash}`), {
-    active: true,
-    lastUsedAt: rt.serverTimestamp(),
-    lastUsedNetwork: collectNetwork(),
+/** Reactivate a revoked browser (admin grant required). */
+export async function restoreGrant(uid) {
+  return patchGrant(uid, true);
+}
+
+/** Permanently forget a browser (admin grant required). */
+export async function removeGrant(uid) {
+  const b = await storeBridge();
+  const fs = b.firestore;
+  await fs.deleteDoc(grantRef(fs, b.db, uid));
+}
+
+async function patchGrant(uid, active) {
+  const b = await storeBridge();
+  const fs = b.firestore;
+  const operator = getCurrentUser();
+  if (!operator) throw new AuthError("not-signed-in", friendly("not-signed-in"));
+  const ref = grantRef(fs, b.db, uid);
+  const snap = await fs.getDoc(ref);
+  if (!snap.exists()) throw new AuthError("enrollment-failed", "That browser is no longer registered.");
+
+  const now = fs.serverTimestamp();
+  await fs.updateDoc(ref, {
+    active,
+    lastUsedAt: active === true ? now : snap.data().lastUsedAt,
+    updatedAt: now,
+    updatedBy: operator.uid,
   });
-}
-
-/** Permanently remove a device record (admin grant required). */
-export async function removeDevice(tokenHash) {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-  await rt.remove(rt.ref(b.rtdb, `devices/${tokenHash}`));
 }
 
 /* =========================================================
    Admin access (the Developer console gate)
    -----------------------------------------------------------------
    The console is not reachable from the public navigation and needs a
-   second code. Presenting it writes an admin-scope enrollment proof,
-   which the rules verify against settings/admin, and only then mints
-   `admins/{uid}` — the record the rules check before allowing any
-   device management. The grant lives server-side, so it survives cache
-   clears and applies to this browser (uid), not just this page.
+   second code. Presenting it writes an ADMIN-scope enrollment proof,
+   which the rules verify against securitySecrets/admin, and only then
+   may this browser promote its own grant from `shop` to `admin`. That
+   promotion is the whole capability split: an admin may list, revoke,
+   restore and delete other browsers' grants, and a shop-trusted
+   browser may do none of it.
+
+   Note the ordering the rules enforce: a browser must ALREADY hold
+   active shop trust to unlock the console, so the admin code alone is
+   useless to someone who has not already got into the shop.
    ========================================================= */
 
-/** Does THIS browser hold an admin grant? */
+/** Does THIS browser hold an active admin grant? */
 export async function checkAdminAccess() {
-  try {
-    const b = await rtdbBridge();
-    const rt = b.rtdbMod;
-    const user = getCurrentUser();
-    if (!user) return false;
-    const snap = await rt.get(rt.ref(b.rtdb, `admins/${user.uid}`));
-    return snap.exists() === true;
-  } catch (err) {
-    /* Offline or rules denied: fail closed — the console stays shut. */
-    console.warn("[trustx-ledger] admin grant check failed:", err);
-    return false;
-  }
-}
-
-/** uids that hold an admin grant (rules allow this list to admins only). */
-export async function listAdminGrants() {
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-  const snap = await rt.get(rt.ref(b.rtdb, "admins"));
-  return Object.keys(snap.val() || {});
+  const grant = await getAccessGrant();
+  return Boolean(grant && grant.active === true && grant.role === "admin");
 }
 
 /**
- * Exchange the admin code for a grant on this browser.
+ * Exchange the admin code for the admin role on this browser.
  * Throws AuthError("admin-code-invalid") when the rules reject the proof.
  */
 export async function grantAdminAccess(code) {
-  const typed = normalizeCode(code);
-  if (!typed) {
-    throw new AuthError("admin-code-invalid", friendly("admin-code-invalid"));
-  }
+  const user = getCurrentUser();
+  if (!user) throw new AuthError("admin-not-trusted", friendly("admin-not-trusted"));
 
-  const user = await signInAnonymous();
-  const b = await rtdbBridge();
-  const rt = b.rtdbMod;
-
-  await ensureShopRecord();
-
-  /* The grant is bound to this browser's device token, so the console is
-     opened by a device the owner can see and revoke. */
-  const token = await loadDeviceCredential();
-  if (!token) {
+  const current = await getAccessGrant();
+  if (!current || current.active !== true) {
     throw new AuthError("admin-not-trusted", friendly("admin-not-trusted"));
   }
-  const tokenHash = await hashToken(token);
-  const nonce = nonceHex();
 
-  /* One-time proof of the ADMIN code; the rules compare it to
-     settings/admin.adminCode, so a wrong code is refused server-side. */
+  const b = await storeBridge();
+  const fs = b.firestore;
+
+  /* An admin-scope proof, checked server-side against
+     securitySecrets/admin. A wrong code never lands. */
   try {
-    await rt.set(rt.ref(b.rtdb, `enrollments/${nonce}`), {
+    await fs.setDoc(enrollRef(fs, b.db, user.uid), {
       scope: "admin",
-      verifiedCode: typed,
-      createdAt: rt.serverTimestamp(),
+      codeHash: await hashAccessCode(code),
+      createdAt: fs.serverTimestamp(),
       createdBy: user.uid,
-      used: false,
     });
   } catch (err) {
     if (isPermissionDenied(err)) {
@@ -766,27 +713,18 @@ export async function grantAdminAccess(code) {
     throw new AuthError("admin-grant-failed", friendly("admin-grant-failed"));
   }
 
+  /* Promotion. The rules allow this only from `shop` to `admin`, only
+     while active, and only with the proof above on file. */
+  const now = fs.serverTimestamp();
   try {
-    await rt.set(rt.ref(b.rtdb, `admins/${user.uid}`), {
-      uid: user.uid,
-      deviceHash: tokenHash,
-      enrollmentId: nonce,
-      createdAt: rt.serverTimestamp(),
-      createdBy: user.uid,
+    await fs.updateDoc(grantRef(fs, b.db, user.uid), {
+      role: "admin",
+      updatedAt: now,
+      updatedBy: user.uid,
     });
   } catch (err) {
-    console.error("[trustx-ledger] admin grant rejected:", err);
+    console.error("[trustx-ledger] admin promotion rejected:", err);
     throw new AuthError("admin-grant-failed", friendly("admin-grant-failed"));
-  }
-
-  /* Burn the one-time proof. */
-  try {
-    await rt.update(rt.ref(b.rtdb, `enrollments/${nonce}`), {
-      used: true,
-      deviceHash: tokenHash,
-    });
-  } catch (err) {
-    console.warn("[trustx-ledger] admin enrollment mark-used failed:", err);
   }
 
   return true;

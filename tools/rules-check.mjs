@@ -27,6 +27,7 @@ import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hashCode, normalizeCode } from "./bootstrap-access.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 8123;
@@ -37,6 +38,17 @@ const DOCS = "projects/trustxplpy/databases/(default)/documents";
 const COMMIT = `http://127.0.0.1:${PORT}/v1/${DOCS}:commit`;
 const UID = "u1";
 const DAY = "2026-09-27";
+
+/* The two access codes, as the harness knows them. The client hashes them
+   the same way (js/auth.js) and the operator plants the hashes with the
+   Admin SDK (tools/bootstrap-access.mjs); sharing hashCode() here means
+   this file is also checking that those three agree. */
+const CODE_SHOP = "TESTSHOPCODE0000001";
+const CODE_ADMIN = "TESTADMINCODE0000001";
+const OUTSIDER = "u2";
+const ADMIN_UID = "u3";
+const PLAIN_UID = "u4";
+const NOBODY = "u5";
 
 let pass = 0;
 let fail = 0;
@@ -194,6 +206,124 @@ function stepFor(row) {
 const txnWrite = (row) => ({ update: { name: `${DOCS}/dayHeads/${DAY}/transactions/${row.txnId}`, fields: txnFields(row) } });
 const delWrite = (id) => ({ delete: `${DOCS}/dayHeads/${DAY}/transactions/${id}` });
 
+/* --- the trust layer ------------------------------------------------- */
+
+/* The proof-of-code. Only a hash ever goes on the wire, and the rules
+   compare it against securitySecrets — the same document the Admin SDK
+   writes and no client can read. */
+const enrollWrite = (uid, scope, code, overrides = {}) => ({
+  update: {
+    name: `${DOCS}/enrollments/${uid}`,
+    fields: {
+      scope: str(scope),
+      codeHash: str(code === null ? "0".repeat(64) : hashCode(code)),
+      createdAt: ts(),
+      createdBy: str(uid),
+      ...overrides,
+    },
+  },
+});
+
+const grantFields = (uid, { role = "shop", active = true, label = "Test browser", updatedBy = uid } = {}) => ({
+  active: bool(active),
+  role: str(role),
+  label: str(label),
+  client: map({ ua: str("Test · Chrome 1"), lang: str("en-IN") }),
+  lastUsedAt: ts(),
+  createdAt: ts(),
+  createdBy: str(uid),
+  updatedAt: ts(),
+  updatedBy: str(updatedBy),
+});
+
+const grantWrite = (uid, opts) => ({
+  update: { name: `${DOCS}/accessGrants/${uid}`, fields: grantFields(uid, opts) },
+});
+
+/* Reads are not writes, so they need their own path into the emulator. */
+async function expectRead(name, path, shouldPass, uid) {
+  const headers = uid ? { Authorization: `Bearer ${fakeJwt(uid)}` } : {};
+  const res = await fetch(`http://127.0.0.1:${PORT}/v1/${DOCS}/${path}`, { headers });
+  if ((res.ok) === shouldPass) {
+    pass++;
+    console.log(`  ok   ${name}`);
+  } else {
+    fail++;
+    failures.push(name);
+    console.log(`  FAIL ${name} -> expected ${shouldPass ? "allowed" : "denied"}, got ${res.ok ? "allowed" : "denied"}`);
+  }
+}
+
+/* The access-code hashes cannot be written by any client, so they are
+   planted as the project owner — the emulator's "Bearer owner" is exactly
+   the privilege tools/bootstrap-access.mjs uses in production. */
+async function seedSecrets() {
+  const res = await fetch(COMMIT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer owner" },
+    body: JSON.stringify({
+      writes: ["shop", "admin"].map((scope) => ({
+        update: {
+          name: `${DOCS}/securitySecrets/${scope}`,
+          fields: { codeHash: str(hashCode(scope === "shop" ? CODE_SHOP : CODE_ADMIN)), createdAt: ts() },
+        },
+      })),
+    }),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    fail++;
+    failures.push("seed securitySecrets");
+    console.log(`  BADRQ seeding securitySecrets -> ${res.status} ${body.slice(0, 300)}`);
+    return false;
+  }
+  pass++;
+  console.log("  ok   plant the access-code hashes (as project owner, bypassing the rules)");
+  return true;
+}
+
+/* The sale rules verify, via get(), that the serviceId exists, is active
+   and matches the serviceName the client sent. Every sale scenario below
+   books against `svc_a`, so it has to actually be there — planted as the
+   owner, since a catalog is seeded by the app on first trusted load. */
+async function seedService() {
+  const res = await fetch(COMMIT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer owner" },
+    body: JSON.stringify({
+      writes: [
+        {
+          update: {
+            name: `${DOCS}/services/svc_a`,
+            fields: {
+              serviceId: str("svc_a"),
+              name: str("Photocopy"),
+              code: str("PC"),
+              pricePaise: num(5000),
+              active: bool(true),
+              sortOrder: num(100),
+              createdAt: ts(),
+              createdBy: str(UID),
+              updatedAt: ts(),
+              updatedBy: str(UID),
+            },
+          },
+        },
+      ],
+    }),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    fail++;
+    failures.push("seed the service catalog");
+    console.log(`  BADRQ seeding services -> ${res.status} ${body.slice(0, 300)}`);
+    return false;
+  }
+  pass++;
+  console.log("  ok   plant the service catalog the sales book against");
+  return true;
+}
+
 /* The mirrored day must only move once a scenario is actually accepted, or a
    refused write would leave the harness believing a counter it never wrote. */
 const nextCounters = (d) => addCounters(head.counters, d);
@@ -243,10 +373,108 @@ async function waitForPort(port, ms) {
 /* --- scenarios ----------------------------------------------------- */
 
 async function run() {
-  console.log("firestore.rules day-head behaviour check\n");
+  console.log("firestore.rules behaviour check\n");
 
-  console.log("creating a day head:");
-  await expect("accept a freshly opened day with zeroed counters", [headWrite({ day: DAY, counters: { ...ZERO } })], true);
+  console.log("the access codes:");
+  if (!(await seedSecrets())) return;
+  if (!(await seedService())) return;
+
+  console.log("\nthe trust layer — who gets to reach the money:");
+  /* A batch is evaluated against its PRE-batch state, so a proof and the
+     grant it buys cannot ride in one commit: every step below is its own
+     write, exactly as the app does it. */
+
+  /* Before u1 proves anything, the ledger is closed to everyone. */
+  await expect("refuse a ledger write from a browser with no grant", [headWrite({ day: DAY, counters: { ...ZERO } })], false, OUTSIDER);
+
+  await expect("refuse a proof carrying the wrong code", [enrollWrite(UID, "shop", "NOTTHECODE")], false, UID);
+  await expect("refuse a proof whose scope is neither shop nor admin", [enrollWrite(UID, "superuser", CODE_SHOP)], false, UID);
+  await expect("refuse a proof claiming somebody else's uid", [enrollWrite(OUTSIDER, "shop", CODE_SHOP)], false, UID);
+  await expect("refuse a grant with no proof behind it", [grantWrite(UID)], false, UID);
+  await expect("refuse a grant that calls itself admin on a shop proof", [grantWrite(UID, { role: "admin" })], false, UID);
+
+  await expect("accept a proof carrying the real code", [enrollWrite(UID, "shop", CODE_SHOP)], true, UID);
+  await expect("accept a shop grant once the proof is on file", [grantWrite(UID)], true, UID);
+  /* Re-sending the identical grant is the last-seen heartbeat, not a
+     second enrolment — it must not be mistaken for a privilege change. */
+  await expect("accept re-asserting a grant as a last-seen heartbeat", [grantWrite(UID)], true, UID);
+  await expectRead("a trusted browser can read its own grant", `accessGrants/${UID}`, true, UID);
+  await expectRead("a browser with no grant has no grant at all", `accessGrants/${OUTSIDER}`, false, OUTSIDER);
+  await expect("refuse a second proof once a browser is already trusted", [enrollWrite(UID, "shop", CODE_SHOP)], false, UID);
+  await expect("refuse a trusted browser swapping its own shop proof", [enrollWrite(UID, "shop", "ANOTHER CODE")], false, UID);
+
+  console.log("\nthe codes themselves are unreachable:");
+  await expectRead("refuse any client read of securitySecrets/shop", "securitySecrets/shop", false, UID);
+  await expectRead("refuse any client read of securitySecrets/admin", "securitySecrets/admin", false, UID);
+  await expect("refuse a client rewriting the shop code hash", [{ update: { name: `${DOCS}/securitySecrets/shop`, fields: { codeHash: str("0".repeat(64)) } } }], false, UID);
+  await expect("refuse a client planting an admin hash of their own", [{ update: { name: `${DOCS}/securitySecrets/admin`, fields: { codeHash: str(hashCode("MY OWN CODE")) } } }], false, UID);
+  await expectRead("refuse reading a proof-of-code", `enrollments/${UID}`, false, UID);
+  await expectRead("refuse listing every proof", "enrollments", false, UID);
+  await expect("refuse deleting a proof", [{ delete: `${DOCS}/enrollments/${UID}` }], false, UID);
+
+  console.log("\nthe admin role:");
+  /* u1 is trusted on the SHOP code only, so it cannot simply promote
+     itself — the one capability the whole split rests on. */
+  await expect("refuse self-promotion to admin on a shop proof alone", [grantWrite(UID, { role: "admin" })], false, UID);
+  await expect("refuse upgrading a trusted proof with the wrong admin code", [enrollWrite(UID, "admin", "NOTTHECODE")], false, UID);
+
+  /* A FRESH browser holding the admin code is the owner's credential and
+     mints the admin grant outright. */
+  await expect("accept an admin-scope proof carrying the admin code", [enrollWrite(ADMIN_UID, "admin", CODE_ADMIN)], true, ADMIN_UID);
+  await expect("accept an admin grant minted on an admin proof", [grantWrite(ADMIN_UID, { role: "admin" })], true, ADMIN_UID);
+  await expectRead("an admin can read another browser's grant", `accessGrants/${UID}`, true, ADMIN_UID);
+  await expectRead("a shop browser cannot read anyone else's grant", `accessGrants/${ADMIN_UID}`, false, UID);
+  await expect("refuse a browser with no proof minting an admin grant", [grantWrite(OUTSIDER, { role: "admin" })], false, OUTSIDER);
+
+  console.log("\nupgrading the browser already in the shop:");
+  await expect("accept upgrading a trusted shop proof to admin", [enrollWrite(UID, "admin", CODE_ADMIN)], true, UID);
+  await expect("accept self-promotion on that admin proof", [grantWrite(UID, { role: "admin" })], true, UID);
+  await expectRead("and it is an admin now", `accessGrants/${UID}`, true, ADMIN_UID);
+
+  console.log("\na shop browser cannot manage the registry:");
+  await expect("accept a second browser proving the shop code", [enrollWrite(PLAIN_UID, "shop", CODE_SHOP)], true, PLAIN_UID);
+  await expect("accept that browser's shop grant", [grantWrite(PLAIN_UID)], true, PLAIN_UID);
+  await expect("refuse a shop browser revoking the admin", [grantWrite(ADMIN_UID, { active: false, updatedBy: PLAIN_UID })], false, PLAIN_UID);
+  await expect("refuse a shop browser promoting itself to admin", [grantWrite(PLAIN_UID, { role: "admin" })], false, PLAIN_UID);
+  await expect("refuse a browser writing a grant at somebody else's uid", [grantWrite(ADMIN_UID, { role: "admin", updatedBy: PLAIN_UID })], false, PLAIN_UID);
+  await expect("refuse a browser deleting another browser's grant", [{ delete: `${DOCS}/accessGrants/${ADMIN_UID}` }], false, PLAIN_UID);
+  await expect("accept a shop browser heartbeating its own grant", [grantWrite(PLAIN_UID)], true, PLAIN_UID);
+
+  console.log("\nrevoking a browser:");
+  await expect("accept an admin revoking a shop browser", [grantWrite(PLAIN_UID, { active: false, updatedBy: ADMIN_UID })], true, ADMIN_UID);
+  await expect("refuse the revoked browser writing a sale", [txnWrite(baseTxn("tR", {})), dayWrite(CASH_5000)], false, PLAIN_UID);
+  await expect("refuse the revoked browser re-activating as admin", [grantWrite(PLAIN_UID, { role: "admin", active: true })], false, PLAIN_UID);
+  await expect("accept a heartbeat that leaves a revoked grant revoked", [grantWrite(PLAIN_UID, { active: false })], true, PLAIN_UID);
+  await expectRead("and it is still not trusted", `accessGrants/${PLAIN_UID}`, true, PLAIN_UID);
+  await expect("refuse the revoked browser reading the ledger", [headWrite({ day: DAY, counters: { ...ZERO } })], false, PLAIN_UID);
+  /* A revoked browser may still prove a code — that is how it comes back —
+     and the admin code is no exception. But an ADMIN-scope proof must not
+     be able to buy its way back in: reactivation is shop-only, so holding
+     the stronger credential gets you nothing you did not already have. */
+  await expect("accept a revoked browser putting an admin proof on file", [enrollWrite(PLAIN_UID, "admin", CODE_ADMIN)], true, PLAIN_UID);
+  await expect("refuse re-activating on an admin-scope proof", [grantWrite(PLAIN_UID, { active: true })], false, PLAIN_UID);
+  await expect("refuse the still-revoked browser opening the day", [headWrite({ day: DAY, counters: { ...ZERO } })], false, PLAIN_UID);
+  await expect("accept the revoked browser re-proving the shop code", [enrollWrite(PLAIN_UID, "shop", CODE_SHOP)], true, PLAIN_UID);
+  await expect("accept the revoked browser re-activating with it", [grantWrite(PLAIN_UID, { active: true })], true, PLAIN_UID);
+  await expectRead("and it is trusted again", `accessGrants/${PLAIN_UID}`, true, PLAIN_UID);
+
+  console.log("\nrevoking an admin demotes it, never restores it:");
+  await expect("accept an admin revoking the other admin", [grantWrite(UID, { active: false, updatedBy: ADMIN_UID })], true, ADMIN_UID);
+  await expect("refuse the demoted admin reactivating as admin", [grantWrite(UID, { role: "admin", active: true })], false, UID);
+  await expectRead("and it can no longer read the registry", `accessGrants/${PLAIN_UID}`, false, UID);
+  /* It comes back as a plain shop browser, which is the whole point of
+     keeping the two codes apart. */
+  await expect("accept the demoted admin re-proving the shop code", [enrollWrite(UID, "shop", CODE_SHOP)], true, UID);
+  await expect("accept it coming back as shop, not admin", [grantWrite(UID, { active: true })], true, UID);
+  await expectRead("with shop trust only", `accessGrants/${PLAIN_UID}`, false, UID);
+
+  console.log("\ncreating a day head:");
+  await expect("accept a freshly opened day with zeroed counters", [headWrite({ day: DAY, counters: { ...ZERO } })], true, UID);
+  /* The head is really on disk now, so a refused read is a genuine 403 and
+     not merely a missing document. */
+  await expectRead("a trusted browser can read the day head", `dayHeads/${DAY}`, true, UID);
+  await expectRead("a browser with no grant cannot", `dayHeads/${DAY}`, false, OUTSIDER);
+  await expectRead("an anonymous caller cannot either", `dayHeads/${DAY}`, false, null);
   await expect("refuse counters whose buckets do not sum to the gross", [headWrite({ day: "2026-09-28", counters: { ...ZERO, txnCount: 1, grossPaise: 5000, cashPaise: 4000 } })], false);
   await expect("refuse counters collecting more than the gross", [headWrite({ day: "2026-09-29", counters: { ...ZERO, txnCount: 1, grossPaise: 5000, cashPaise: 5000, collectedPaise: 6000 } })], false);
   await expect("refuse negative counters", [headWrite({ day: "2026-09-30", counters: { ...ZERO, txnCount: -1 } })], false);
@@ -301,7 +529,34 @@ async function run() {
   await expect("refuse a write to the old days collection", [{ update: { name: `${DOCS}/days/${DAY}`, fields: { closed: bool(true) } } }], false);
   await expect("refuse a write to the old services collection", [{ update: { name: `${DOCS}/services/svc_a`, fields: { name: str("x") } } }], false);
   await expect("refuse a write to devices", [{ update: { name: `${DOCS}/devices/abc`, fields: { active: bool(true) } } }], false);
+  await expect("refuse a write to the old RTDB-era admins collection", [{ update: { name: `${DOCS}/admins/${UID}`, fields: { uid: str(UID) } } }], false);
   await expect("refuse an anonymous write", [txnWrite(baseTxn("t11", {})), dayWrite(CASH_5000)], false, null);
+
+  console.log("\nthe shop record:");
+  const shopDoc = (uid, over = {}) => ({
+    update: {
+      name: `${DOCS}/shop/general`,
+      fields: {
+        name: str("TrustX Ledger"),
+        phone: str(""),
+        address: str(""),
+        currency: str("INR"),
+        active: bool(true),
+        createdAt: ts(),
+        createdBy: str(uid),
+        updatedAt: ts(),
+        updatedBy: str(uid),
+        ...over,
+      },
+    },
+  });
+  await expect("refuse a shop record write from a browser with no grant", [shopDoc(NOBODY)], false, NOBODY);
+  await expect("refuse an anonymous shop record write", [shopDoc(NOBODY)], false, null);
+  await expect("refuse a shop record with a non-INR currency", [shopDoc(UID, { currency: str("USD") })], false, UID);
+  await expect("refuse a shop record with an empty name", [shopDoc(UID, { name: str("") })], false, UID);
+  await expect("accept a well-formed shop record from a trusted browser", [shopDoc(UID)], true, UID);
+  await expect("refuse rewriting who created the shop record", [shopDoc(UID, { createdBy: str("someone-else") })], false, UID);
+  await expect("refuse deleting the shop record", [{ delete: `${DOCS}/shop/general` }], false, UID);
 }
 
 const dir = buildWorkspace();

@@ -3,18 +3,40 @@ rules_version = '2';
 // =============================================================
 // TRUSTX LEDGER — Cloud Firestore security rules
 // -------------------------------------------------------------
-// TRANSACTIONS AND SERVICES. Realtime Database holds:
-//   settings/{general,security,admin}   shop identity and the two codes
-//   enrollments/{nonce}                 one-time proof-of-code
-//   devices/{tokenHash}                 trusted-device registry
-//   admins/{uid}                        Developer-console grants
-//   expenses/{expId}                    spends (read-only this build)
+// EVERYTHING THAT GATES ACCESS LIVES HERE, NEXT TO THE MONEY.
 //
+//   securitySecrets/{scope}   { shop, admin } SHA-256 of each access
+//                             code. Never readable and never writable by
+//                             a client — only the bootstrap/rotation tool
+//                             (tools/bootstrap-access.mjs, Admin SDK) can
+//                             write them. A missing secret fails CLOSED:
+//                             no enrollment can match it.
+//   enrollments/{uid}        one-time proof-of-code, keyed by the caller's
+//                             own uid. The create rule is where the code
+//                             is actually checked, server-side: the caller
+//                             sends only sha256(code), never the code.
+//   accessGrants/{uid}       the trusted-browser registry and the ONLY
+//                             thing the money rules below consult. An
+//                             anonymous Firebase user with no grant reads
+//                             and writes nothing.
+//
+// The trust chain is therefore: code (never in the app) -> enrollment
+// (server compares the hash) -> accessGrant (server-authoritative) ->
+// money access. Revoking a grant locks the browser out immediately,
+// because every rule below re-reads the grant on every request.
+//
+// Realtime Database holds only non-authoritative data:
+//   settings/general   shop identity
+//   expenses/{dateKey} spends (read-only this build)
+
 // DATA MODEL COVERED HERE
-//   dayHeads/{dateKey}                        the independent head for
-//                                              one Asia/Kolkata business day
-//   dayHeads/{dateKey}/transactions/{txnId}   the sales recorded that day
-//   services/{serviceId}                      the quick-service catalog
+//   securitySecrets/{scope}                     the two access-code hashes
+//   enrollments/{uid}                           one-time proof-of-code
+//   accessGrants/{uid}                          trusted browsers + admin role
+//   dayHeads/{dateKey}                          the independent head for
+//                                               one Asia/Kolkata business day
+//   dayHeads/{dateKey}/transactions/{txnId}     the sales recorded that day
+//   services/{serviceId}                        the quick-service catalog
 //
 // A HEAD PER DAY, NOT A dateKey FIELD
 //   The old model was one flat transactions collection with a dateKey
@@ -66,12 +88,262 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // ---------------- Trust ----------------
+    // The access-code hashes. Unreadable by every client on purpose: a
+    // hash that a browser can read is a hash an attacker can take home
+    // and grind offline, so the comparison below is the only place a
+    // code is ever checked, and it happens here.
+    function secretPath(scope) {
+      return /databases/$(database)/documents/securitySecrets/$(scope);
+    }
+
+    function enrollPath(uid) {
+      return /databases/$(database)/documents/enrollments/$(uid);
+    }
+
+    function grantPath(uid) {
+      return /databases/$(database)/documents/accessGrants/$(uid);
+    }
+
+    // A browser is trusted iff it holds a grant that is still active.
+    // Every money rule calls this, so revoking a grant takes effect on
+    // the very next request without touching the session.
+    function isTrusted(uid) {
+      return exists(grantPath(uid)) && get(grantPath(uid)).data.active == true;
+    }
+
+    function isAdmin(uid) {
+      return isTrusted(uid) && get(grantPath(uid)).data.role == 'admin';
+    }
+
+    // The single gate in front of the ledger. Note this is NOT
+    // `request.auth != null`: signing in anonymously is free and open to
+    // anyone, so a session proves nothing on its own.
+    function trusted() {
+      return signedIn() && isTrusted(request.auth.uid);
+    }
+
+    function admin() {
+      return signedIn() && isAdmin(request.auth.uid);
+    }
+
+    // A grant record. The shape is closed on purpose: nothing rides along
+    // that a later rule change might start trusting.
+    function validGrantDoc(doc) {
+      return doc.keys().hasOnly([
+            'active', 'role', 'label', 'client', 'lastUsedAt',
+            'createdAt', 'createdBy', 'updatedAt', 'updatedBy'
+          ])
+        && doc.active is bool
+        && doc.role in ['shop', 'admin']
+        && doc.label is string && doc.label.size() >= 1 && doc.label.size() <= 80
+        && doc.client.keys().hasOnly(['ua', 'lang'])
+        && doc.client.ua is string && doc.client.ua.size() <= 100
+        && doc.client.lang is string && doc.client.lang.size() <= 40
+        && doc.lastUsedAt is timestamp
+        && doc.createdAt is timestamp
+        && doc.createdBy is string && doc.createdBy.size() >= 1 && doc.createdBy.size() <= 128
+        && doc.updatedAt == request.time
+        && doc.updatedBy == request.auth.uid;
+    }
+
+    // An admin editing a grant may flip trust and change the label, but
+    // never rewrite who created it or when.
+    function validGrantUpdate(before, after) {
+      return validGrantDoc(after)
+        && after.createdAt == before.createdAt
+        && after.createdBy == before.createdBy
+        && after.label.size() >= 1 && after.label.size() <= 80
+        && (after.role in ['shop', 'admin'])
+        && (after.active is bool);
+    }
+
+    // The proof-of-code itself. The caller may only ever write a doc at
+    // their OWN uid, only once, and only carrying a hash that equals the
+    // server-held hash for the scope they asked for. A wrong code simply
+    // fails to match, so the write is denied and nothing is created.
+    function validEnrollment(uid, doc) {
+      return doc.keys().hasOnly(['scope', 'codeHash', 'createdAt', 'createdBy'])
+        && doc.scope in ['shop', 'admin']
+        && doc.codeHash is string
+        && doc.codeHash.matches('^[a-f0-9]{64}$')
+        && doc.createdAt == request.time
+        && doc.createdBy == request.auth.uid
+        && exists(secretPath(doc.scope))
+        && doc.codeHash == get(secretPath(doc.scope)).data.codeHash;
+    }
+
+    // ---------------- The access codes ----------------
+    // Closed to clients in both directions. Written once by
+    // tools/bootstrap-access.mjs with the Admin SDK (which bypasses these
+    // rules) and rotated the same way. If this document is missing the
+    // shop cannot be enrolled — that is the intended fail-closed state,
+    // not a bug to work around.
+    match /securitySecrets/{scope} {
+      allow read, write: if false;
+    }
+
+    // ---------------- Proof of code ----------------
+    // Keyed by the caller's own uid, so two browsers cannot share (or
+    // race for) one another's proof. The rule below is the server-side
+    // code check: the client hashes the typed code with SHA-256 and
+    // sends only that hash, which is accepted only if it equals the
+    // stored securitySecrets/{scope}.codeHash.
+    //
+    // A browser with no ACTIVE grant may always (re)prove itself, so a
+    // revoked machine recovers by typing the code again instead of
+    // having to clear its site data. A browser that is already trusted
+    // cannot touch its own proof, so a stolen session cannot use this
+    // path to escalate.
+    function canProveCode(uid) {
+      return signedIn()
+        && request.auth.uid == uid
+        && !isTrusted(uid)
+        && validEnrollment(uid, request.resource.data);
+    }
+
+    // The one way an ALREADY-trusted browser may touch its proof: replace
+    // a shop proof with an ADMIN one, so this same device can unlock the
+    // console (self-promotion below). It is strictly additive — an
+    // untrusted browser proves through canProveCode as before, a trusted
+    // one can only ever move shop -> admin, and neither can write a shop
+    // proof this way, so nothing here can grant access the admin code
+    // would not have granted anyway.
+    function canAddAdminProof(uid) {
+      return signedIn()
+        && request.auth.uid == uid
+        && isTrusted(uid)
+        && exists(grantPath(uid))
+        && get(grantPath(uid)).data.role == 'shop'
+        && get(grantPath(uid)).data.active == true
+        && exists(enrollPath(uid))
+        && get(enrollPath(uid)).data.scope == 'shop'
+        && request.resource.data.scope == 'admin'
+        && validEnrollment(uid, request.resource.data);
+    }
+
+    match /enrollments/{uid} {
+      allow read: if false;
+      allow create: if canProveCode(uid);
+      allow update: if canProveCode(uid) || canAddAdminProof(uid);
+      allow delete: if false;
+    }
+
+    // Everything except the last-seen stamp is a browser's own: created
+    // when and by whom, what it is called, and which UA it reported.
+    // Used by both self-service rules below, so neither can quietly
+    // rewrite its own history.
+    function sameGrantIdentity(before, after) {
+      return after.keys().hasOnly([
+            'active', 'role', 'label', 'client', 'lastUsedAt',
+            'createdAt', 'createdBy', 'updatedAt', 'updatedBy'
+          ])
+        && after.createdAt == before.createdAt
+        && after.createdBy == before.createdBy
+        && after.label == before.label
+        && after.client == before.client
+        && after.lastUsedAt is timestamp;
+    }
+
+    // ---------------- Trusted browsers ----------------
+    // The registry the Developer console manages, and the only authority
+    // the money rules above/below consult. Keyed by uid because that is
+    // what `request.auth.uid` gives the rules; a cleared browser profile
+    // loses the uid and therefore needs the code again.
+    match /accessGrants/{uid} {
+      // A browser can always read its OWN grant — that is how it learns
+      // it has been revoked. Listing everyone is an admin capability.
+      allow read: if signedIn()
+        && (request.auth.uid == uid || isAdmin(request.auth.uid));
+
+      // Self-enrolment: proven code in, trust out. The role must equal
+      // the scope that was proven, so a grant can never be richer than
+      // the code behind it — the admin code is the only thing that can
+      // ever mint an admin role.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && !exists(grantPath(uid))
+        && exists(enrollPath(uid))
+        && get(enrollPath(uid)).data.scope == request.resource.data.role
+        && request.resource.data.role in ['shop', 'admin']
+        && request.resource.data.active == true
+        && validGrantDoc(request.resource.data);
+
+      allow update: if (
+        // An admin may revoke, restore, re-label or delete-by-demotion
+        // any browser.
+        admin() && validGrantUpdate(resource.data, request.resource.data)
+        ) || (
+        // Self-promotion: the only capability a browser may add to its
+        // own grant is shop -> admin, and only by presenting a valid
+        // ADMIN-scope proof while already holding active shop trust.
+        signedIn()
+        && request.auth.uid == uid
+        && resource.data.role == 'shop'
+        && resource.data.active == true
+        && request.resource.data.role == 'admin'
+        && request.resource.data.active == true
+        && validGrantDoc(request.resource.data)
+        && sameGrantIdentity(resource.data, request.resource.data)
+        && exists(enrollPath(uid))
+        && get(enrollPath(uid)).data.scope == 'admin'
+      ) || (
+        // Reactivation: a browser that was revoked can come back on its
+        // own by proving the SHOP code again. The role and identity are
+        // pinned, so this restores shop access and nothing more — it can
+        // never turn a demoted admin into an admin again (that would
+        // need an ADMIN-scope proof via the branch above).
+        signedIn()
+        && request.auth.uid == uid
+        && resource.data.active == false
+        && request.resource.data.active == true
+        && request.resource.data.role == 'shop'
+        && sameGrantIdentity(resource.data, request.resource.data)
+        && request.resource.data.lastUsedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid
+        && exists(enrollPath(uid))
+        && get(enrollPath(uid)).data.scope == 'shop'
+      ) || (
+        // Heartbeat: a browser may only move its own last-seen stamp, so
+        // the console can show which machines are actually in use.
+        // Trust and role are untouched, so this can never be used to
+        // keep a revoked browser alive.
+        signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.active == resource.data.active
+        && sameGrantIdentity(resource.data, request.resource.data)
+        && request.resource.data.lastUsedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid
+      );
+
+      allow delete: if admin();
+    }
+
     function headPath(dk) {
       return /databases/$(database)/documents/dayHeads/$(dk);
     }
 
     function servicePath(svcId) {
       return /databases/$(database)/documents/services/$(svcId);
+    }
+
+    // The day, and the sale id, a write is happening UNDER — read off
+    // the path instead of trusted from the document, so a client cannot
+    // claim to be filing a sale into a day other than the one it
+    // addressed (the old flat model let it, and the head would then be
+    // advanced on the wrong day's register).
+    // `path` is ['dayHeads', '<date>', 'transactions', '<txnId>'], so the
+    // guards keep a call from a shallower path a clean `false` instead of
+    // an out-of-range evaluation error.
+    function dateKey() {
+      return path.size() > 1 ? path[1] : null;
+    }
+
+    function txnId() {
+      return path.size() > 3 ? path[3] : null;
     }
 
     // Field ranges, mirroring the client guards in js/utils.js so a bad
@@ -245,11 +517,11 @@ service cloud.firestore {
           && after.collectedPaise + 100000000000 >= before.collectedPaise;
       }
 
-      allow read: if signedIn();
+      allow read: if trusted();
 
-      allow create: if signedIn() && validHeadCreate(request.resource.data);
+      allow create: if trusted() && validHeadCreate(request.resource.data);
 
-      allow update: if signedIn()
+      allow update: if trusted()
         && (
             // Re-asserting a head the client just found, changing
             // nothing. Keeps the "make sure the day exists" step from
@@ -312,6 +584,7 @@ service cloud.firestore {
           && doc.status in ['paid', 'pending']
           && ((doc.paymentMethod == 'due' && doc.status in ['pending', 'paid'])
               || (doc.paymentMethod != 'due' && doc.status == 'paid'))
+          && doc.dateKey is string
           && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
           && doc.dateKey == dateKey
           && doc.createdBy == request.auth.uid
@@ -358,11 +631,11 @@ service cloud.firestore {
       // day's sales, which is what the Developer console's "All recent"
       // view uses. The day is still enforced per document, because the
       // head state is read from the document's own parent path.
-      allow read: if signedIn();
+      allow read: if trusted();
 
       // Creating a sale and advancing the day's counters is ONE batch, so
       // the head must move by exactly this sale's contribution.
-      allow create: if signedIn()
+      allow create: if trusted()
         && dayOpen(dateKey)
         && validTransactionDoc(request.resource.data)
         && headSteppedBy(
@@ -374,7 +647,7 @@ service cloud.firestore {
 
       // Editing a sale may move money between payment buckets, so the
       // head shifts by the difference between the old and new split.
-      allow update: if signedIn()
+      allow update: if trusted()
         && dayOpen(dateKey)
         && validTransactionEdit(resource.data, request.resource.data)
         && headShiftedBy(
@@ -385,7 +658,7 @@ service cloud.firestore {
            );
 
       // Deleting retreats the counters by exactly this sale.
-      allow delete: if signedIn()
+      allow delete: if trusted()
         && dayOpen(dateKey)
         && headSteppedBy(
              get(headPath(dateKey)).data.counters,
@@ -438,20 +711,59 @@ service cloud.firestore {
           && doc.updatedBy == request.auth.uid;
       }
 
-      allow read: if signedIn();
+      allow read: if trusted();
 
-      allow create: if signedIn()
+      allow create: if trusted()
         && validServiceDoc(request.resource.data);
 
-      allow update: if signedIn()
+      allow update: if trusted()
         && validServiceUpdate(request.resource.data);
 
       allow delete: if false;
     }
 
-    // Everything else is denied. Expenses, devices, admins, enrollments
-    // and settings are all Realtime Database paths now, and anything
-    // unlisted here is not part of this app.
+    // ---------------- The shop record ----------------
+    // Shop identity (name, phone, address). This used to be a Realtime
+    // Database path, but RTDB rules cannot read a Firestore grant, so
+    // "auth != null" there meant *any* anonymous Firebase user could
+    // rewrite the shop's details. Here it sits behind the same trusted()
+    // gate as the money, with one document and no delete.
+    match /shop/{docId} {
+      function validShopDoc(doc) {
+        return doc.keys().hasOnly([
+              'name', 'phone', 'address', 'currency', 'active',
+              'createdAt', 'createdBy', 'updatedAt', 'updatedBy'
+            ])
+          && doc.name is string && doc.name.size() >= 1 && doc.name.size() <= 80
+          && doc.phone is string && doc.phone.size() <= 20
+          && doc.address is string && doc.address.size() <= 300
+          && doc.currency == 'INR'
+          && doc.active == true
+          && doc.createdAt is timestamp
+          && doc.createdBy == request.auth.uid
+          && doc.updatedAt == request.time
+          && doc.updatedBy == request.auth.uid;
+      }
+
+      allow read: if trusted();
+
+      allow create: if trusted()
+        && docId == 'general'
+        && validShopDoc(request.resource.data);
+
+      allow update: if trusted()
+        && docId == 'general'
+        && validShopDoc(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy;
+
+      allow delete: if false;
+    }
+
+    // Everything else is denied. Expenses are the one remaining Realtime
+    // Database path, and anything not listed above is not part of this
+    // app — in particular there is no way back to the old `admins/**` or
+    // `devices/**` collections from here.
     match /{document=**} {
       allow read, write: if false;
     }

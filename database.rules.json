@@ -1,4 +1,26 @@
 {
+  "//": [
+    "TrustX Ledger — Realtime Database rules.",
+    "",
+    "This database no longer holds anything that decides access. The two access",
+    "codes, the proof-of-code records, the trusted-browser registry and the admin",
+    "grants all moved to Cloud Firestore, NEXT TO THE MONEY, because Firestore rules",
+    "can read a document (accessGrants/{uid}) while Realtime Database rules cannot —",
+    "a database that cannot see the trust record cannot enforce it.",
+    "",
+    "The old paths below are kept DENIED on purpose rather than deleted, so a stale",
+    "deploy that still points at this file fails closed instead of quietly",
+    "re-opening the shop to every anonymous Firebase user. Their data can be deleted",
+    "once the new rules are deployed; see the README (Migration).",
+    "",
+    "KNOWN GAP — expenses. expenses/{dateKey}/{expId} is still here, and",
+    "'auth != null' is the strongest condition this rule language can express, so ANY",
+    "anonymous Firebase user can READ the shop's expenses. They cannot write them",
+    "(.write is false), and no rule anywhere trusts this data for money arithmetic.",
+    "Moving expenses into Firestore so they sit behind the same trusted() gate is",
+    "tracked as the next step; it is called out in the README's known-risks section",
+    "rather than left to be discovered."
+  ],
   "rules": {
     ".read": false,
     ".write": false,
@@ -8,110 +30,42 @@
       ".write": false,
 
       "general": {
-        ".read": "auth != null",
-        ".write": "auth != null && ((!data.exists() && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid) || (data.exists() && newData.child('createdAt').val() == data.child('createdAt').val() && newData.child('createdBy').val() == data.child('createdBy').val()))",
-
-        "name": { ".validate": "newData.isString() && newData.val().matches(/^.{1,80}$/)" },
-        "phone": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,20}$/)" },
-        "address": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,300}$/)" },
-        "currency": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z]{3}$/)" },
-        "active": { ".validate": "newData.val() == true" },
-        "createdAt": { ".validate": "newData.isNumber()" },
-        "createdBy": { ".validate": "newData.isString() && newData.val() == auth.uid" }
+        "//": "Moved to Firestore shop/general. Denied here so a stale deploy cannot rewrite it.",
+        ".read": false,
+        ".write": false
       },
-
       "security": {
+        "//": "Held the PLAINTEXT shop code. No longer written; the hash lives in Firestore securitySecrets/shop.",
         ".read": false,
-        ".write": "auth != null && !data.exists() && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid",
-        "accessCode": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9]{4,12}$/)" },
-        "createdAt": { ".validate": "newData.isNumber()" },
-        "createdBy": { ".validate": "newData.isString() && newData.val() == auth.uid" }
+        ".write": false
       },
-
       "admin": {
+        "//": "Held the PLAINTEXT admin code. No longer written; the hash lives in Firestore securitySecrets/admin.",
         ".read": false,
-        ".write": "auth != null && !data.exists() && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid",
-        "adminCode": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9]{6,24}$/)" },
-        "createdAt": { ".validate": "newData.isNumber()" },
-        "createdBy": { ".validate": "newData.isString() && newData.val() == auth.uid" }
+        ".write": false
       }
     },
 
     "enrollments": {
+      "//": "Moved to Firestore enrollments/{uid}, where the code is compared against securitySecrets.",
       ".read": false,
-      ".write": false,
-
-      "$nonce": {
-        ".write": "auth != null && !data.exists() && $nonce.matches(/^[a-f0-9]{32}$/) && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid && newData.child('used').val() == false && ((newData.child('scope').val() == 'shop' && newData.child('verifiedCode').val() == root.child('settings/security/accessCode').val()) || (newData.child('scope').val() == 'admin' && newData.child('verifiedCode').val() == root.child('settings/admin/adminCode').val()))",
-
-        "scope": { ".validate": "newData.val() == 'shop' || newData.val() == 'admin'" },
-        "verifiedCode": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9]{4,24}$/)" },
-        "createdAt": { ".validate": "newData.isNumber()" },
-        "createdBy": { ".validate": "newData.isString() && newData.val() == auth.uid" },
-
-        "used": {
-          ".write": "auth != null && data.child('createdBy').val() == auth.uid && data.child('used').val() == false && newData.val() == true",
-          ".validate": "newData.val() == true || newData.val() == false"
-        },
-        "deviceHash": {
-          ".write": "auth != null && data.child('createdBy').val() == auth.uid && data.child('used').val() == false && newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)",
-          ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
-        }
-      }
+      ".write": false
     },
 
     "devices": {
-      ".read": "auth != null",
-      ".write": false,
-      ".indexOn": ["createdAt"],
-
-      "$tokenHash": {
-        ".read": "auth != null || data.child('tokenHash').val() == $tokenHash",
-
-        ".write": "(auth != null && !data.exists() && newData.child('tokenHash').val() == $tokenHash && newData.child('uid').val() == auth.uid && newData.child('uid').val() == newData.child('createdBy').val() && newData.child('active').val() == true && newData.child('createdAt').val() == now && newData.child('lastUsedAt').val() == now && newData.child('enrollmentId').exists() && root.child('enrollments').child(newData.child('enrollmentId').val()).child('createdBy').val() == auth.uid && root.child('enrollments').child(newData.child('enrollmentId').val()).child('used').val() == false) || (auth != null && data.exists() && !newData.exists() && root.child('admins').child(auth.uid).exists()) || (auth != null && data.exists() && newData.child('tokenHash').val() == $tokenHash && newData.child('uid').val() == data.child('uid').val() && newData.child('createdAt').val() == data.child('createdAt').val() && newData.child('createdBy').val() == data.child('createdBy').val() && newData.child('enrollmentId').val() == data.child('enrollmentId').val() && ((auth.uid == data.child('createdBy').val() && data.child('active').val() == true && newData.child('lastUsedAt').val() == now) || (root.child('admins').child(auth.uid).exists() && (newData.child('lastUsedAt').val() == now || newData.child('lastUsedAt').val() == data.child('lastUsedAt').val()))))",
-
-        "tokenHash": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)" },
-        "uid": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" },
-        "label": { ".validate": "newData.isString() && newData.val().matches(/^.{1,80}$/)" },
-        "active": { ".validate": "newData.val() == true || newData.val() == false" },
-        "enrollmentId": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)" },
-        "createdAt": { ".validate": "newData.isNumber()" },
-        "lastUsedAt": { ".validate": "newData.isNumber()" },
-        "createdBy": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" },
-
-        "client": {
-          "ua": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,100}$/)" },
-          "lang": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,40}$/)" }
-        },
-        "network": {
-          "type": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,40}$/)" },
-          "saveData": { ".validate": "newData.val() == true || newData.val() == false" },
-          "online": { ".validate": "newData.val() == true || newData.val() == false" }
-        },
-        "lastUsedNetwork": {
-          "type": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{0,40}$/)" },
-          "saveData": { ".validate": "newData.val() == true || newData.val() == false" },
-          "online": { ".validate": "newData.val() == true || newData.val() == false" }
-        }
-      }
+      "//": "Moved to Firestore accessGrants/{uid}. The old tokenHash-keyed registry is dead.",
+      ".read": false,
+      ".write": false
     },
 
     "admins": {
-      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
-      ".write": false,
-
-      "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
-        ".write": "(auth != null && !data.exists() && auth.uid == $uid && newData.child('uid').val() == auth.uid && newData.child('deviceHash').isString() && newData.child('deviceHash').val().matches(/^[a-f0-9]{64}$/) && newData.child('enrollmentId').isString() && newData.child('enrollmentId').val().matches(/^[a-f0-9]{32}$/) && root.child('enrollments').child(newData.child('enrollmentId').val()).child('scope').val() == 'admin' && root.child('enrollments').child(newData.child('enrollmentId').val()).child('used').val() == false && root.child('enrollments').child(newData.child('enrollmentId').val()).child('createdBy').val() == auth.uid && newData.child('createdAt').val() == now && newData.child('createdBy').val() == auth.uid) || (auth != null && data.exists() && !newData.exists() && (root.child('admins').child(auth.uid).exists() || auth.uid == $uid))",
-        "uid": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" },
-        "deviceHash": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)" },
-        "enrollmentId": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)" },
-        "createdAt": { ".validate": "newData.isNumber()" },
-        "createdBy": { ".validate": "newData.isString() && newData.val().matches(/^[\\u0000-\\uFFFF]{1,128}$/)" }
-      }
+      "//": "Moved to Firestore accessGrants/{uid}.role. There is no separate admin collection any more.",
+      ".read": false,
+      ".write": false
     },
 
     "expenses": {
+      "//": "Read-only, and readable by any signed-in user — see KNOWN GAP at the top of this file.",
       ".read": "auth != null",
       ".write": false,
 
@@ -128,4 +82,3 @@
     }
   }
 }
-

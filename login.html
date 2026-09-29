@@ -112,9 +112,11 @@
   <script type="module">
     import { isConfigured, initFirebase } from "./js/firebase.js";
     import {
+      initAuth,
       signInAnonymous,
+      enrollBrowser,
+      getAccessGrant,
       normalizeCode,
-      SHOP_CODE,
       reportError,
     } from "./js/auth.js";
 
@@ -175,6 +177,23 @@
       const params = new URLSearchParams(window.location.search);
       if (params.get("reason") === "signedout") {
         showAlert("You have been signed out.", "info");
+      } else if (params.get("reason") === "revoked") {
+        showAlert("This browser's access was revoked. Enter the shop code to sign in again.", "info");
+      } else if (params.get("reason") === "not-enrolled") {
+        showAlert("This browser is not set up on this shop yet. Enter the shop code to continue.", "info");
+      }
+
+      /* A browser that is already trusted has no business on this page:
+         the grant in Firestore is what the ledger actually checks, so
+         send it straight through instead of making it retype the code. */
+      try {
+        await initAuth();
+        const grant = await getAccessGrant();
+        if (grant && grant.active === true) goDashboard();
+      } catch (err) {
+        /* Offline, or the read was denied: fall through to the form.
+           The code path below re-checks everything anyway. */
+        console.warn("[trustx-ledger] auto sign-in check skipped:", err);
       }
     }
 
@@ -184,18 +203,18 @@
       event.preventDefault();
       hideAlert();
       const code = codeInput.value;
-      if (!code) {
+      if (!code.trim()) {
         showAlert("Enter the shop code.");
         return;
       }
       setBtnLoading(true);
       try {
-        const normalized = normalizeCode(code);
-        if (normalized !== SHOP_CODE) {
-          throw new Error("That code is not recognised. Check with the shop administrator.");
-        }
         await initFirebase();
         await signInAnonymous();
+        /* The code is hashed here and never compared here: the rules in
+           firestore.rules do the comparing, against a hash only the
+           Admin SDK could have written. */
+        await enrollBrowser({ code: normalizeCode(code) });
         goDashboard();
       } catch (err) {
         showAlert(reportError(err));
