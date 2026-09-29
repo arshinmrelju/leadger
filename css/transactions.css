@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    TrustX Ledger — Transaction entry + history
    ========================================================= */
 
@@ -20,8 +20,12 @@
 }
 
 .seg-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
   padding: 0.6rem 0.4rem;
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
   font-weight: 700;
@@ -29,15 +33,47 @@
   color: var(--color-text-soft);
   cursor: pointer;
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
+    color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
 }
 
-.seg-btn:hover { border-color: var(--color-primary); }
+.seg-btn svg { flex-shrink: 0; }
 
-.seg-btn.seg-cash.is-active { background: var(--color-success-soft); border-color: var(--color-success); color: #166534; }
-.seg-btn.seg-upi.is-active { background: var(--color-info-soft); border-color: var(--color-info); color: #1e40af; }
-.seg-btn.seg-card.is-active { background: #ede9fe; border-color: #7c3aed; color: #6d28d9; }
-.seg-btn.seg-due.is-active { background: var(--color-warning-soft); border-color: var(--color-warning); color: #92400e; }
+.seg-btn:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+
+/* ── Active / selected states — solid fill so it's unmissable ── */
+.seg-btn.seg-cash.is-active {
+  background: #16a34a;
+  border-color: #15803d;
+  color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35);
+}
+.seg-btn.seg-upi.is-active {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+}
+.seg-btn.seg-card.is-active {
+  background: #7c3aed;
+  border-color: #6d28d9;
+  color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+}
+.seg-btn.seg-due.is-active {
+  background: #d97706;
+  border-color: #b45309;
+  color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
+}
 
 /* ---- Form message ---- */
 #formMsg { margin-bottom: 1rem; }
@@ -94,6 +130,31 @@
   border-color: var(--color-primary);
   box-shadow: var(--ring);
 }
+
+/* ── A service is selected: subtle green accent — not overwhelming ── */
+.svc-pick.has-selection:not(.is-open) .svc-pick-control {
+  background: rgba(22, 163, 74, 0.06);
+  border-color: #16a34a;
+  border-width: 2px;
+}
+.svc-pick.has-selection:not(.is-open) .svc-pick-input {
+  color: #15803d;
+  font-weight: 700;
+}
+.svc-pick.has-selection:not(.is-open) .svc-pick-lead {
+  color: #16a34a;
+}
+.svc-pick.has-selection:not(.is-open) .svc-pick-clear {
+  color: #16a34a;
+}
+.svc-pick.has-selection:not(.is-open) .svc-pick-clear:hover {
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.12);
+}
+.svc-pick.has-selection:not(.is-open) .svc-pick-caret {
+  color: #16a34a;
+}
+
 
 .svc-pick-lead { color: var(--color-primary); font-size: 1rem; line-height: 1; }
 
@@ -194,9 +255,35 @@
   border-left: 3px solid transparent;
 }
 
-.svc-pick-row.is-active { background: var(--color-primary-soft); }
-.svc-pick-row.is-selected { border-left-color: var(--color-primary); }
-.svc-pick-row.is-selected.is-active { background: var(--color-primary-soft); }
+.svc-pick-row.is-active {
+  background: var(--color-primary-soft);
+}
+
+/* ── Selected: solid fill so the chosen service is impossible to miss ── */
+.svc-pick-row.is-selected {
+  background: #16a34a;
+  border-left-color: #15803d;
+}
+.svc-pick-row.is-selected .svc-pick-name {
+  color: #ffffff;
+  font-weight: 800;
+}
+.svc-pick-row.is-selected .svc-pick-price {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+}
+.svc-pick-row.is-selected .svc-pick-tile {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+}
+.svc-pick-row.is-selected .svc-pick-tick {
+  color: #ffffff;
+}
+.svc-pick-row.is-selected.is-active {
+  background: #15803d;
+}
 
 .svc-pick-tile {
   flex: 0 0 auto;

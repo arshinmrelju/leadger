@@ -36,6 +36,24 @@ import { createServicePicker, serviceTile } from "./service-picker.js";
 const ICON_PLUS =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 
+const ICON_CASH =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>';
+
+const ICON_UPI =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 18h6"/></svg>';
+
+const ICON_CARD =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>';
+
+const ICON_DUE =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
+
+const ICON_CLOSE =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+const ICON_SALE =
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>';
+
 /* ---------------- State ---------------- */
 
 let overlay = null;
@@ -108,10 +126,10 @@ function saleFormMarkup() {
     '<div class="field">' +
     "<label>Payment method</label>" +
     '<div class="seg-row" id="methodRow" role="group" aria-label="Payment method">' +
-    '<button type="button" class="seg-btn seg-cash is-active" data-method="cash">Cash</button>' +
-    '<button type="button" class="seg-btn seg-upi" data-method="upi">UPI</button>' +
-    '<button type="button" class="seg-btn seg-card" data-method="card">Card</button>' +
-    '<button type="button" class="seg-btn seg-due" data-method="due">Due</button>' +
+    '<button type="button" class="seg-btn seg-cash is-active" data-method="cash">' + ICON_CASH + 'Cash</button>' +
+    '<button type="button" class="seg-btn seg-upi" data-method="upi">' + ICON_UPI + 'UPI</button>' +
+    '<button type="button" class="seg-btn seg-card" data-method="card">' + ICON_CARD + 'Card</button>' +
+    '<button type="button" class="seg-btn seg-due" data-method="due">' + ICON_DUE + 'Due</button>' +
     "</div>" +
     '<span class="field-hint" id="methodHint">Recorded as paid.</span>' +
     "</div>" +
@@ -144,8 +162,16 @@ function buildOverlay() {
   el.innerHTML =
     '<div class="modal modal-lg" role="document">' +
     '<div class="modal-header">' +
+    '<div class="modal-header-icon modal-header-icon-sale" aria-hidden="true">' +
+    ICON_SALE +
+    '</div>' +
+    '<div class="modal-header-text">' +
     '<h3 id="saleModalTitle">Record a sale</h3>' +
-    '<button type="button" class="modal-close" data-close aria-label="Close">&times;</button>' +
+    '<p class="modal-header-sub">Quick entry for shop services &amp; customer billing</p>' +
+    '</div>' +
+    '<button type="button" class="modal-close" data-close aria-label="Close">' +
+    ICON_CLOSE +
+    '</button>' +
     "</div>" +
     '<div class="modal-body">' +
     saleFormMarkup() +

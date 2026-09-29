@@ -271,6 +271,10 @@ export function createServicePicker(
       if (clear) clear.hidden = !input.value;
     };
 
+    /* Reflect whether a service is chosen as a class on the root, so CSS
+       can colour the control without any extra JS. */
+    root.classList.toggle("has-selection", !!selectedId);
+
     if (!open) {
       /* Closed, the box shows the CHOICE. This must be unconditional: choose()
          commits, then closes, and the blur only happens afterwards, so a
