@@ -384,3 +384,52 @@
 
 /* Grand total row at the foot of the history table. */
 .txn-table .table-total td { font-weight: 700; background: var(--color-bg); }
+
+/* =========================================================
+   Per-sale actions — edit / mark paid / delete
+   Shared by the history table here and the daily ledger, so a
+   correction looks the same wherever the shopkeeper finds the row.
+   The buttons themselves are drawn by js/txn-actions.js.
+   ========================================================= */
+
+.txn-actions-col { width: 1%; white-space: nowrap; }
+
+.txn-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+/* The icon-only buttons carry explicit width/height, so they never
+   depend on a table cell's available width to size themselves. */
+.txn-row-actions .icon { width: 16px; height: 16px; flex: none; }
+
+.txn-row-actions .btn[disabled] { opacity: 0.5; }
+
+/* =========================================================
+   Edit-sale dialog (built by js/txn-actions.js)
+   ========================================================= */
+
+.txn-edit .field { margin-bottom: 0.85rem; }
+.txn-edit .modal-body { max-height: calc(88vh - 7rem); overflow-y: auto; }
+
+.txn-edit-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.9rem;
+  margin: 0.2rem 0 0.9rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 8px);
+  font-size: 0.9rem;
+}
+
+.txn-edit-total b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+
+.txn-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}

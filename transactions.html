@@ -139,10 +139,11 @@
       isPaymentMethod,
       debounce,
     } from "./js/utils.js";
-    import { fetchTransactions, isNetworkError } from "./js/ledger.js";
+    import { fetchTransactions, fetchDayState, isNetworkError } from "./js/ledger.js";
     import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
     import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
+    import { txnActionButtons, handleTxnAction } from "./js/txn-actions.js";
 
     const mainContent = document.getElementById("mainContent");
 
@@ -161,6 +162,7 @@
     let query = "";
     let method = "";
     let lastRows = [];                 // last server read, re-filtered on the client
+    let closedDays = new Set();        // business days known to be closed (pinned day only)
 
     function statBlock(label, valueId, className) {
       return (
@@ -231,9 +233,10 @@
         '<th class="text-right">Qty</th><th class="text-right">Rate</th>' +
         "<th>Payment</th>" +
         '<th class="text-right">Amount</th><th class="text-right">Paid</th><th class="text-right">Due</th>' +
+        '<th class="txn-actions-col"><span class="muted">Actions</span></th>' +
         "</tr></thead>" +
         '<tbody id="histBody">' +
-        '<tr><td colspan="9"><div class="state state-table-loading">' +
+        '<tr><td colspan="10"><div class="state state-table-loading">' +
         '<div class="state-loading-badge"><span class="spinner spinner-sm"></span>' +
         '<span>Loading the ledger<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div>' +
         '</div></td></tr>' +
@@ -250,6 +253,24 @@
        ========================================================= */
     function wire() {
       document.getElementById("newTxnBtn").addEventListener("click", () => openSaleForm());
+
+      /* One delegated listener for every row's buttons. The action itself
+         lives in js/txn-actions.js, shared with the daily ledger, so a
+         correction behaves the same on both screens. */
+      document.getElementById("histBody").addEventListener("click", (event) => {
+        handleTxnAction(event, {
+          rows: lastRows,
+          isClosed: (row) => closedDays.has(row.dateKey),
+          onChange: ({ action, row }) => {
+            /* A deleted sale leaves the loaded window; an edit or a settle
+               has already been folded into its row. */
+            if (action === "delete") {
+              lastRows = lastRows.filter((r) => r.txnId !== row.txnId);
+            }
+            renderHistory(lastRows);
+          },
+        });
+      });
 
       const search = document.getElementById("histSearch");
       /* Filtering is client-side over the loaded window, so re-render from
@@ -331,6 +352,16 @@
 
       const dateFilter = scope === "day" ? dateKey : null;
       try {
+        /* A closed day cannot be written to, so its rows offer no actions.
+           Only the day the page is PINNED to is read: in "all time" the
+           list can span many days, and one head read per day on a
+           500-row window would cost more than the disabled buttons are
+           worth. A click on a closed row in that mode is caught instead
+           (js/txn-actions.js re-reads the day), and the rules refuse it
+           either way. fetchDayState never throws, so an unknown day
+           simply keeps its actions enabled. */
+        const day = scope === "day" ? await fetchDayState(dateKey) : null;
+        closedDays = day && day.closed ? new Set([dateKey]) : new Set();
         lastRows = await fetchTransactions({ dateKey: dateFilter, limit: LIMIT });
         renderHistory(lastRows);
       } catch (err) {
@@ -338,7 +369,7 @@
         lastRows = [];
         renderTotals([]);
         body.innerHTML =
-          '<tr><td colspan="9"><div class="state is-error">' +
+          '<tr><td colspan="10"><div class="state is-error">' +
           '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>' +
           "<h3>Could not load the history</h3>" +
           "<p>" +
@@ -419,6 +450,9 @@
         '<td class="text-right txn-num">' +
         (t.duePaise > 0 ? '<span class="text-danger">' + formatINR(t.duePaise) + "</span>" : '<span class="muted">' + formatINR(0) + "</span>") +
         "</td>" +
+        '<td class="txn-actions-col"><div class="txn-row-actions">' +
+        txnActionButtons(t, { closed: closedDays.has(t.dateKey) }) +
+        "</div></td>" +
         "</tr>"
       );
     }
@@ -467,7 +501,7 @@
 
       if (!filtered.length) {
         body.innerHTML =
-          '<tr><td colspan="9"><div class="state">' +
+          '<tr><td colspan="10"><div class="state">' +
           '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>' +
           "<h3>" + (rows && rows.length ? "Nothing matches these filters" : "No transactions yet") + "</h3>" +
           "<p>" +
@@ -492,7 +526,7 @@
           .map((g) => {
             const s = totalsOf(g.rows);
             return (
-              '<tr class="txn-group"><td colspan="9">' +
+              '<tr class="txn-group"><td colspan="10">' +
               '<div class="hist-day">' + escapeHtml(dayLabel(g.dateKey)) + "</div>" +
               '<div class="hist-day-totals">' +
               "<span>" + g.rows.length + (g.rows.length === 1 ? " sale" : " sales") + "</span>" +
@@ -507,7 +541,8 @@
         '<tr class="table-total"><td colspan="6"><strong>Total (' + filtered.length + ")</strong></td>" +
         '<td class="text-right txn-num"><strong>' + formatINR(grand.total) + "</strong></td>" +
         '<td class="text-right txn-num"><strong>' + formatINR(grand.paid) + "</strong></td>" +
-        '<td class="text-right txn-num"><strong>' + formatINR(grand.due) + "</strong></td></tr>";
+        '<td class="text-right txn-num"><strong>' + formatINR(grand.due) + "</strong></td>" +
+        '<td class="txn-actions-col"></td></tr>';
 
       const scopeText = scope === "day" ? formatDateKey(dateKey) : "all time";
       const capped = rows.length >= LIMIT;

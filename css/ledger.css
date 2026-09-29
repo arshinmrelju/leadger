@@ -95,16 +95,10 @@
 .ledger-table td.ledger-service { font-weight: 600; }
 .ledger-table td.ledger-customer { color: var(--color-text-soft); }
 .ledger-table td.ledger-total { font-weight: 700; }
-.ledger-table th.ledger-actions-col,
-.ledger-table td.ledger-actions-col { width: 1%; white-space: nowrap; }
 
-.ledger-row-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.3rem;
-}
-
-.ledger-row-actions .btn-icon .icon { width: 15px; height: 15px; }
+/* The row-action cell and the edit dialog are shared with the history
+   page and live in css/transactions.css (.txn-actions-col,
+   .txn-row-actions, .txn-edit). */
 
 .ledger-method { font-weight: 600; }
 .ledger-method.method-cash { color: #166534; }
@@ -161,31 +155,6 @@
 }
 
 .ledger-more .muted { font-size: 0.82rem; }
-
-/* ---------------- Edit modal ---------------- */
-
-.ledger-edit .form-row { margin-bottom: 0.85rem; }
-.ledger-edit .field { margin-bottom: 0; }
-.ledger-edit .modal-body { max-height: calc(88vh - 7rem); overflow-y: auto; }
-.ledger-edit-total {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 0.7rem 0.9rem;
-  margin: 0.2rem 0 0.9rem;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm, 8px);
-  font-size: 0.9rem;
-}
-
-.ledger-edit-total b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
-
-.ledger-modal-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
 
 /* =========================================================
    Mobile: table rows become cards
@@ -267,12 +236,12 @@
     padding-top: 0.55rem;
   }
 
-  .ledger-table td.ledger-actions-col {
+  .ledger-table td.txn-actions-col {
     width: auto;
     padding-top: 0.6rem;
   }
 
-  .ledger-table td.ledger-actions-col::before { display: none; }
-  .ledger-row-actions { justify-content: stretch; }
-  .ledger-row-actions .btn { flex: 1; }
+  .ledger-table td.txn-actions-col::before { display: none; }
+  .txn-row-actions { justify-content: stretch; }
+  .txn-row-actions .btn { flex: 1; }
 }

@@ -126,96 +126,19 @@
     </div>
   </div>
 
-  <!-- ===================== Edit sale ===================== -->
-  <div class="modal-overlay" id="editOverlay" role="dialog" aria-modal="true" aria-labelledby="editTitle">
-    <div class="modal ledger-edit">
-      <div class="modal-header">
-        <div class="modal-header-icon modal-header-icon-edit" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        </div>
-        <div class="modal-header-text">
-          <h3 id="editTitle">Edit sale</h3>
-          <p class="modal-header-sub">Update service, price, customer or payment mode</p>
-        </div>
-        <button class="modal-close" type="button" data-close data-close-modal aria-label="Close">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <form id="editForm" novalidate>
-        <div class="modal-body">
-          <div class="ledger-edit-total">
-            <span class="muted">Recorded <span id="editStamp">&mdash;</span></span>
-            <b id="editTotalPreview">₹0</b>
-          </div>
-
-          <div class="field">
-            <label for="editService">Service</label>
-            <select class="input" id="editService"></select>
-          </div>
-
-          <div class="form-row">
-            <div class="field">
-              <label for="editQty">Quantity</label>
-              <input class="input" id="editQty" type="number" inputmode="numeric" min="1" step="1" value="1" />
-            </div>
-            <div class="field">
-              <label for="editRate">Rate (₹)</label>
-              <input class="input" id="editRate" type="number" inputmode="decimal" min="0" step="0.01" value="0" />
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Payment</label>
-            <div class="seg-row" id="editMethodRow" role="group" aria-label="Payment method">
-              <button class="seg-btn seg-cash" type="button" data-method="cash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>Cash</button>
-              <button class="seg-btn seg-upi" type="button" data-method="upi"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 18h6"/></svg>UPI</button>
-              <button class="seg-btn seg-card" type="button" data-method="card"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Card</button>
-              <button class="seg-btn seg-due" type="button" data-method="due"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Due</button>
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="editStatus">Status</label>
-            <select class="input" id="editStatus">
-              <option value="paid">Paid</option>
-              <option value="pending">Pending (unpaid)</option>
-            </select>
-            <p class="small muted" id="editStatusHint"></p>
-          </div>
-
-          <div class="field">
-            <label for="editCustomer">Customer</label>
-            <input class="input" id="editCustomer" type="text" maxlength="120" placeholder="Optional" />
-          </div>
-
-          <p class="small text-danger is-hidden" id="editError" role="alert"></p>
-        </div>
-        <div class="modal-footer ledger-modal-actions">
-          <button class="btn btn-secondary" type="button" data-close-modal>Cancel</button>
-          <button class="btn btn-primary" type="submit" id="editSave">Save changes</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <script type="module">
-    import { setLoading, confirm, openModal, closeModal, toast } from "./js/app.js";
+    import { setLoading, toast } from "./js/app.js";
     import {
       formatINR,
       formatKolkataLong,
       escapeHtml,
       todayKolkata,
       isValidDateKey,
-      paiseToInput,
     } from "./js/utils.js";
     import {
       fetchDayPage,
       countDayTransactions,
       fetchDayState,
-      fetchServices,
-      updateTransaction,
-      deleteTransaction,
-      markTransactionPaid,
       isNetworkError,
     } from "./js/ledger.js";
     import {
@@ -227,6 +150,7 @@
       mergeDayPage,
       sortDayRows,
     } from "./js/day-ledger.js";
+    import { txnActionButtons, handleTxnAction } from "./js/txn-actions.js";
     import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
     import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
@@ -259,10 +183,6 @@
     let filterMethod = "any";
     let filterStatus = "any";
 
-    let services = [];        // active catalog, for the edit picker
-    let editing = null;       // the row open in the edit dialog
-    let editMethod = "cash";
-
     /* =========================================================
        Markup
        ========================================================= */
@@ -273,12 +193,6 @@
       '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>';
     const ICON_REFRESH =
       '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>';
-    const ICON_EDIT =
-      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
-    const ICON_TRASH =
-      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
-    const ICON_CHECK =
-      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
     const ICON_LOCK =
       '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
     const ICON_PLUS =
@@ -350,7 +264,7 @@
                 '<th class="ledger-num">Rate</th>' +
                 '<th class="ledger-num">Total</th>' +
                 "<th>Payment</th><th>Customer</th><th>Status</th>" +
-                '<th class="ledger-actions-col"><span class="muted">Actions</span></th>' +
+                '<th class="txn-actions-col"><span class="muted">Actions</span></th>' +
               "</tr></thead>" +
               '<tbody id="ledgerBody"></tbody>' +
             "</table></div>" +
@@ -470,15 +384,7 @@
     }
 
     function rowMarkup(t) {
-      const id = escapeHtml(t.txnId);
-      const isDuePending = t.paymentMethod === "due" && t.status === "pending";
-
-      const actions =
-        (isDuePending
-          ? '<button class="btn btn-success btn-sm" type="button" data-act="paid" data-id="' + id + '" title="Mark due as paid">Mark paid</button>'
-          : "") +
-        '<button class="btn btn-secondary btn-sm" type="button" data-act="edit" data-id="' + id + '" title="Edit sale"' + (closed ? " disabled" : "") + ">" + ICON_EDIT + "</button>" +
-        '<button class="btn btn-danger-soft btn-sm" type="button" data-act="delete" data-id="' + id + '" title="Delete sale"' + (closed ? " disabled" : "") + ">" + ICON_TRASH + "</button>";
+      const actions = txnActionButtons(t, { closed });
 
       return (
         "<tr>" +
@@ -490,7 +396,7 @@
           '<td data-label="Payment"><span class="ledger-method method-' + escapeHtml(t.paymentMethod) + '">' + escapeHtml(t.methodLabel) + "</span></td>" +
           '<td class="ledger-customer" data-label="Customer">' + (t.customerName ? escapeHtml(t.customerName) : "—") + "</td>" +
           '<td data-label="Status">' + statusBadge(t) + "</td>" +
-          '<td class="ledger-actions-col"><div class="ledger-row-actions">' + actions + "</div></td>" +
+          '<td class="txn-actions-col"><div class="txn-row-actions">' + actions + "</div></td>" +
         "</tr>"
       );
     }
@@ -592,215 +498,21 @@
        Row actions
        ========================================================= */
 
-    async function onTableClick(event) {
-      const btn = event.target.closest("button[data-act]");
-      if (!btn) return;
-      const id = btn.getAttribute("data-id");
-      const row = rows.find((r) => r.txnId === id);
-      if (!row) return;
-
-      if (btn.getAttribute("data-act") === "edit") openEdit(row);
-      else if (btn.getAttribute("data-act") === "delete") await confirmDelete(row);
-      else if (btn.getAttribute("data-act") === "paid") await settle(row, btn);
-    }
-
-    async function settle(row, btn) {
-      const ok = await confirm({
-        title: "Mark as paid",
-        message:
-          "Mark the " + formatINR(row.totalPaise) + " due for " + row.serviceName + " as paid?",
-        confirmText: "Mark paid",
-        variant: "primary",
-      });
-      if (!ok) return;
-
-      setLoading(btn, true);
-      try {
-        await markTransactionPaid(row.txnId, row.dateKey);
-        row.status = "paid";
-        toast("Marked as paid.", "success");
-        render();
-      } catch (err) {
-        console.error("[trustx-ledger] settle:", err);
-        setLoading(btn, false);
-        toast(describeWriteError(err), "error");
-      }
-    }
-
-    async function confirmDelete(row) {
-      const ok = await confirm({
-        title: "Delete this sale?",
-        message:
-          "Delete " +
-          row.quantity +
-          " × " +
-          row.serviceName +
-          " (" + formatINR(row.totalPaise) + ", " + row.methodLabel + ")? This cannot be undone.",
-        confirmText: "Delete sale",
-      });
-      if (!ok) return;
-
-      try {
-        await deleteTransaction(row.txnId, row.dateKey);
-        rows = rows.filter((r) => r.txnId !== row.txnId);
-        dayCount = Math.max(0, dayCount - 1);
-        toast("Sale deleted.", "success");
-        render();
-      } catch (err) {
-        console.error("[trustx-ledger] delete:", err);
-        toast(describeWriteError(err), "error");
-      }
-    }
-
-    /**
-     * Turn a failed write into something actionable. A rules rejection
-     * on a closed day is the case worth calling out by name, since the
-     * UI cannot know the day was closed until the read catches up.
-     */
-    function describeWriteError(err) {
-      if (isNetworkError(err)) {
-        return "You appear to be offline. The change will sync when you reconnect.";
-      }
-      const msg = String((err && err.message) || "").toLowerCase();
-      if (msg.includes("permission") || msg.includes("insufficient")) {
-        if (closed) return "This day is closed, so it can no longer be changed.";
-        return "Not allowed to change this sale. If the day was just closed, it can no longer be edited.";
-      }
-      return reportError(err);
-    }
-
-    /* =========================================================
-       Edit dialog
-       ========================================================= */
-
-    function openEdit(row) {
-      editing = row;
-      editMethod = row.paymentMethod;
-
-      const err = document.getElementById("editError");
-      if (err) {
-        err.textContent = "";
-        err.classList.add("is-hidden");
-      }
-
-      document.getElementById("editStamp").textContent = formatEntryTime(row.createdAt);
-      document.getElementById("editQty").value = String(row.quantity);
-      document.getElementById("editRate").value = paiseToInput(row.ratePaise);
-      document.getElementById("editCustomer").value = row.customerName || "";
-
-      const sel = document.getElementById("editService");
-      sel.innerHTML = services
-        .map(
-          (s) =>
-            '<option value="' + escapeHtml(s.serviceId) + '"' +
-            (s.serviceId === row.serviceId ? " selected" : "") + ">" +
-            escapeHtml(s.name) +
-            (s.pricePaise != null ? " · " + formatINR(s.pricePaise) : "") +
-            "</option>"
-        )
-        .join("");
-      if (row.serviceId && !services.some((s) => s.serviceId === row.serviceId)) {
-        sel.insertAdjacentHTML(
-          "afterbegin",
-          '<option value="' + escapeHtml(row.serviceId) + '" selected>' +
-            escapeHtml(row.serviceName) + " (archived)</option>"
-        );
-      }
-
-      syncStatusControl();
-      paintMethod();
-      updateEditTotal();
-      openModal("editOverlay");
-    }
-
-    function paintMethod() {
-      document.querySelectorAll("#editMethodRow .seg-btn").forEach((btn) => {
-        btn.classList.toggle("is-active", btn.getAttribute("data-method") === editMethod);
-      });
-    }
-
-    /**
-     * A non-due sale is always settled, so the status control is locked
-     * and only offered for due sales.
-     */
-    function syncStatusControl() {
-      const statusSel = document.getElementById("editStatus");
-      const hint = document.getElementById("editStatusHint");
-      const isDue = editMethod === "due";
-
-      statusSel.disabled = !isDue;
-      if (isDue) {
-        statusSel.value = editing && editing.status === "paid" ? "paid" : "pending";
-        hint.textContent = "Due sales can be marked paid or left unpaid.";
-      } else {
-        statusSel.value = "paid";
-        hint.textContent = editMethod === "cash" || editMethod === "upi" || editMethod === "card"
-          ? "This sale is settled by definition."
-          : "";
-      }
-    }
-
-    function updateEditTotal() {
-      const qty = Number(document.getElementById("editQty").value) || 0;
-      const rate = Number(document.getElementById("editRate").value) || 0;
-      const out = document.getElementById("editTotalPreview");
-      if (out) out.textContent = formatINR(Math.round(qty * rate * 100));
-    }
-
-    async function saveEdit(event) {
-      event.preventDefault();
-      if (!editing) return;
-
-      const saveBtn = document.getElementById("editSave");
-      const err = document.getElementById("editError");
-      const fail = (msg) => {
-        if (err) {
-          err.textContent = msg;
-          err.classList.remove("is-hidden");
-        }
-      };
-
-      const qty = Number(document.getElementById("editQty").value);
-      if (!Number.isInteger(qty) || qty < 1) return fail("Quantity must be a whole number greater than 0.");
-
-      const ratePaise = Math.round(Number(document.getElementById("editRate").value) * 100);
-      if (!Number.isFinite(ratePaise) || ratePaise < 0) return fail("Enter a valid rate (₹0 or more).");
-
-      setLoading(saveBtn, true);
-      try {
-        const result = await updateTransaction(editing.txnId, editing.dateKey, {
-          serviceId: document.getElementById("editService").value,
-          quantity: qty,
-          ratePaise,
-          paymentMethod: editMethod,
-          status: editMethod === "due" ? document.getElementById("editStatus").value : "paid",
-          customerName: document.getElementById("editCustomer").value,
-        });
-
-        const row = rows.find((r) => r.txnId === editing.txnId);
-        if (row) {
-          row.quantity = qty;
-          row.ratePaise = ratePaise;
-          row.totalPaise = result.totalPaise;
-          row.status = result.status;
-          row.paymentMethod = editMethod;
-          row.customerName = String(document.getElementById("editCustomer").value || "").trim();
-          const picked = services.find((s) => s.serviceId === document.getElementById("editService").value);
-          if (picked) {
-            row.serviceId = picked.serviceId;
-            row.serviceName = picked.name;
+    /* The buttons, the dialog and the confirmations all live in
+       js/txn-actions.js, shared with the history page; this only hands
+       over the day's rows and says how to redraw afterwards. */
+    function onTableClick(event) {
+      handleTxnAction(event, {
+        rows,
+        isClosed: () => closed,
+        onChange: ({ action, row }) => {
+          if (action === "delete") {
+            rows = rows.filter((r) => r.txnId !== row.txnId);
+            dayCount = Math.max(0, dayCount - 1);
           }
-        }
-
-        closeModal("editOverlay");
-        editing = null;
-        toast("Sale updated.", "success");
-        render();
-      } catch (err2) {
-        console.error("[trustx-ledger] edit:", err2);
-        setLoading(saveBtn, false);
-        fail(describeWriteError(err2));
-      }
+          render();
+        },
+      });
     }
 
     /* =========================================================
@@ -851,25 +563,6 @@
           render();
         }, SEARCH_DEBOUNCE_MS);
       });
-
-      /* Edit dialog wiring */
-      document.getElementById("editForm").addEventListener("submit", saveEdit);
-      document.getElementById("editQty").addEventListener("input", updateEditTotal);
-      document.getElementById("editRate").addEventListener("input", updateEditTotal);
-      document.querySelectorAll("#editMethodRow .seg-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          editMethod = btn.getAttribute("data-method");
-          paintMethod();
-          syncStatusControl();
-        });
-      });
-
-      try {
-        services = await fetchServices();
-      } catch (err) {
-        console.error("[trustx-ledger] services for edit:", err);
-        services = [];
-      }
 
       await reload();
     }
