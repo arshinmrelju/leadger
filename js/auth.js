@@ -1,32 +1,31 @@
 /* =========================================================
    TrustX Ledger — Sign-in and trusted-browser access
    -----------------------------------------------------------------
-   The app opens with a shared SHOP CODE, and the Developer console
-   (admin.html) with a separate ADMIN CODE. Neither code is in this
-   file, in any other file in the repository, or in the deployed
-   bundle — a code that ships to the browser is a code that is
-   published.
+   The app opens with Google Sign-In. A Firestore allowlist
+   (`allowedUsers/{email}`) controls who may access the shop and
+   what role they hold (shop or admin). The allowlist is written
+   only by the bootstrap tool (tools/bootstrap-access.mjs) using
+   the Admin SDK — no client can read or write it.
 
-   HOW A CODE BECOMES ACCESS (all of it server-side, in firestore.rules)
-     1. The browser hashes what was typed: sha256(code) via Web Crypto.
-        Only that 64-char hash is sent.
-     2. firestore.rules accepts enrollments/{uid} only when the hash
-        equals the stored securitySecrets/{shop|admin}.codeHash, which
-        only the Admin SDK (tools/bootstrap-access.mjs) can write. A
-        wrong code simply does not match, so nothing is created.
-     3. The matching proof buys accessGrants/{uid} — a server-side
-        record that every money rule re-reads on every request. An
-        anonymous Firebase session on its own grants nothing, because
-        signing in anonymously is free and open to anybody.
+   HOW GOOGLE AUTH BECOMES ACCESS (all of it server-side, in firestore.rules)
+     1. The browser signs in with Google (popup). Firebase verifies
+        the Google credential and issues a Firebase session.
+     2. firestore.rules checks the signed-in user's email against
+        `allowedUsers/{email}`. If the email is not in the allowlist,
+        the enrollment write is denied and nothing is created.
+     3. A matching allowlist entry buys accessGrants/{uid} — a
+        server-side record that every money rule re-reads on every
+        request. A Google session on its own grants nothing, because
+        signing in with Google is free and open to anybody.
      4. Revoking a grant in the Developer console locks that browser
         out on its very next request.
 
-   The codes are therefore only ever *proven*, never *compared*, on the
-   client. The remaining weakness is stated plainly in the README: a
-   code can still be guessed online, so Firebase App Check (or moving
-   the check into a callable function) is the production control for
-   that. What the rules buy is that the ledger is no longer open to
-   every anonymous Firebase user in existence.
+   The allowlist is therefore only ever *proven*, never *compared*, on
+   the client. The remaining weakness is stated plainly in the README:
+   a Google account can still be phished, so Firebase App Check (or
+   moving the check into a callable function) is the production
+   control for that. What the rules buy is that the ledger is no
+   longer open to every Google user in existence.
    ========================================================= */
 
 import { getFirebridge } from "./firebase.js";
@@ -48,19 +47,19 @@ const AUTH_MESSAGES = {
   "network-request-failed":
     "Network problem. Check your connection and try again.",
   "operation-not-allowed":
-    "Anonymous sign-in is not enabled for this Firebase project. Enable it under Authentication → Sign-in method.",
+    "Google Sign-In is not enabled for this Firebase project. Enable it under Authentication → Sign-in method.",
   "too-many-requests": "Too many attempts. Please wait a few minutes and try again.",
-  "code-invalid":
-    "That code is not recognised. Check with the shop administrator — and if this shop has never been set up, the access codes still have to be created once (see the README).",
-  "admin-code-invalid": "That admin code is not recognised.",
-  "admin-grant-failed": "Could not unlock the developer console. Please try again.",
-  "admin-not-trusted":
-    "Sign in with the shop code on this browser first, then unlock the console.",
+  "popup-closed": "The Google Sign-In popup was closed before completing.",
+  "popup-blocked": "The Google Sign-In popup was blocked. Allow popups for this site and try again.",
+  "not-authorized":
+    "That Google account is not authorised for this shop. Check with the shop administrator.",
+  "no-email":
+    "This Google account did not share an email address, so it cannot be checked against the shop's list. Try a different account.",
   "enrollment-failed": "Could not complete sign-in. Please try again.",
   "access-not-ready":
-    "This browser is not enrolled yet. Sign in with the shop code.",
+    "This browser is not enrolled yet. Sign in with Google.",
   "access-revoked":
-    "This browser's access was revoked. Sign in with the shop code again.",
+    "This browser's access was revoked. Sign in with Google again.",
   "database-unavailable":
     "Realtime Database is not reachable. Check databaseURL in js/firebase.js and that database.rules.json is deployed.",
 };
@@ -82,6 +81,9 @@ function toAuthError(fbErr) {
     case "auth/network-request-failed": return new AuthError("network-request-failed", friendly("network-request-failed"));
     case "auth/operation-not-allowed": return new AuthError("operation-not-allowed", friendly("operation-not-allowed"));
     case "auth/too-many-requests": return new AuthError("too-many-requests", friendly("too-many-requests"));
+    case "auth/popup-closed-by-user": return new AuthError("popup-closed", friendly("popup-closed"));
+    case "auth/popup-blocked": return new AuthError("popup-blocked", friendly("popup-blocked"));
+    case "auth/cancelled-popup-request": return new AuthError("popup-closed", friendly("popup-closed"));
     default: return new AuthError("unknown", friendly("", code));
   }
 }
@@ -175,8 +177,8 @@ function notify(user) {
  * Start the auth state listener (idempotent). Wait for this before
  * reading `getCurrentUser()` — it resolves once the persisted session
  * has been restored (refresh-safe) or confirmed absent.
- * Does NOT create an anonymous account on its own; that only happens
- * after the access code is accepted (signInAnonymous).
+ * Does NOT create a Google session on its own; that only happens
+ * when the user clicks "Sign in with Google".
  */
 export async function initAuth() {
   const b = await bridge();
@@ -196,25 +198,19 @@ export function onAuthStateChange(cb) {
   return () => subscribers.delete(cb);
 }
 
-/* ---------------- The code ---------------- */
-
-/** Normalize a user-typed code: uppercase, no spaces. */
-export function normalizeCode(input) {
-  return String(input || "").toUpperCase().replace(/\s+/g, "").trim();
-}
-
 /* ---------------- Sign-in / sign-out ---------------- */
 
 /**
- * Create the persistent anonymous session for this browser. This is the
- * ONLY sign-in path now. Firestore identities the device by uid; the
- * anonymous credential is kept so the shop computer stays signed in.
+ * Sign in with Google (popup). This is the ONLY sign-in path.
+ * Firestore identities the device by uid; the Google credential is
+ * kept so the shop computer stays signed in.
  */
-export async function signInAnonymous() {
+export async function signInWithGoogle() {
   const b = await bridge();
   if (currentUser) return currentUser;
   try {
-    const cred = await b.authMod.signInAnonymously(b.auth);
+    const provider = new b.authMod.GoogleAuthProvider();
+    const cred = await b.authMod.signInWithPopup(b.auth, provider);
     return cred.user;
   } catch (err) {
     throw toAuthError(err);
@@ -258,7 +254,7 @@ export async function requireAuth(redirectTo = "login.html") {
  * THE gate every protected page goes through.
  *
  * A session is not access: it only proves the browser is signed in, and
- * signing in anonymously is something anyone can do. This reads the
+ * signing in with Google is something anyone can do. This reads the
  * browser's own `accessGrants/{uid}` record — the same record
  * firestore.rules consults before it will serve a single rupee — and
  * sends anything without an active grant back to the login screen. So a
@@ -333,10 +329,7 @@ export async function getGeneral() {
  * project). There is no setup screen: the shop is created with the
  * default identity, behind the same trusted() gate as everything else.
  *
- * The access codes are NOT seeded here. They used to be written into
- * Realtime Database on first run, which meant the plaintext ended up in a
- * database and the default was in the source. Both codes now live only
- * in Firestore `securitySecrets`, written by tools/bootstrap-access.mjs.
+ * The allowlist is NOT seeded here. It is written by tools/bootstrap-access.mjs.
  */
 export async function ensureShopRecord() {
   const user = getCurrentUser();
@@ -380,16 +373,16 @@ export async function ensureShopRecord() {
 /* =========================================================
    Trusted browsers (access grants)
    -----------------------------------------------------------------
-   A trusted browser is one that proved the shop code and holds an
-   active `accessGrants/{uid}` record in Firestore. There is no
-   separate device secret: the anonymous session's uid IS the browser's
-   identity, because uid is the only thing firestore.rules can check.
-   That is also what makes revocation instant — the console flips
+   A trusted browser is one that signed in with an authorised Google
+   account and holds an active `accessGrants/{uid}` record in Firestore.
+   There is no separate device secret: the Google session's uid IS the
+   browser's identity, because uid is the only thing firestore.rules can
+   check. That is also what makes revocation instant — the console flips
    `active`, and the very next read of the ledger is denied.
 
    Clearing a browser's site data destroys the session, so the uid is
-   gone and that machine needs the code again. That is the same
-   behaviour the old IndexedDB device token had, with one authority
+   gone and that machine needs to sign in again. That is the same
+   behaviour the old access-code system had, with one authority
    instead of two.
    ========================================================= */
 
@@ -397,26 +390,6 @@ export async function ensureShopRecord() {
    on refreshing it. A page open all afternoon updates it at most once
    an hour, which is plenty for "which machines are actually in use". */
 const HEARTBEAT_MS = 60 * 60 * 1000;
-
-/**
- * SHA-256 of the normalized code, lowercase hex — exactly what
- * firestore.rules compares against securitySecrets/{scope}.codeHash.
- *
- * The plaintext never leaves this function: it is hashed in the browser
- * and only the digest is written. `tools/bootstrap-access.mjs` hashes
- * the code the same way, so the two agree byte for byte.
- */
-export async function hashAccessCode(code) {
-  const normalized = normalizeCode(code);
-  if (!normalized) throw new AuthError("code-invalid", friendly("code-invalid"));
-  if (typeof crypto === "undefined" || !crypto.subtle) {
-    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
-  }
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/* ---------- IndexedDB credential store ---------- */
 
 /* ---------- Browser label (privacy: no IP, no fingerprinting) ---------- */
 
@@ -467,14 +440,15 @@ function clientInfo() {
 /* ---------- Enrollment + management ---------- */
 
 /**
- * Enroll THIS browser as trusted, by proving the shop code.
+ * Enroll THIS browser as trusted, by proving the Google account is
+ * in the allowlist.
  *
- * Three steps, and the code is only ever proven in the middle one:
+ * Three steps, and the allowlist check is only ever done in the middle one:
  *
- *   1. sign in anonymously — a session on its own grants nothing;
- *   2. write enrollments/{uid} carrying sha256(code). The rules accept
- *      it only if that hash equals securitySecrets/shop.codeHash, so a
- *      wrong code is denied here and nothing further happens;
+ *   1. sign in with Google — a session on its own grants nothing;
+ *   2. write enrollments/{uid} carrying the user's email. The rules
+ *      accept it only if that email exists in allowedUsers, so an
+ *      unauthorised account is denied here and nothing further happens;
  *   3. write accessGrants/{uid}, which the rules allow only while that
  *      proof exists and the caller is not already trusted.
  *
@@ -482,33 +456,39 @@ function clientInfo() {
  * at the same moment cannot collide.
  *
  * @param {object} opts
- * @param {string} opts.code  the typed shop code (never stored)
  * @param {string} [opts.label] a name for this machine in the console
  * @returns {Promise<object>} the access grant
- * @throws {AuthError} code-invalid when the rules refuse the proof
+ * @throws {AuthError} not-authorized when the rules refuse the proof
  */
-export async function enrollBrowser({ code, label } = {}) {
-  const user = await signInAnonymous();
+export async function enrollBrowser({ label } = {}) {
+  const user = await signInWithGoogle();
   const b = await storeBridge();
   const fs = b.firestore;
 
-  const codeHash = await hashAccessCode(code);
+  const email = (user.email || "").toLowerCase().trim();
 
-  /* Step 2 — the server-side code check. */
+  /* The rules pin the proof's email to the address Firebase verified on
+     the ID token, so an account that arrived without one can never be
+     allowed. Say so here rather than letting the write be refused and
+     reported as "not authorised", which sends the shop looking for an
+     allowlist entry that would not have helped. */
+  if (!email) throw new AuthError("no-email", friendly("no-email"));
+
+  /* Step 2 — the server-side allowlist check. */
   try {
     await fs.setDoc(enrollRef(fs, b.db, user.uid), {
       scope: "shop",
-      codeHash,
+      email,
       createdAt: fs.serverTimestamp(),
       createdBy: user.uid,
     });
   } catch (err) {
     if (isPermissionDenied(err)) {
-      /* Either the code was wrong or securitySecrets/{scope} does not
-         exist yet. The rules cannot tell us which, and deliberately do
-         not — but they are the same user action, so one message covers
-         both, with the setup case named. */
-      throw new AuthError("code-invalid", friendly("code-invalid"));
+      /* Either the email is not in allowedUsers or the allowlist
+         entry does not exist yet. The rules cannot tell us which, and
+         deliberately do not — but they are the same user action, so
+         one message covers both. */
+      throw new AuthError("not-authorized", friendly("not-authorized"));
     }
     throw toAuthError(err);
   }
@@ -610,8 +590,8 @@ export async function touchAccessGrant() {
 
 /**
  * Every trusted browser, newest first. Listing the registry is an admin
- * capability in the rules, so a stolen shop code cannot enumerate the
- * shop's machines.
+ * capability in the rules, so an unauthorised Google account cannot
+ * enumerate the shop's machines.
  *
  * @returns {Promise<Array<object & {uid: string}>>}
  */
@@ -662,55 +642,66 @@ async function patchGrant(uid, active) {
 /* =========================================================
    Admin access (the Developer console gate)
    -----------------------------------------------------------------
-   The console is not reachable from the public navigation and needs a
-   second code. Presenting it writes an ADMIN-scope enrollment proof,
-   which the rules verify against securitySecrets/admin, and only then
-   may this browser promote its own grant from `shop` to `admin`. That
+   The console is not reachable from the public navigation and needs
+   an admin role. The allowlist entry for the user's email determines
+   the role: if the email maps to 'admin', the enrollment proof carries
+   admin scope and the grant is minted with role 'admin'. That
    promotion is the whole capability split: an admin may list, revoke,
    restore and delete other browsers' grants, and a shop-trusted
    browser may do none of it.
 
    Note the ordering the rules enforce: a browser must ALREADY hold
-   active shop trust to unlock the console, so the admin code alone is
+   active shop trust to unlock the console, so an admin email alone is
    useless to someone who has not already got into the shop.
    ========================================================= */
 
-/** Does THIS browser hold an active admin grant? */
-export async function checkAdminAccess() {
-  const grant = await getAccessGrant();
-  return Boolean(grant && grant.active === true && grant.role === "admin");
-}
-
 /**
- * Exchange the admin code for the admin role on this browser.
- * Throws AuthError("admin-code-invalid") when the rules reject the proof.
+ * Ask the rules whether THIS account is an admin, and if so, promote this
+ * browser's grant to admin.
+ *
+ * There is deliberately no local "am I an admin?" helper here. The console
+ * already holds this browser's own grant — js/shell.js reads it once to
+ * build `ctx.isAdmin` — so a second read would only restate it, and this
+ * module is the wrong place to answer the question anyway: the allowlist is
+ * unreadable by any client, so the ONLY authority on whether an address
+ * carries the admin role is firestore.rules.
+ *
+ * The answer arrives as a verdict on the write rather than as a value: the
+ * admin-scope proof below is accepted only when the signed-in account's own
+ * verified address is on the allowlist with the admin role. A shop account
+ * is refused, whether by name (the proof's email must equal the token's) or
+ * by role (a `shop` entry may not prove `admin`). Callers therefore get
+ * `true` or an AuthError — "not-authorized" being the ordinary answer for
+ * somebody who is not an admin, and not an error worth reporting as one.
  */
-export async function grantAdminAccess(code) {
+export async function grantAdminAccess() {
   const user = getCurrentUser();
-  if (!user) throw new AuthError("admin-not-trusted", friendly("admin-not-trusted"));
+  if (!user) throw new AuthError("not-signed-in", friendly("not-signed-in"));
 
   const current = await getAccessGrant();
   if (!current || current.active !== true) {
-    throw new AuthError("admin-not-trusted", friendly("admin-not-trusted"));
+    throw new AuthError("access-not-ready", friendly("access-not-ready"));
   }
 
   const b = await storeBridge();
   const fs = b.firestore;
 
+  const email = (user.email || "").toLowerCase().trim();
+
   /* An admin-scope proof, checked server-side against
-     securitySecrets/admin. A wrong code never lands. */
+     allowedUsers/{email}. An unauthorised email never lands. */
   try {
     await fs.setDoc(enrollRef(fs, b.db, user.uid), {
       scope: "admin",
-      codeHash: await hashAccessCode(code),
+      email,
       createdAt: fs.serverTimestamp(),
       createdBy: user.uid,
     });
   } catch (err) {
     if (isPermissionDenied(err)) {
-      throw new AuthError("admin-code-invalid", friendly("admin-code-invalid"));
+      throw new AuthError("not-authorized", friendly("not-authorized"));
     }
-    throw new AuthError("admin-grant-failed", friendly("admin-grant-failed"));
+    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
   }
 
   /* Promotion. The rules allow this only from `shop` to `admin`, only
@@ -724,7 +715,7 @@ export async function grantAdminAccess(code) {
     });
   } catch (err) {
     console.error("[trustx-ledger] admin promotion rejected:", err);
-    throw new AuthError("admin-grant-failed", friendly("admin-grant-failed"));
+    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
   }
 
   return true;

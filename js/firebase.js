@@ -14,8 +14,8 @@
       Firebase console (Project settings -> Your apps -> Web app).
    2. Copy the `firebaseConfig` values from the console and replace
       every `YOUR_*` value below.
-   3. Enable the sign-in methods you want (Authentication -> Sign-in
-      method): Google and/or Email/Password.
+   3. Enable the sign-in method the app needs:
+      **Authentication -> Sign-in method -> Google**.
    4. Deploy both rule sets and the Firestore indexes
       (`firebase deploy --only firestore,database`).
 
@@ -25,10 +25,10 @@
      dayHeads/{dateKey}/transactions/{id}   that day's sales
      services/{serviceId}                   the quick-service catalog
    Realtime Database holds everything else — the shop identity (settings),
-   the two access codes, the trusted-device registry (devices, enrollments),
-   and expenses. It was chosen for them because its rules language can compare
-   a submitted secret against a server-held one — which is what the enrollment
-   check needs.
+   the Google-account allowlist, the trusted-device registry (devices,
+   enrollments), and expenses. It was chosen for them because its rules
+   language can compare a submitted secret against a server-held one —
+   which is what the enrollment check needs.
    ========================================================= */
 
 export const FIREBASE_CONFIG = {

@@ -503,6 +503,50 @@ input.input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none
   border-top-color: #ffffff;
 }
 
+/* Google Sign-In button */
+.btn-google {
+  width: 100%;
+  background: #ffffff;
+  color: #3c4043;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  padding: 0.78rem 1.35rem;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.12);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  margin-top: 0.9rem;
+  box-sizing: border-box;
+}
+.btn-google:hover {
+  background: #f8f9fa;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(60, 64, 67, 0.18);
+}
+.btn-google:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 4px rgba(60, 64, 67, 0.12);
+}
+.btn-google:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.btn-google.is-loading > * {
+  opacity: 0;
+}
+.btn-google.is-loading::after {
+  border-top-color: #3c4043;
+}
+
 /* "HAVE A NICE DAY!" text */
 .receipt-footer-note {
   text-align: center;

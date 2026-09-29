@@ -27,7 +27,8 @@ import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { hashCode, normalizeCode } from "./bootstrap-access.mjs";
+/* No imports from bootstrap-access.mjs — the new Google auth system
+   uses email-based allowlist entries, not hashed access codes. */
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 8123;
@@ -39,16 +40,30 @@ const COMMIT = `http://127.0.0.1:${PORT}/v1/${DOCS}:commit`;
 const UID = "u1";
 const DAY = "2026-09-27";
 
-/* The two access codes, as the harness knows them. The client hashes them
-   the same way (js/auth.js) and the operator plants the hashes with the
-   Admin SDK (tools/bootstrap-access.mjs); sharing hashCode() here means
-   this file is also checking that those three agree. */
-const CODE_SHOP = "TESTSHOPCODE0000001";
-const CODE_ADMIN = "TESTADMINCODE0000001";
+/* The two allowed Google accounts, as the harness knows them. The client
+   sends the email on sign-in and the operator plants the allowlist entries
+   with the Admin SDK (tools/bootstrap-access.mjs). */
+const EMAIL_SHOP = "shop@example.com";
+const EMAIL_ADMIN = "admin@example.com";
 const OUTSIDER = "u2";
 const ADMIN_UID = "u3";
 const PLAIN_UID = "u4";
 const NOBODY = "u5";
+const PROMOTED = "u6";
+
+/* Which account each simulated browser is actually signed in as. The rules
+   read the address off the ID token rather than off anything the client
+   sent, so a harness that only supplies a uid is testing a weaker claim
+   than the one production makes. This map is what lets the suite assert
+   that one account cannot enrol by naming another's address. */
+const ACCOUNTS = {
+  u1: EMAIL_SHOP,               // the shop owner's main machine
+  u2: "intruder@example.com",   // signed in with Google, not on the allowlist
+  u3: EMAIL_ADMIN,              // the owner's second machine, enrolling fresh
+  u4: EMAIL_SHOP,               // the same shop account, on another machine
+  u5: "nobody@example.com",     // no grant, no entry, only here to be refused
+  u6: EMAIL_ADMIN,              // the owner's machine already in the shop, on shop trust
+};
 
 let pass = 0;
 let fail = 0;
@@ -70,7 +85,15 @@ const map = (o) => ({ mapValue: { fields: o } });
 function fakeJwt(uid) {
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
   const now = Math.floor(Date.now() / 1000);
-  return [b64({ alg: "none", typ: "JWT" }), b64({ user_id: uid, sub: uid, iat: now, exp: now + 3600 }), ""].join(".");
+  const claims = { user_id: uid, sub: uid, iat: now, exp: now + 3600 };
+  /* Google sign-in always carries a verified address, and the entire
+     allowlist check hangs off this one claim. Seeded entries are planted
+     under the address itself, exactly as tools/bootstrap-access.mjs does it
+     in production, so the id the rules build and the id on disk are the
+     same string. */
+  claims.email = ACCOUNTS[uid];
+  claims.email_verified = true;
+  return [b64({ alg: "none", typ: "JWT" }), b64(claims), ""].join(".");
 }
 
 const counterFields = (c) => Object.fromEntries(COUNTER_KEYS.map((k) => [k, num(c[k])]));
@@ -217,15 +240,15 @@ const delWrite = (id) => ({ delete: `${DOCS}/dayHeads/${DAY}/transactions/${id}`
 
 /* --- the trust layer ------------------------------------------------- */
 
-/* The proof-of-code. Only a hash ever goes on the wire, and the rules
-   compare it against securitySecrets — the same document the Admin SDK
+/* The proof-of-authorisation. Only an email ever goes on the wire, and the
+   rules compare it against allowedUsers — the same document the Admin SDK
    writes and no client can read. */
-const enrollWrite = (uid, scope, code, overrides = {}) => ({
+const enrollWrite = (uid, scope, email, overrides = {}) => ({
   update: {
     name: `${DOCS}/enrollments/${uid}`,
     fields: {
       scope: str(scope),
-      codeHash: str(code === null ? "0".repeat(64) : hashCode(code)),
+      email: str(email || "nobody@example.com"),
       createdAt: ts(),
       createdBy: str(uid),
       ...overrides,
@@ -263,7 +286,7 @@ async function expectRead(name, path, shouldPass, uid) {
   }
 }
 
-/* The access-code hashes cannot be written by any client, so they are
+/* The allowlist entries cannot be written by any client, so they are
    planted as the project owner — the emulator's "Bearer owner" is exactly
    the privilege tools/bootstrap-access.mjs uses in production. */
 async function seedSecrets() {
@@ -271,23 +294,31 @@ async function seedSecrets() {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer owner" },
     body: JSON.stringify({
-      writes: ["shop", "admin"].map((scope) => ({
-        update: {
-          name: `${DOCS}/securitySecrets/${scope}`,
-          fields: { codeHash: str(hashCode(scope === "shop" ? CODE_SHOP : CODE_ADMIN)), createdAt: ts() },
+      writes: [
+        {
+          update: {
+            name: `${DOCS}/allowedUsers/${EMAIL_SHOP}`,
+            fields: { email: str(EMAIL_SHOP), role: str("shop"), createdAt: ts(), createdBy: str("bootstrap"), updatedAt: ts(), updatedBy: str("bootstrap") },
+          },
         },
-      })),
+        {
+          update: {
+            name: `${DOCS}/allowedUsers/${EMAIL_ADMIN}`,
+            fields: { email: str(EMAIL_ADMIN), role: str("admin"), createdAt: ts(), createdBy: str("bootstrap"), updatedAt: ts(), updatedBy: str("bootstrap") },
+          },
+        },
+      ],
     }),
   });
   const body = await res.text();
   if (!res.ok) {
     fail++;
-    failures.push("seed securitySecrets");
-    console.log(`  BADRQ seeding securitySecrets -> ${res.status} ${body.slice(0, 300)}`);
+    failures.push("seed allowedUsers");
+    console.log(`  BADRQ seeding allowedUsers -> ${res.status} ${body.slice(0, 300)}`);
     return false;
   }
   pass++;
-  console.log("  ok   plant the access-code hashes (as project owner, bypassing the rules)");
+  console.log("  ok   plant the allowlist entries (as project owner, bypassing the rules)");
   return true;
 }
 
@@ -384,7 +415,7 @@ async function waitForPort(port, ms) {
 async function run() {
   console.log("firestore.rules behaviour check\n");
 
-  console.log("the access codes:");
+  console.log("the allowlist:");
   if (!(await seedSecrets())) return;
   if (!(await seedService())) return;
 
@@ -396,52 +427,68 @@ async function run() {
   /* Before u1 proves anything, the ledger is closed to everyone. */
   await expect("refuse a ledger write from a browser with no grant", [headWrite({ day: DAY, counters: { ...ZERO } })], false, OUTSIDER);
 
-  await expect("refuse a proof carrying the wrong code", [enrollWrite(UID, "shop", "NOTTHECODE")], false, UID);
-  await expect("refuse a proof whose scope is neither shop nor admin", [enrollWrite(UID, "superuser", CODE_SHOP)], false, UID);
-  await expect("refuse a proof claiming somebody else's uid", [enrollWrite(OUTSIDER, "shop", CODE_SHOP)], false, UID);
+  await expect("refuse a proof from an account that is not on the allowlist", [enrollWrite(OUTSIDER, "shop", "intruder@example.com")], false, OUTSIDER);
+  /* The escalation the whole model rests on. Signing in with Google is open
+     to anybody, so if the proof may name any address, this is all an
+     outsider has to do: claim the owner's and inherit the shop. */
+  await expect("refuse a proof naming another account's allowlisted address", [enrollWrite(UID, "shop", EMAIL_ADMIN)], false, UID);
+  await expect("refuse a proof whose scope is neither shop nor admin", [enrollWrite(UID, "superuser", EMAIL_SHOP)], false, UID);
+  await expect("refuse a proof claiming somebody else's uid", [enrollWrite(OUTSIDER, "shop", EMAIL_SHOP)], false, UID);
   await expect("refuse a grant with no proof behind it", [grantWrite(UID)], false, UID);
   await expect("refuse a grant that calls itself admin on a shop proof", [grantWrite(UID, { role: "admin" })], false, UID);
 
-  await expect("accept a proof carrying the real code", [enrollWrite(UID, "shop", CODE_SHOP)], true, UID);
+  await expect("accept a proof carrying the caller's own authorised email", [enrollWrite(UID, "shop", EMAIL_SHOP)], true, UID);
   await expect("accept a shop grant once the proof is on file", [grantWrite(UID)], true, UID);
   /* Re-sending the identical grant is the last-seen heartbeat, not a
      second enrolment — it must not be mistaken for a privilege change. */
   await expect("accept re-asserting a grant as a last-seen heartbeat", [grantWrite(UID)], true, UID);
   await expectRead("a trusted browser can read its own grant", `accessGrants/${UID}`, true, UID);
   await expectRead("a browser with no grant has no grant at all", `accessGrants/${OUTSIDER}`, false, OUTSIDER);
-  await expect("refuse a second proof once a browser is already trusted", [enrollWrite(UID, "shop", CODE_SHOP)], false, UID);
-  await expect("refuse a trusted browser swapping its own shop proof", [enrollWrite(UID, "shop", "ANOTHER CODE")], false, UID);
+  await expect("refuse a second proof once a browser is already trusted", [enrollWrite(UID, "shop", EMAIL_SHOP)], false, UID);
+  await expect("refuse a trusted browser swapping its own shop proof", [enrollWrite(UID, "shop", "other@example.com")], false, UID);
 
-  console.log("\nthe codes themselves are unreachable:");
-  await expectRead("refuse any client read of securitySecrets/shop", "securitySecrets/shop", false, UID);
-  await expectRead("refuse any client read of securitySecrets/admin", "securitySecrets/admin", false, UID);
-  await expect("refuse a client rewriting the shop code hash", [{ update: { name: `${DOCS}/securitySecrets/shop`, fields: { codeHash: str("0".repeat(64)) } } }], false, UID);
-  await expect("refuse a client planting an admin hash of their own", [{ update: { name: `${DOCS}/securitySecrets/admin`, fields: { codeHash: str(hashCode("MY OWN CODE")) } } }], false, UID);
-  await expectRead("refuse reading a proof-of-code", `enrollments/${UID}`, false, UID);
+  console.log("\nthe allowlist itself is unreachable:");
+  await expectRead("refuse any client read of allowedUsers/shop@example.com", `allowedUsers/${EMAIL_SHOP}`, false, UID);
+  await expectRead("refuse any client read of allowedUsers/admin@example.com", `allowedUsers/${EMAIL_ADMIN}`, false, UID);
+  await expect("refuse a client rewriting the shop allowlist entry", [{ update: { name: `${DOCS}/allowedUsers/${EMAIL_SHOP}`, fields: { role: str("admin") } } }], false, UID);
+  await expect("refuse a client planting their own admin entry", [{ update: { name: `${DOCS}/allowedUsers/intruder@example.com`, fields: { email: str("intruder@example.com"), role: str("admin") } } }], false, UID);
+  await expectRead("refuse reading a proof-of-authorisation", `enrollments/${UID}`, false, UID);
   await expectRead("refuse listing every proof", "enrollments", false, UID);
   await expect("refuse deleting a proof", [{ delete: `${DOCS}/enrollments/${UID}` }], false, UID);
 
   console.log("\nthe admin role:");
-  /* u1 is trusted on the SHOP code only, so it cannot simply promote
+  /* u1 is trusted on the SHOP role only, so it cannot simply promote
      itself — the one capability the whole split rests on. */
   await expect("refuse self-promotion to admin on a shop proof alone", [grantWrite(UID, { role: "admin" })], false, UID);
-  await expect("refuse upgrading a trusted proof with the wrong admin code", [enrollWrite(UID, "admin", "NOTTHECODE")], false, UID);
+  await expect("refuse upgrading a trusted proof to an email that is not allowed", [enrollWrite(UID, "admin", "intruder@example.com")], false, UID);
+  /* The allowlist's own role is the ceiling. A shop account may ask for
+     `admin` in its proof, but the entry behind it says `shop`, and the
+     rules believe the entry — so a trusted shop browser can never talk its
+     way into the console. */
+  await expect("refuse a shop account proving the admin scope", [enrollWrite(UID, "admin", EMAIL_SHOP)], false, UID);
 
-  /* A FRESH browser holding the admin code is the owner's credential and
+  /* A FRESH browser holding the admin email is the owner's credential and
      mints the admin grant outright. */
-  await expect("accept an admin-scope proof carrying the admin code", [enrollWrite(ADMIN_UID, "admin", CODE_ADMIN)], true, ADMIN_UID);
+  await expect("accept an admin-scope proof carrying the admin email", [enrollWrite(ADMIN_UID, "admin", EMAIL_ADMIN)], true, ADMIN_UID);
   await expect("accept an admin grant minted on an admin proof", [grantWrite(ADMIN_UID, { role: "admin" })], true, ADMIN_UID);
   await expectRead("an admin can read another browser's grant", `accessGrants/${UID}`, true, ADMIN_UID);
   await expectRead("a shop browser cannot read anyone else's grant", `accessGrants/${ADMIN_UID}`, false, UID);
   await expect("refuse a browser with no proof minting an admin grant", [grantWrite(OUTSIDER, { role: "admin" })], false, OUTSIDER);
 
   console.log("\nupgrading the browser already in the shop:");
-  await expect("accept upgrading a trusted shop proof to admin", [enrollWrite(UID, "admin", CODE_ADMIN)], true, UID);
-  await expect("accept self-promotion on that admin proof", [grantWrite(UID, { role: "admin" })], true, UID);
-  await expectRead("and it is an admin now", `accessGrants/${UID}`, true, ADMIN_UID);
+  /* The owner's other machine is already trusted, on the shop role. It
+     reaches the console the same way a fresh one does — by being signed in
+     as the account the allowlist marks `admin` — not by asking for it. */
+  await expect("accept that machine proving shop with its own email", [enrollWrite(PROMOTED, "shop", EMAIL_ADMIN)], true, PROMOTED);
+  await expect("accept its shop grant", [grantWrite(PROMOTED)], true, PROMOTED);
+  await expect("refuse a shop-trusted browser naming the admin address to upgrade", [enrollWrite(UID, "admin", EMAIL_ADMIN)], false, UID);
+  await expect("refuse it self-promoting on that", [grantWrite(UID, { role: "admin" })], false, UID);
+  await expect("accept the owner's machine upgrading its own proof to admin", [enrollWrite(PROMOTED, "admin", EMAIL_ADMIN)], true, PROMOTED);
+  await expect("accept self-promotion on that admin proof", [grantWrite(PROMOTED, { role: "admin" })], true, PROMOTED);
+  await expectRead("and it is an admin now", `accessGrants/${PROMOTED}`, true, ADMIN_UID);
 
   console.log("\na shop browser cannot manage the registry:");
-  await expect("accept a second browser proving the shop code", [enrollWrite(PLAIN_UID, "shop", CODE_SHOP)], true, PLAIN_UID);
+  await expect("accept a second browser proving the shop email", [enrollWrite(PLAIN_UID, "shop", EMAIL_SHOP)], true, PLAIN_UID);
   await expect("accept that browser's shop grant", [grantWrite(PLAIN_UID)], true, PLAIN_UID);
   await expect("refuse a shop browser revoking the admin", [grantWrite(ADMIN_UID, { active: false, updatedBy: PLAIN_UID })], false, PLAIN_UID);
   await expect("refuse a shop browser promoting itself to admin", [grantWrite(PLAIN_UID, { role: "admin" })], false, PLAIN_UID);
@@ -456,26 +503,32 @@ async function run() {
   await expect("accept a heartbeat that leaves a revoked grant revoked", [grantWrite(PLAIN_UID, { active: false })], true, PLAIN_UID);
   await expectRead("and it is still not trusted", `accessGrants/${PLAIN_UID}`, true, PLAIN_UID);
   await expect("refuse the revoked browser reading the ledger", [headWrite({ day: DAY, counters: { ...ZERO } })], false, PLAIN_UID);
-  /* A revoked browser may still prove a code — that is how it comes back —
-     and the admin code is no exception. But an ADMIN-scope proof must not
-     be able to buy its way back in: reactivation is shop-only, so holding
-     the stronger credential gets you nothing you did not already have. */
-  await expect("accept a revoked browser putting an admin proof on file", [enrollWrite(PLAIN_UID, "admin", CODE_ADMIN)], true, PLAIN_UID);
-  await expect("refuse re-activating on an admin-scope proof", [grantWrite(PLAIN_UID, { active: true })], false, PLAIN_UID);
+  /* A revoked browser may still prove an email — that is how it comes back —
+     but only its OWN account, and only at a scope its allowlist entry
+     permits. So nothing done while revoked can buy a stronger grant than the
+     one it was just stripped of. */
+  await expect("refuse a revoked browser naming the owner's address", [enrollWrite(PLAIN_UID, "admin", EMAIL_ADMIN)], false, PLAIN_UID);
+  await expect("refuse a shop account re-activating as admin", [grantWrite(PLAIN_UID, { role: "admin", active: true })], false, PLAIN_UID);
   await expect("refuse the still-revoked browser opening the day", [headWrite({ day: DAY, counters: { ...ZERO } })], false, PLAIN_UID);
-  await expect("accept the revoked browser re-proving the shop code", [enrollWrite(PLAIN_UID, "shop", CODE_SHOP)], true, PLAIN_UID);
+  await expect("accept the revoked browser re-proving its own shop email", [enrollWrite(PLAIN_UID, "shop", EMAIL_SHOP)], true, PLAIN_UID);
   await expect("accept the revoked browser re-activating with it", [grantWrite(PLAIN_UID, { active: true })], true, PLAIN_UID);
   await expectRead("and it is trusted again", `accessGrants/${PLAIN_UID}`, true, PLAIN_UID);
 
   console.log("\nrevoking an admin demotes it, never restores it:");
-  await expect("accept an admin revoking the other admin", [grantWrite(UID, { active: false, updatedBy: ADMIN_UID })], true, ADMIN_UID);
-  await expect("refuse the demoted admin reactivating as admin", [grantWrite(UID, { role: "admin", active: true })], false, UID);
-  await expectRead("and it can no longer read the registry", `accessGrants/${PLAIN_UID}`, false, UID);
+  await expect("accept an admin revoking the other admin", [grantWrite(PROMOTED, { active: false, updatedBy: ADMIN_UID })], true, ADMIN_UID);
+  /* Reactivation is shop-only, so a revoked admin cannot come back AS an
+     admin even holding a valid admin proof of its own — the stronger
+     credential gets it nothing it did not already have. This is the case
+     the account-bound rule alone would not have caught. */
+  await expect("accept the revoked admin filing its own admin proof", [enrollWrite(PROMOTED, "admin", EMAIL_ADMIN)], true, PROMOTED);
+  await expect("refuse the demoted admin reactivating as admin", [grantWrite(PROMOTED, { role: "admin", active: true })], false, PROMOTED);
+  await expectRead("and it can no longer read the registry", `accessGrants/${PLAIN_UID}`, false, PROMOTED);
   /* It comes back as a plain shop browser, which is the whole point of
-     keeping the two codes apart. */
-  await expect("accept the demoted admin re-proving the shop code", [enrollWrite(UID, "shop", CODE_SHOP)], true, UID);
-  await expect("accept it coming back as shop, not admin", [grantWrite(UID, { active: true })], true, UID);
-  await expectRead("with shop trust only", `accessGrants/${PLAIN_UID}`, false, UID);
+     keeping the two roles apart. An `admin` allowlist entry may prove the
+     weaker scope; it just may not re-activate on the stronger one. */
+  await expect("accept the demoted admin re-proving shop with its own email", [enrollWrite(PROMOTED, "shop", EMAIL_ADMIN)], true, PROMOTED);
+  await expect("accept it coming back as shop, not admin", [grantWrite(PROMOTED, { active: true })], true, PROMOTED);
+  await expectRead("with shop trust only", `accessGrants/${PLAIN_UID}`, false, PROMOTED);
 
   console.log("\ncreating a day head:");
   await expect("accept a freshly opened day with zeroed counters", [headWrite({ day: DAY, counters: { ...ZERO } })], true, UID);

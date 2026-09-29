@@ -1,16 +1,16 @@
 /* =========================================================
-   TrustX Ledger — access-code bootstrap / rotation / recovery
+   TrustX Ledger — allowlist bootstrap / management / recovery
    -----------------------------------------------------------------
-   Writes the two access-code hashes that the whole sign-in model rests
-   on, into Firestore `securitySecrets/{shop,admin}`.
+   Writes the Google-account allowlist that the whole sign-in model
+   rests on, into Firestore `allowedUsers/{email}`.
 
    WHY A SEPARATE TOOL
-   `firestore.rules` denies every read and write on `securitySecrets/**`.
-   That is the point: no browser can read the hashes or replace them. So
-   the codes have to be planted from somewhere with authority, and the
-   somewhere is this script, using a service-account key. It bypasses
-   the rules because the Admin SDK does — it authenticates as the
-   project owner, not as a browser.
+   `firestore.rules` denies every read and write on `allowedUsers/**`.
+   That is the point: no browser can read the list or replace it. So
+   the allowlist has to be managed from somewhere with authority, and
+   the somewhere is this script, using a service-account key. It
+   bypasses the rules because the Admin SDK does — it authenticates as
+   the project owner, not as a browser.
 
    NO DEPENDENCIES, ON PURPOSE
    This is a static app whose whole install story is "no npm install".
@@ -18,24 +18,30 @@
    the token exchange is done directly: a service account's private key
    signs a JWT (RS256, built with node:crypto) which Google's token
    endpoint exchanges for an access token, which the Firestore REST API
-   accepts. Nothing is written to disk except the hashes.
+   accepts. Nothing is written to disk except the allowlist entries.
 
    WHAT NEVER HAPPENS HERE
-   - the plaintext code is never stored, only sha256 of it;
-   - the plaintext is printed once, to this terminal, and not logged;
-   - nothing reads an existing hash back out to show it.
+   - the plaintext email is never stored in a way a client can read;
+   - nothing reads an existing entry back out to show it;
+   - the allowlist is never printed in full.
 
    USAGE
-     # First run: generate both codes and print them once.
-     node tools/bootstrap-access.mjs --key ./service-account.json
+     # First run: add the shop owner as admin.
+     node tools/bootstrap-access.mjs --key ./service-account.json --add admin@example.com --role admin
 
-     # Use codes you already chose (16+ characters, please).
-     node tools/bootstrap-access.mjs --key ./sa.json --shop "..." --admin "..."
+     # Add a shop user.
+     node tools/bootstrap-access.mjs --key ./sa.json --add worker@example.com --role shop
 
-     # Change a code later. The old one stops working immediately.
-     node tools/bootstrap-access.mjs --key ./sa.json --rotate --shop "..."
+     # List who has access.
+     node tools/bootstrap-access.mjs --key ./sa.json --list
 
-     # Recovery when the admin code is lost: mint a grant by hand.
+     # Remove someone.
+     node tools/bootstrap-access.mjs --key ./sa.json --remove worker@example.com
+
+     # Change a role.
+     node tools/bootstrap-access.mjs --key ./sa.json --add worker@example.com --role admin
+
+     # Recovery: mint a grant by hand.
      node tools/bootstrap-access.mjs --list-grants
      node tools/bootstrap-access.mjs --grant <uid> --role admin
      node tools/bootstrap-access.mjs --revoke <uid>
@@ -84,55 +90,64 @@ function die(message) {
 
 function usage() {
   console.log(`
-  TrustX Ledger — access codes
+  TrustX Ledger — Google allowlist management
 
     node tools/bootstrap-access.mjs --key <service-account.json> [options]
 
     --project <id>     Firebase project id (default: FIREBASE_PROJECT_ID, else
                        the projectId in js/firebase.js)
     --key <path>       service-account JSON (default: GOOGLE_APPLICATION_CREDENTIALS)
-    --shop <code>      shop code (default: generate a strong one and print it)
-    --admin <code>     admin code (default: generate a strong one and print it)
-    --rotate           required to replace codes that already exist
-    --list             show which codes are set, without revealing them
+    --add <email>      add/update an allowlist entry (requires --role)
+    --role <shop|admin> role for --add (default: shop)
+    --remove <email>   remove an allowlist entry
+    --list             show who has access (emails and roles)
     --grant <uid>      mint/repair accessGrants/<uid> (bypasses the rules)
-    --role <shop|admin> role for --grant (default: shop)
     --revoke <uid>     set accessGrants/<uid>.active = false
     --list-grants      list access grants (uids, roles, active)
     --emulator         target the local Firestore emulator instead of production
-    --allow-weak       permit a code shorter than 16 characters (not advised)
 
-    First run:  node tools/bootstrap-access.mjs --key ./sa.json
+    First run:  node tools/bootstrap-access.mjs --key ./sa.json --add owner@gmail.com --role admin
     Recovery:   node tools/bootstrap-access.mjs --key ./sa.json --list-grants
 `);
 }
 
 /* ------------------------------------------------------------------
-   Codes: normalization and hashing
-   Mirrors normalizeCode() in js/auth.js exactly. If these two ever
-   disagree, sign-in breaks for everyone — which is why both spell the
-   rule out again instead of sharing code across a browser/Node boundary.
+   Email validation
    ------------------------------------------------------------------ */
 
-export function normalizeCode(input) {
-  return String(input == null ? "" : input).toUpperCase().replace(/\s+/g, "").trim();
+function normalizeEmail(input) {
+  return String(input || "").toLowerCase().trim();
 }
 
-export function hashCode(code) {
-  return createHash("sha256").update(normalizeCode(code), "utf8").digest("hex");
+function isValidEmail(email) {
+  return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email);
 }
 
-/* A code someone has to read off a screen and retype on a phone. Ambiguous
-   characters (I/1, O/0) are left out, and 20 characters of a 32-symbol
-   alphabet is ~100 bits — far past anything a person can guess online. */
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const DEFAULT_LENGTH = 20;
-const MIN_LENGTH = 16;
+/* The allowlist document ID IS the normalised email address.
 
-function generateCode(length = DEFAULT_LENGTH) {
-  let out = "";
-  for (let i = 0; i < length; i += 1) out += ALPHABET[randomInt(ALPHABET.length)];
-  return out;
+   Firestore document IDs may contain '@' and '.' (only '/' is barred, and
+   an id may not be "." or ".."), and every REST path in this file is
+   percent-encoded segment by segment, so an address works as an id without
+   any trouble.
+
+   It has to be the email. `firestore.rules` can only reach a document by an
+   exact path — the rules language has no hashing function and no way to look
+   a document up by a field — so the id written here must be the same string
+   the rules build from `request.auth.token.email`, or the allowlist check can
+   never be satisfied.
+
+   An earlier version hashed the email into the document ID, which made that
+   check unsatisfiable: the tool wrote one id and the rules looked for
+   another, so every account was refused, including the owner's. `--add`
+   now also sweeps away an entry left behind by that version. */
+function allowlistDocId(email) {
+  return email;
+}
+
+/* The document ID used before the address became the ID. Kept only so
+   `--add` can recognise and delete an orphaned entry from that scheme. */
+function legacyDocId(email) {
+  return createHash("sha256").update(email, "utf8").digest("hex").slice(0, 32);
 }
 
 /* ------------------------------------------------------------------
@@ -231,7 +246,8 @@ async function makeClient() {
     emulator,
     url: (path) => `${base}/projects/${project}/databases/(default)/documents/${path}`,
     async get(path) {
-      const res = await fetch(`${base}/projects/${project}/databases/(default)/documents/${path}`, {
+      const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+      const res = await fetch(`${base}/projects/${project}/databases/(default)/documents/${encodedPath}`, {
         headers: { authorization: `Bearer ${token}` },
       });
       if (res.status === 404) return null;
@@ -239,7 +255,8 @@ async function makeClient() {
       return res.json();
     },
     async patch(path, fields) {
-      const res = await fetch(`${base}/projects/${project}/databases/(default)/documents/${path}?updateMask.fieldPaths=${Object.keys(fields).join("&updateMask.fieldPaths=")}`, {
+      const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+      const res = await fetch(`${base}/projects/${project}/databases/(default)/documents/${encodedPath}?updateMask.fieldPaths=${Object.keys(fields).join("&updateMask.fieldPaths=")}`, {
         method: "PATCH",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({ fields }),
@@ -247,13 +264,23 @@ async function makeClient() {
       if (!res.ok) throw new Error(`PATCH ${path} -> ${res.status} ${(await res.text()).slice(0, 200)}`);
       return res.json();
     },
+    /* Creating a document is a PATCH against the full document path with an
+       update mask, NOT a POST. A POST takes the last path segment as the
+       *collection* and requires the document ID as a `documentId` query
+       parameter, so POSTing `allowedUsers/{email}` is rejected with
+       INVALID_ARGUMENT ("parent name ... lacks /"), and `--add` fails for
+       every new entry. PATCH is create-or-update, which is what every caller
+       here wants, and it is also the one shape that round-trips an email
+       document ID — a POST with ?documentId= would re-encode the '@' on the
+       way back in the response and disagree with the ID the rules build. */
     async create(path, fields) {
-      const res = await fetch(`${base}/projects/${project}/databases/(default)/documents/${path}`, {
-        method: "POST",
+      const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+      const res = await fetch(`${base}/projects/${project}/databases/(default)/documents/${encodedPath}?updateMask.fieldPaths=${Object.keys(fields).join("&updateMask.fieldPaths=")}`, {
+        method: "PATCH",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({ fields }),
       });
-      if (!res.ok) throw new Error(`POST ${path} -> ${res.status} ${(await res.text()).slice(0, 200)}`);
+      if (!res.ok) throw new Error(`PATCH ${path} -> ${res.status} ${(await res.text()).slice(0, 200)}`);
       return res.json();
     },
     async list(collection) {
@@ -264,7 +291,8 @@ async function makeClient() {
       return res.json();
     },
     async delete(path) {
-      const res = await fetch(`${base}/projects/${project}/databases/(default)/documents/${path}`, {
+      const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+      const res = await fetch(`${base}/projects/${project}/databases/(default)/documents/${encodedPath}`, {
         method: "DELETE",
         headers: { authorization: `Bearer ${token}` },
       });
@@ -280,7 +308,7 @@ const str = (v) => ({ stringValue: v });
 const ts = (d) => ({ timestampValue: (d || new Date()).toISOString() });
 const bool = (v) => ({ booleanValue: v });
 /* `value` may be an ISO string or a Date; both become a timestamp, never a
-   string, so the stored shape does not change when a code is rotated. */
+   string, so the stored shape does not change when an entry is updated. */
 const tsOf = (value) => ({ timestampValue: value instanceof Date ? value.toISOString() : value });
 
 function unescape(v) {
@@ -300,80 +328,90 @@ function field(doc, name) {
    Commands
    ------------------------------------------------------------------ */
 
-const SECRET_PATHS = { shop: "securitySecrets/shop", admin: "securitySecrets/admin" };
-
-async function cmdListSecrets(fs) {
-  console.log(`\n  Access codes in project "${fs.project}"${fs.emulator ? " (EMULATOR)" : ""}\n`);
-  for (const [scope, path] of Object.entries(SECRET_PATHS)) {
-    const doc = await fs.get(path);
-    if (!doc) {
-      console.log(`    ${scope.padEnd(6)} NOT SET`);
-      continue;
-    }
-    const rotated = field(doc, "rotatedAt") || field(doc, "createdAt") || "unknown";
-    console.log(`    ${scope.padEnd(6)} set   (hash ${String(field(doc, "codeHash") || "").slice(0, 8)}…, last changed ${rotated})`);
+async function cmdList(fs) {
+  const res = await fs.list("allowedUsers");
+  const docs = res.documents || [];
+  console.log(`\n  Allowed Google accounts in project "${fs.project}"${fs.emulator ? " (EMULATOR)" : ""}\n`);
+  if (!docs.length) {
+    console.log("    (none — no one can sign in yet)");
   }
-  console.log("\n  The codes themselves are never stored and cannot be read back.\n");
+  for (const doc of docs) {
+    const email = field(doc, "email") || doc.name.split("/documents/")[1].split("/").pop();
+    const role = field(doc, "role") || "shop";
+    const created = field(doc, "createdAt") || "unknown";
+    console.log(`    ${email}\n        ${role} · added ${created}`);
+  }
+  console.log("");
 }
 
-async function cmdBootstrap(fs) {
-  const existing = {};
-  for (const [scope, path] of Object.entries(SECRET_PATHS)) {
-    existing[scope] = await fs.get(path);
-  }
-  const already = Object.keys(existing).filter((s) => existing[s]);
+async function cmdAdd(fs) {
+  const email = normalizeEmail(args.add);
+  if (!email) die("--add needs an email address.");
+  if (!isValidEmail(email)) die(`"${email}" is not a valid email address.`);
+  const role = args.role === "admin" ? "admin" : "shop";
+  const docId = allowlistDocId(email);
 
-  if (already.length && !args.rotate) {
-    die(
-      `${already.join(" and ")} code(s) already exist. Replacing one locks out every\n` +
-        `     browser that is relying on it, so re-run with --rotate when that is what\n` +
-        `     you intend. (Existing browsers do NOT need to re-enter the code: their\n` +
-        `     grant is separate and stays valid.)`
-    );
-  }
+  const existing = await fs.get(`allowedUsers/${docId}`);
+  const now = ts();
 
-  const created = [];
-  const changed = [];
-  for (const scope of ["shop", "admin"]) {
-    const supplied = typeof args[scope] === "string" ? normalizeCode(args[scope]) : "";
-    if (supplied && supplied.length < MIN_LENGTH && !args["allow-weak"]) {
-      die(`The ${scope} code is ${supplied.length} characters; ${MIN_LENGTH} is the minimum (or pass --allow-weak and accept the risk).`);
-    }
-    const code = supplied || generateCode();
-    const doc = {
-      codeHash: str(hashCode(code)),
-      createdAt: existing[scope]
-        ? tsOf(field(existing[scope], "createdAt") || new Date().toISOString())
-        : ts(),
-      rotatedAt: ts(),
-      rotatedBy: str("tools/bootstrap-access.mjs"),
-    };
-    if (existing[scope]) {
-      await fs.patch(SECRET_PATHS[scope], doc);
-      changed.push(scope);
-    } else {
-      await fs.create(SECRET_PATHS[scope], doc);
-      created.push(scope);
-    }
-    /* Printed once, to this terminal. Not written anywhere, not logged. */
-    console.log(`\n    ${scope.toUpperCase()} CODE:  ${code}\n`);
+  if (existing) {
+    await fs.patch(`allowedUsers/${docId}`, {
+      role: str(role),
+      updatedAt: now,
+      updatedBy: str("tools/bootstrap-access.mjs"),
+    });
+    console.log(`\n  Updated ${email} → role "${role}".\n`);
+    await dropLegacyEntry(fs, email, docId);
+    return;
   }
 
-  if (created.length) console.log(`  Set: ${created.join(", ")}`);
-  if (changed.length) console.log(`  Rotated: ${changed.join(", ")}`);
-  console.log(`
-  Write these down now — they cannot be displayed again. If you lose one:
-    - shop code: any trusted browser can re-enroll with the admin code below.
-    - admin code: re-run this tool with --grant <uid> --role admin to mint a
-      grant by hand, then rotate the admin code.
-`);
+  await fs.create(`allowedUsers/${docId}`, {
+    email: str(email),
+    role: str(role),
+    createdAt: now,
+    createdBy: str("tools/bootstrap-access.mjs"),
+    updatedAt: now,
+    updatedBy: str("tools/bootstrap-access.mjs"),
+  });
+  console.log(`\n  Added ${email} with role "${role}".\n`);
+  console.log("  That Google account can now sign in to the ledger.\n");
+  await dropLegacyEntry(fs, email, docId);
+}
+
+/* An entry written by the hashed-ID version of this tool is invisible to
+   `firestore.rules`, which looks the address up directly — so it authorises
+   nobody while still showing up in `--list` and looking correct. Deleting it
+   on the way past keeps a half-migrated allowlist from quietly lying. */
+async function dropLegacyEntry(fs, email, currentId) {
+  const oldId = legacyDocId(email);
+  if (oldId === currentId) return;
+  try {
+    if (!(await fs.get(`allowedUsers/${oldId}`))) return;
+    await fs.delete(`allowedUsers/${oldId}`);
+    console.log(`  Also removed the stale hashed entry left by an older version\n  of this tool — it was unreachable by the rules and granted nothing.\n`);
+  } catch (err) {
+    console.warn(`  (could not clean up an old hashed entry: ${err.message})`);
+  }
+}
+
+async function cmdRemove(fs) {
+  const email = normalizeEmail(args.remove);
+  if (!email) die("--remove needs an email address.");
+  const docId = allowlistDocId(email);
+  const existing = await fs.get(`allowedUsers/${docId}`);
+  const legacy = await fs.get(`allowedUsers/${legacyDocId(email)}`);
+  if (!existing && !legacy) die(`No allowlist entry for ${email}.`);
+  if (existing) await fs.delete(`allowedUsers/${docId}`);
+  if (legacy) await fs.delete(`allowedUsers/${legacyDocId(email)}`);
+  console.log(`\n  Removed ${email} from the allowlist.\n`);
+  console.log("  That Google account can no longer sign in (existing grants remain\n  until revoked from the Developer console).\n");
 }
 
 async function cmdListGrants(fs) {
   const res = await fs.list("accessGrants");
   const docs = res.documents || [];
   console.log(`\n  Access grants in project "${fs.project}"\n`);
-  if (!docs.length) console.log("    (none — no browser has ever entered the shop code)");
+  if (!docs.length) console.log("    (none — no browser has ever signed in)");
   for (const doc of docs) {
     const uid = doc.name.split("/documents/")[1].split("/").pop();
     const role = field(doc, "role") || "shop";
@@ -418,7 +456,7 @@ async function cmdGrant(fs) {
     updatedBy: str("tools/bootstrap-access.mjs"),
   });
   console.log(`\n  accessGrants/${uid} created (active, role "${role}").\n`);
-  console.log("  That browser can now open the ledger without any code.\n");
+  console.log("  That browser can now open the ledger without signing in again.\n");
 }
 
 async function cmdRevoke(fs) {
@@ -440,15 +478,17 @@ async function main() {
     return;
   }
   const fs = await makeClient();
-  if (args.list) return cmdListSecrets(fs);
+  if (args.list) return cmdList(fs);
+  if (args.add) return cmdAdd(fs);
+  if (args.remove) return cmdRemove(fs);
   if (args["list-grants"]) return cmdListGrants(fs);
   if (args.grant) return cmdGrant(fs);
   if (args.revoke) return cmdRevoke(fs);
-  return cmdBootstrap(fs);
+  usage();
 }
 
-/* Only run when invoked as a command, so a test can import hashCode() and
-   normalizeCode() without this script trying to talk to a project.
+/* Only run when invoked as a command, so a test can import helpers
+   without this script trying to talk to a project.
    Both sides are normalized to forward slashes: process.argv[1] is a
    Windows path here, import.meta.url is not. */
 const toPath = (p) => (p || "").replace(/\\/g, "/");

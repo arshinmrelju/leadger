@@ -135,9 +135,10 @@
     import { renderAdminPage } from "./js/admin.js";
 
     initAppShell({
-      /* Second gate: this console needs its own admin code, not just the
-         shop code. ctx.isAdmin is false until this browser holds an
-         admins/{uid} grant, and the page then shows the unlock card. */
+      /* Second gate: this console needs its own admin role, not just
+         shop access. ctx.isAdmin is false until this browser holds an
+         accessGrants/{uid} grant with role 'admin', and the page then
+         shows the locked card. */
       requireAdmin: true,
       onReady: async (ctx) => {
         await renderAdminPage(ctx);

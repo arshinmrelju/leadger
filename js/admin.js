@@ -2,11 +2,11 @@
    TrustX Ledger — Developer console (admin.html)
    -----------------------------------------------------------------
    Not linked from the public navigation and gated by its own admin
-   code: this browser must hold an admins/{uid} grant (see auth.js /
-   database.rules.json) before any of this renders. Behind the gate the
-   console covers the shop's maintenance — the service catalog, the
-   trust registry and a full-data browser. The dashboard stays
-   operational-only.
+   role: this browser must hold an accessGrants/{uid} grant with
+   role 'admin' (see auth.js / firestore.rules) before any of this
+   renders. Behind the gate the console covers the shop's
+   maintenance — the service catalog, the trust registry and a
+   full-data browser. The dashboard stays operational-only.
    ========================================================= */
 
 import { toast, confirm, setLoading } from "./app.js";
@@ -35,7 +35,7 @@ import {
   restoreGrant,
   removeGrant,
   grantAdminAccess,
-  checkAdminAccess,
+  AuthError,
 } from "./auth.js";
 
 function svg(id) {
@@ -53,7 +53,7 @@ function svg(id) {
 }
 
 /* =========================================================
-   The admin-code gate
+   The admin gate
    ========================================================= */
 function renderAdminGate(mainContent) {
   mainContent.innerHTML =
@@ -62,53 +62,11 @@ function renderAdminGate(mainContent) {
     '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>' +
     "<h3>Developer console is locked</h3>" +
     '<p class="small muted">This console is kept out of the shop&rsquo;s daily screens. ' +
-    "Enter the admin code to manage services, trusted devices and all data.</p>" +
-    '<div class="field" style="text-align:left;">' +
-    '<label class="small muted" for="adminCodeInput">Admin code</label>' +
-    '<input class="input" id="adminCodeInput" type="password" autocomplete="off" ' +
-    'autocapitalize="characters" spellcheck="false" placeholder="ADMIN CODE" />' +
-    "</div>" +
+    "Sign in with an authorised Google admin account to manage services, trusted devices and all data.</p>" +
     '<div class="flex" style="gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;">' +
-    '<button type="button" class="btn btn-primary" id="adminUnlockBtn">Unlock console</button>' +
+    '<a class="btn btn-primary" href="login.html?reason=not-admin">Switch account</a>' +
     '<a class="btn btn-secondary" href="dashboard.html">Back to dashboard</a>' +
     "</div></div>";
-
-  const input = document.getElementById("adminCodeInput");
-  const btn = document.getElementById("adminUnlockBtn");
-
-  const submit = async () => {
-    if (!input.value.trim()) {
-      toast("Enter the admin code.", "error");
-      input.focus();
-      return;
-    }
-    setLoading(btn, true);
-    try {
-      await grantAdminAccess(input.value);
-      /* The role now lives server-side on this browser's own grant, so a
-         reload picks it up and the console renders for real. Confirm
-         first — a silent no-op here would just bounce back to this card
-         with no explanation. */
-      if (!(await checkAdminAccess())) {
-        throw new Error("The admin role was not granted. Please try again.");
-      }
-      window.location.reload();
-    } catch (err) {
-      toast(reportError(err), "error");
-      input.value = "";
-      setLoading(btn, false);
-      input.focus();
-    }
-  };
-
-  btn.addEventListener("click", submit);
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      submit();
-    }
-  });
-  input.focus();
 }
 
 /* =========================================================
@@ -121,10 +79,34 @@ export async function renderAdminPage(ctx) {
   /* Second gate: the shop code opens the ledger, the admin code opens
      this console. Without the admin role on this browser's own grant we
      show the unlock card instead — and the rules would refuse the access
-     management anyway. */
+     management anyway.
+
+     The rules are the ONLY thing that can answer "is this account an
+     admin?", because the allowlist is unreadable by any client, so we ask
+     them rather than guessing: an admin-scope proof is accepted only when
+     the signed-in account's OWN verified address carries the admin role in
+     the allowlist, and refused for everybody else. So a non-admin visit
+     costs one refused write and no UI decision, and an owner landing here
+     is promoted without leaving the page.
+
+     The proof is keyed to the verified token email, so this cannot be
+     talked into: naming somebody else's address in a request would be
+     refused, and a shop account cannot ask for the admin scope at all. */
   if (!ctx.isAdmin) {
-    renderAdminGate(mainContent);
-    return;
+    try {
+      await grantAdminAccess();
+      ctx.isAdmin = true;
+      if (ctx.grant) ctx.grant.role = "admin";
+    } catch (err) {
+      /* `not-authorized` is the ordinary answer for a shop account and needs
+         no noise. Anything else is a real fault — say so, rather than
+         letting it read as "you are simply not an admin". */
+      if (!(err instanceof AuthError) || err.code !== "not-authorized") {
+        toast(reportError(err), "error");
+      }
+      renderAdminGate(mainContent);
+      return;
+    }
   }
 
   thisUid = ctx.grant ? ctx.grant.uid : null;
@@ -161,7 +143,7 @@ export async function renderAdminPage(ctx) {
     '<button type="button" class="btn btn-sm btn-secondary" id="devicesRefreshBtn">Refresh</button>' +
     "</div></div>" +
     '<div class="card-body">' +
-    '<p class="small muted" style="margin:0 0 .75rem;">These browsers open the ledger without the shop code. Only an admin can revoke, restore or remove them, so the shop code alone can never lock you out of your own shop. Revoke any device you do not recognise; the next time it opens the app it will ask for the code again.</p>' +
+    '<p class="small muted" style="margin:0 0 .75rem;">These browsers open the ledger with their authorised Google accounts. Only an admin can revoke, restore or remove them, so a stolen Google session alone can never lock you out of your own shop. Revoke any device you do not recognise; the next time it opens the app it will ask to sign in again.</p>' +
     '<div id="devicesList"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading devices<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></div>' +
     "</div></section>" +
 
@@ -422,8 +404,8 @@ function wireDevices() {
       const ok = await confirm({
         title: "Revoke this browser?",
         message:
-          (isThis ? "This browser will need the shop code on its next visit. " : "") +
-          "It cannot read or record anything until it is restored or signs in with the code again.",
+          (isThis ? "This browser will need to sign in again on its next visit. " : "") +
+          "It cannot read or record anything until it is restored or signs in with Google again.",
         confirmText: "Revoke",
         variant: "danger",
       });
@@ -437,7 +419,7 @@ function wireDevices() {
     } else if (grantAction === "restore") {
       const ok = await confirm({
         title: "Restore this browser?",
-        message: "It will open the ledger without the code again.",
+        message: "It will open the ledger with its Google account again.",
         confirmText: "Restore",
         variant: "primary",
       });
@@ -452,8 +434,8 @@ function wireDevices() {
       const ok = await confirm({
         title: "Remove this browser?",
         message:
-          (isThis ? "This browser will need the shop code on its next visit. " : "") +
-          "Its trust record is deleted and cannot be restored — it must be enrolled again with the code.",
+          (isThis ? "This browser will need to sign in again on its next visit. " : "") +
+          "Its trust record is deleted and cannot be restored — it must sign in with Google again.",
         confirmText: "Remove",
         variant: "danger",
       });
@@ -515,7 +497,7 @@ async function loadAccessGrants() {
     const grants = await listAccessGrants();
     list.innerHTML = grants.length
       ? grants.map((g) => grantRow(g)).join("")
-      : '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No trusted browsers yet. The first browser to enter the shop code appears here.</p></div>';
+      : '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No trusted browsers yet. The first browser to sign in with an authorised Google account appears here.</p></div>';
   } catch (err) {
     console.error("[trustx-ledger] access grants:", err);
     list.innerHTML = '<div class="state is-error"><p class="muted">' + escapeHtml(reportError(err)) + "</p></div>";

@@ -5,33 +5,35 @@ rules_version = '2';
 // -------------------------------------------------------------
 // EVERYTHING THAT GATES ACCESS LIVES HERE, NEXT TO THE MONEY.
 //
-//   securitySecrets/{scope}   { shop, admin } SHA-256 of each access
-//                             code. Never readable and never writable by
-//                             a client — only the bootstrap/rotation tool
-//                             (tools/bootstrap-access.mjs, Admin SDK) can
-//                             write them. A missing secret fails CLOSED:
-//                             no enrollment can match it.
-//   enrollments/{uid}        one-time proof-of-code, keyed by the caller's
-//                             own uid. The create rule is where the code
-//                             is actually checked, server-side: the caller
-//                             sends only sha256(code), never the code.
+//   allowedUsers/{email}   { email, role } the Google-account
+//                             allowlist. Never readable and never
+//                             writable by a client — only the bootstrap
+//                             tool (tools/bootstrap-access.mjs, Admin
+//                             SDK) can write it. A missing entry fails
+//                             CLOSED: no enrollment can match it.
+//   enrollments/{uid}        one-time proof-of-authorisation, keyed by
+//                             the caller's own uid. The create rule is
+//                             where the allowlist is actually checked,
+//                             server-side: the caller sends only their
+//                             email, never a password.
 //   accessGrants/{uid}       the trusted-browser registry and the ONLY
-//                             thing the money rules below consult. An
-//                             anonymous Firebase user with no grant reads
+//                             thing the money rules below consult. A
+//                             Google Firebase user with no grant reads
 //                             and writes nothing.
 //
-// The trust chain is therefore: code (never in the app) -> enrollment
-// (server compares the hash) -> accessGrant (server-authoritative) ->
-// money access. Revoking a grant locks the browser out immediately,
-// because every rule below re-reads the grant on every request.
+// The trust chain is therefore: Google account (verified by Firebase)
+// -> allowlist entry (server compares the email) -> accessGrant
+// (server-authoritative) -> money access. Revoking a grant locks the
+// browser out immediately, because every rule below re-reads the grant
+// on every request.
 //
 // Realtime Database holds only non-authoritative data:
 //   settings/general   shop identity
 //   expenses/{dateKey} spends (read-only this build)
 
 // DATA MODEL COVERED HERE
-//   securitySecrets/{scope}                     the two access-code hashes
-//   enrollments/{uid}                           one-time proof-of-code
+//   allowedUsers/{email}                       the Google-account allowlist
+//   enrollments/{uid}                           one-time proof-of-authorisation
 //   accessGrants/{uid}                          trusted browsers + admin role
 //   dayHeads/{dateKey}                          the independent head for
 //                                               one Asia/Kolkata business day
@@ -89,12 +91,51 @@ service cloud.firestore {
     }
 
     // ---------------- Trust ----------------
-    // The access-code hashes. Unreadable by every client on purpose: a
-    // hash that a browser can read is a hash an attacker can take home
-    // and grind offline, so the comparison below is the only place a
-    // code is ever checked, and it happens here.
-    function secretPath(scope) {
-      return /databases/$(database)/documents/securitySecrets/$(scope);
+    // The allowlist. Unreadable by every client on purpose: a list
+    // that a browser can read is a list an attacker can enumerate,
+    // so the comparison below is the only place an email is ever
+    // checked, and it happens here.
+    //
+    // The document ID IS the email address. Firestore document IDs may
+    // contain '@' and '.', and the rules language can only reach a
+    // document by an exact path — it has no hashing function and no way
+    // to look a document up by a field — so the id that
+    // tools/bootstrap-access.mjs writes and the id built here have to be
+    // the same string. That tool percent-encodes each REST path segment,
+    // so an address travels fine. (An earlier version hashed the email
+    // on the way in, which made this lookup unsatisfiable and left the
+    // app refusing every account including the owner's.)
+    function allowedUserPath(email) {
+      return /databases/$(database)/documents/allowedUsers/$(email);
+    }
+
+    // The only email these rules will reason about is the one Firebase
+    // verified on the ID token. Signing in with Google is open to
+    // anybody, so a string a client merely *claims* proves nothing: the
+    // allowlist is looked up by `request.auth.token.email`, and the
+    // claimed `email` field must equal it or the proof is refused. That
+    // equality is load-bearing — without it, any signed-in account could
+    // name somebody else's address and inherit their role.
+    //
+    // The token's address is used verbatim, so the allowlist must hold
+    // the same bytes. tools/bootstrap-access.mjs lower-cases on the way
+    // in, and so does the client, which is what keeps the two equal.
+    function isAllowedEmail(email) {
+      return request.auth.token.email is string
+        && request.auth.token.email == email
+        && email.matches('^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$')
+        && exists(allowedUserPath(request.auth.token.email))
+        && get(allowedUserPath(request.auth.token.email)).data.email == request.auth.token.email;
+    }
+
+    // An allowlist entry bounds what its holder may ever prove. An
+    // `admin` entry may prove either scope — that is what lets the owner
+    // carry plain shop trust on one machine and later unlock the console
+    // from that same machine. A `shop` entry may only ever prove `shop`,
+    // so a shop user cannot ask for `admin` and be believed: the role in
+    // the allowlist decides, never the one in the request.
+    function roleAllows(role, scope) {
+      return role == 'admin' ? scope in ['shop', 'admin'] : scope == 'shop';
     }
 
     function enrollPath(uid) {
@@ -124,7 +165,7 @@ service cloud.firestore {
     }
 
     // The single gate in front of the ledger. Note this is NOT
-    // `request.auth != null`: signing in anonymously is free and open to
+    // `request.auth != null`: signing in with Google is free and open to
     // anyone, so a session proves nothing on its own.
     function trusted() {
       return signedIn() && isTrusted(request.auth.uid);
@@ -165,44 +206,46 @@ service cloud.firestore {
         && (after.active is bool);
     }
 
-    // The proof-of-code itself. The caller may only ever write a doc at
-    // their OWN uid, only once, and only carrying a hash that equals the
-    // server-held hash for the scope they asked for. A wrong code simply
-    // fails to match, so the write is denied and nothing is created.
+    // The proof-of-authorisation itself. The caller may only ever write
+    // a doc at their OWN uid, only once, and only carrying the email
+    // Firebase verified for that same account — which must exist in the
+    // allowlist, at a role that permits the scope being claimed. An
+    // unauthorised account, an account claiming somebody else's address,
+    // and a shop user claiming the admin scope all fail to match, so the
+    // write is denied and nothing is created.
     function validEnrollment(doc) {
-      return doc.keys().hasOnly(['scope', 'codeHash', 'createdAt', 'createdBy'])
+      return doc.keys().hasOnly(['scope', 'email', 'createdAt', 'createdBy'])
         && doc.scope in ['shop', 'admin']
-        && doc.codeHash is string
-        && doc.codeHash.matches('^[a-f0-9]{64}$')
+        && doc.email is string
+        && doc.email.matches('^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$')
         && doc.createdAt == request.time
         && doc.createdBy == request.auth.uid
-        && exists(secretPath(doc.scope))
-        && doc.codeHash == get(secretPath(doc.scope)).data.codeHash;
+        && isAllowedEmail(doc.email)
+        && roleAllows(get(allowedUserPath(request.auth.token.email)).data.role, doc.scope);
     }
 
-    // ---------------- The access codes ----------------
+    // ---------------- The allowlist ----------------
     // Closed to clients in both directions. Written once by
     // tools/bootstrap-access.mjs with the Admin SDK (which bypasses these
-    // rules) and rotated the same way. If this document is missing the
-    // shop cannot be enrolled — that is the intended fail-closed state,
+    // rules) and managed the same way. If this document is missing the
+    // user cannot be enrolled — that is the intended fail-closed state,
     // not a bug to work around.
-    match /securitySecrets/{scope} {
+    match /allowedUsers/{email} {
       allow read, write: if false;
     }
 
-    // ---------------- Proof of code ----------------
+    // ---------------- Proof of authorisation ----------------
     // Keyed by the caller's own uid, so two browsers cannot share (or
     // race for) one another's proof. The rule below is the server-side
-    // code check: the client hashes the typed code with SHA-256 and
-    // sends only that hash, which is accepted only if it equals the
-    // stored securitySecrets/{scope}.codeHash.
+    // allowlist check: the client sends their email, which is accepted
+    // only if it exists in allowedUsers.
     //
     // A browser with no ACTIVE grant may always (re)prove itself, so a
-    // revoked machine recovers by typing the code again instead of
+    // revoked machine recovers by signing in again instead of
     // having to clear its site data. A browser that is already trusted
     // cannot touch its own proof, so a stolen session cannot use this
     // path to escalate.
-    function canProveCode(uid) {
+    function canProveEmail(uid) {
       return signedIn()
         && request.auth.uid == uid
         && !isTrusted(uid)
@@ -212,9 +255,9 @@ service cloud.firestore {
     // The one way an ALREADY-trusted browser may touch its proof: replace
     // a shop proof with an ADMIN one, so this same device can unlock the
     // console (self-promotion below). It is strictly additive — an
-    // untrusted browser proves through canProveCode as before, a trusted
+    // untrusted browser proves through canProveEmail as before, a trusted
     // one can only ever move shop -> admin, and neither can write a shop
-    // proof this way, so nothing here can grant access the admin code
+    // proof this way, so nothing here can grant access the admin role
     // would not have granted anyway.
     function canAddAdminProof(uid) {
       return signedIn()
@@ -231,8 +274,8 @@ service cloud.firestore {
 
     match /enrollments/{uid} {
       allow read: if false;
-      allow create: if canProveCode(uid);
-      allow update: if canProveCode(uid) || canAddAdminProof(uid);
+      allow create: if canProveEmail(uid);
+      allow update: if canProveEmail(uid) || canAddAdminProof(uid);
       allow delete: if false;
     }
 
@@ -256,17 +299,17 @@ service cloud.firestore {
     // The registry the Developer console manages, and the only authority
     // the money rules above/below consult. Keyed by uid because that is
     // what `request.auth.uid` gives the rules; a cleared browser profile
-    // loses the uid and therefore needs the code again.
+    // loses the uid and therefore needs to sign in again.
     match /accessGrants/{uid} {
       // A browser can always read its OWN grant — that is how it learns
       // it has been revoked. Listing everyone is an admin capability.
       allow read: if signedIn()
         && (request.auth.uid == uid || isAdmin(request.auth.uid));
 
-      // Self-enrolment: proven code in, trust out. The role must equal
+      // Self-enrolment: proven email in, trust out. The role must equal
       // the scope that was proven, so a grant can never be richer than
-      // the code behind it — the admin code is the only thing that can
-      // ever mint an admin role.
+      // the allowlist entry behind it — the admin role is the only thing
+      // that can ever mint an admin grant.
       allow create: if signedIn()
         && request.auth.uid == uid
         && !exists(grantPath(uid))
@@ -296,7 +339,7 @@ service cloud.firestore {
         && get(enrollPath(uid)).data.scope == 'admin'
       ) || (
         // Reactivation: a browser that was revoked can come back on its
-        // own by proving the SHOP code again. The role and identity are
+        // own by proving the SHOP scope again. The role and identity are
         // pinned, so this restores shop access and nothing more — it can
         // never turn a demoted admin into an admin again (that would
         // need an ADMIN-scope proof via the branch above).
@@ -663,7 +706,7 @@ service cloud.firestore {
     }
 
     // ---------------- Services ----------------
-    // Any signed-in (code-gated) device may create, rename, re-price or
+    // Any signed-in (allowlist-gated) device may create, rename, re-price or
     // archive services. Deletion is never allowed, so "removal" means
     // setting active=false.
     match /services/{serviceId} {
@@ -719,7 +762,7 @@ service cloud.firestore {
     // ---------------- The shop record ----------------
     // Shop identity (name, phone, address). This used to be a Realtime
     // Database path, but RTDB rules cannot read a Firestore grant, so
-    // "auth != null" there meant *any* anonymous Firebase user could
+    // "auth != null" there meant *any* Google Firebase user could
     // rewrite the shop's details. Here it sits behind the same trusted()
     // gate as the money, with one document and no delete.
     match /shop/{docId} {

@@ -54,7 +54,7 @@ function initialsOf(name, email) {
 function renderUserChip(user) {
   const chip = document.getElementById("userChip");
   if (!chip) return;
-  const name = user.displayName || (user.isAnonymous ? "Shop user" : user.email || "User");
+  const name = user.displayName || user.email || "Shop user";
   chip.innerHTML =
     '<div class="user-chip">' +
     (user.photoURL
@@ -62,7 +62,7 @@ function renderUserChip(user) {
       : '<span class="user-avatar">' + escapeHtml(initialsOf(name, user.email)) + "</span>") +
     '<div class="user-meta">' +
     '<div class="user-name">' + escapeHtml(name) + "</div>" +
-    '<div class="user-sub">' + escapeHtml(user.email || "Signed in with shop code") + "</div>" +
+    '<div class="user-sub">' + escapeHtml(user.email || "Signed in with Google") + "</div>" +
     "</div>" +
     '<button class="user-logout" type="button" id="logoutBtn" aria-label="Sign out" title="Sign out">' +
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>' +
