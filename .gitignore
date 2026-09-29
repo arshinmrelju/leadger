@@ -8,6 +8,12 @@ firebase-debug.log
 .env.local
 .env.*.local
 
+# Firebase service-account keys (used by tools/bootstrap-access.mjs)
+sa.json
+service-account.json
+*-service-account.json
+*.serviceaccount.json
+
 # Node
 node_modules/
 

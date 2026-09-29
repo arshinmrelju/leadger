@@ -16,32 +16,34 @@ websites he already uses in other tabs.
 
 ## Current status
 
-**Admin console gate (v0.10.0).** `admin.html` is no longer part of the public
-app. The **Management → Admin** link is gone from the dashboard, the ledger and
-the history browser, and the console now needs a **second code** of its own:
+**Server-enforced access codes (v0.11.0).** The shop no longer ships with a
+hardcoded code. Access codes are created once by the shop owner using
+`tools/bootstrap-access.mjs`, stored as SHA-256 hashes in Firestore
+`securitySecrets/{shop,admin}`, and compared inside `firestore.rules` — so the
+code check happens on the server, not in page scripts.
 
-- The shop code (`settings/security`) still opens the ledger exactly as before.
-- The admin code (`settings/admin`, a separate secret, never readable by any
-  client) is what unlocks the console. Presenting it writes an admin-scope
-  `enrollments/{nonce}` proof, which the rules compare against
-  `settings/admin` server-side, and only a correct code can mint the
-  `admins/{uid}` grant that the console checks.
-- **Device management is admin-only now.** Revoking, restoring and removing a
-  browser is refused by the rules to any device without that grant — so the
-  shop code alone can never be used to lock the owner out of their own shop.
-  (Restoring *another* browser also works for the first time; previously only a
-  device's owner could flip its own `active` flag back.)
-- A grant is permanent for the browser that earned it: it survives reloads and
-  cache clears, and the console marks admin-capable browsers in the device
-  list. A browser can always drop its own grant, and any admin can drop
-  another's.
-- Sales, the service catalog, expenses and the day-close register are
-  unchanged — the employee still does all of that with the shop code alone.
+- **Two codes, two scopes.** The shop code opens the ledger. The admin code
+  unlocks the Developer console and can also mint an admin grant outright.
+  They are compared against different documents, so neither is accepted by the
+  other's path.
+- **Trust is a revocable grant.** A successful code entry writes an
+  `enrollments/{uid}` proof and mints an `accessGrants/{uid}` record. Every
+  money rule calls `trusted()`, which reads that grant — so revoking it takes
+  effect on the very next request without touching the session.
+- **The admin code is the owner credential.** A fresh browser presenting it
+  gets an admin grant directly. An already-trusted shop browser can upgrade
+  its own proof to admin scope, but only by presenting the admin code — the
+  shop code alone can never self-promote.
+- **Revoked browsers recover with the shop code.** Reactivation requires a
+  shop-scope proof, so a revoked admin comes back as shop, never as admin.
+- **The old RTDB trust paths are denied.** `settings/security`,
+  `settings/admin`, `enrollments`, `devices` and `admins` are all closed in
+  `database.rules.json`; their data can be deleted once the new rules are
+  live. See `DATABASE-RULES.md` for the full mapping.
 
-> **Deploy required:** `firebase deploy --only firestore,database`. The rules add
-> `settings/admin`, the `scope` field on enrollments, the `admins/{uid}`
-> collection and the admin gate on `devices`. Until those land, the console
-> unlock will be refused and device management will follow the old rules.
+> **First-time setup required:** run `node tools/bootstrap-access.mjs --key
+> <service-account.json>` to create the codes before anyone can log in. The
+> tool prints the codes; store them somewhere safe.
 
 **Daily ledger (v0.9.0).** `ledger.html` is the shop's day book. It opens on
 today's `Asia/Kolkata` business day and shows one row per sale — time,
@@ -118,6 +120,16 @@ received and are excluded).
 > `settings/security` documents are no longer used (denied by the rules) but
 > can stay in place. Every already enrolled browser re-verifies once with the
 > code after the trust-registry deploy.
+>
+> **v0.11.0** replaces all of that trust layer. The codes are no longer in the
+> bundle: they are created once by the owner via `tools/bootstrap-access.mjs`
+> and stored as SHA-256 hashes in Firestore `securitySecrets/{shop,admin}`,
+> which no client can read. A code entry writes `enrollments/{uid}` and mints
+> `accessGrants/{uid}`; every money rule calls `trusted()`, which reads that
+> grant. The `settings/security`, `settings/admin`, `enrollments`, `devices`
+> and `admins` RTDB paths are denied, and the service catalog and shop
+> settings moved to Firestore so the sale rules can verify them. **Codes must
+> be created before anyone can log in** — see [Access](#access).
 
 ## Project structure
 
@@ -158,7 +170,7 @@ received and are excluded).
 │   └── favicon.svg
 ├── firestore.rules       Firestore security rules — the money only
 ├── firestore.indexes.json
-├── database.rules.json   Realtime Database rules — settings, devices, catalog, expenses
+ ├── database.rules.json   Realtime Database rules — expenses only; old paths denied
 ├── firebase.json         Hosting + Firestore + Realtime Database deploy config
 ├── .env.example
 └── README.md
@@ -176,14 +188,17 @@ the Realtime Database:
 
 | Realtime Database path | Read | Write |
 |---|---|---|
-| `settings/general` | code-signed-in devices | auto-created on first use; any signed-in device may edit |
-| `settings/security` | **never readable or writable by clients** | seeded with the default code on first use; enrollment rules compare against it server-side |
-| `settings/admin` | **never readable or writable by clients** | seeded with the default admin code on first use; only an admin-scope enrollment may compare against it |
-| `enrollments/{nonce}` | denied | one-time proof-of-code, `scope: 'shop' \| 'admin'` (single use, owner-burn) during first-time device setup and console unlock |
-| `devices/{tokenHash}` | signed-in devices (list); unauthenticated GET **by unguessable hash id** (the auto-login gate) | enrollment creates; owner heartbeats/renames; **revoke/restore/remove require an admin grant** |
-| `admins/{uid}` | the device itself (`get`); list is admin-only | created only from an unused `scope: 'admin'` enrollment; never updated; deleted by an admin or by the device itself |
-| `services/{serviceId}` | code-signed-in devices | signed-in; `delete` always denied (archive via `active=false`) |
-| `expenses/{dateKey}/{expId}` | code-signed-in devices | **read-only in this build** — no client write path exists; populated by a trusted writer that bypasses rules |
+| `settings/general` | **denied** | **denied** — moved to Firestore `shop/general` |
+| `settings/security` | **denied** | **denied** — held the plaintext shop code; the hash is in Firestore `securitySecrets/shop` |
+| `settings/admin` | **denied** | **denied** — held the plaintext admin code; the hash is in Firestore `securitySecrets/admin` |
+| `enrollments/{uid}` | **denied** | **denied** — moved to Firestore `enrollments/{uid}` |
+| `devices/{tokenHash}` | **denied** | **denied** — the `tokenHash` registry is dead; trust is `accessGrants/{uid}` |
+| `admins/{uid}` | **denied** | **denied** — there is no separate admin collection; it is `accessGrants/{uid}.role` |
+| `expenses/{dateKey}/{expId}` | any signed-in user | **denied** — see `DATABASE-RULES.md` for why this is the one gap |
+
+The old paths are denied rather than deleted so a stale deploy fails closed.
+Their data can be removed once the shop has been running on the new model
+for a while.
 
 The money is in Firestore, and it is the only thing there:
 
@@ -216,16 +231,17 @@ Two things follow from that, and both are deliberate:
   rows are folded instead, so the numbers on screen are never worse than
   they were before the day was given a head.
 
-**Realtime Database holds everything the money does not need to sit next
-to** — shop settings, the device registry, the service catalog and
-expenses. The paths and their rules are in `database.rules.json`; the
-Firestore equivalent is gone entirely.
+**Realtime Database holds only expenses.** Shop settings, the service
+catalog, the access codes and the trust registry all moved to Cloud
+Firestore, next to the money, because Firestore rules can read a document
+(`accessGrants/{uid}`) while Realtime Database rules cannot — a rule
+language that cannot see the trust record cannot enforce it. The RTDB paths
+for the old model are kept denied on purpose; see `DATABASE-RULES.md`.
 
-One consequence worth knowing: the catalog is on the other database, and
-Firestore rules cannot read across. A sale therefore stores `serviceId`
-**plus a snapshot** of the `serviceName` it was sold under, and the rules
-only prove that name is a sane string. The client is what refuses to sell
-an archived service.
+One consequence worth knowing: the catalog is in Firestore alongside the
+transactions, so the sale rules verify via `get()` that the `serviceId`
+exists, is active, and matches the `serviceName` the client sent. A sale
+cannot be booked against a service that has been deleted or deactivated.
 
 A transaction document: `txnId`, `serviceId`, `serviceName` (snapshot),
 `quantity`, `rate` (paise/unit), `total` (`quantity * rate` — re-verified
@@ -355,69 +371,70 @@ firebase deploy --only database      # Realtime Database rules
 
 ## Access
 
-The whole shop opens with one shared code: **`TRUSTX`** (case-insensitive,
-no spaces — `trustx` works). It is the code seeded into
-`settings/security` on first use; Firestore rules compare an enrollment
-attempt against it, so approval happens on the server, not in page scripts.
+### First-time setup (one-time, by the shop owner)
 
-The Developer console has its own second code: **`TRUSTXADMIN`**, seeded into
-`settings/admin`. It is never accepted by the shop sign-in, and the shop code is
-never accepted by the console — they are compared against different documents.
+The app ships with **no codes**. Before anyone can log in, create them:
 
-**How it works:**
+```bash
+node tools/bootstrap-access.mjs --key <service-account.json>
+```
 
-1. **First visit (`login.html`):** enter the code. The app signs in
-   anonymously (a real Firebase session) and writes a one-time
-   `enrollments/{nonce}` proof-of-code with `scope: 'shop'`. The rules only
-   accept it if the submitted code equals the code stored in
-   `settings/security`. It then creates an **active** `devices/{tokenHash}` doc
-   — where `tokenHash` is the SHA-256 of a fresh 256-bit random token kept
-   **only in the browser's IndexedDB** (never in localStorage, URLs, or the
-   network) — and burns the enrollment.
-2. **Later visits (`index.html`):** the trust gate hashes the stored token
-   and reads `devices/<hash>` **before any session exists** (the id itself
-   is the proof — it is unguessable). If the doc exists and is `active`, the
-   app signs in automatically and you land on the dashboard. No code typed.
-3. **Revoked or removed browsers** land on `login.html` and must enter the
-   code again; re-verification issues a brand-new token. `/transactions`,
-   `/dashboard`, `/ledger` and `/admin` are trust-gated too, so a revoked
-   session is redirected even if the browser kept an old anonymous session.
-4. **Unlocking the console (`/admin`):** the console is not linked from the
-   navigation, so you open it by typing the path. It asks for the **admin
-   code**, writes a `scope: 'admin'` enrollment, and on success mints an
-   `admins/{uid}` grant. That grant is what `isAdmin()` checks in the rules,
-   and it is remembered for this browser from then on.
-5. **Managing devices:** the Developer console → **Trusted devices** can
-   revoke / restore / remove any browser. Those three actions require the
-   admin grant, which is the "what if the shop code leaks?" valve: an admin
-   revokes everything, then re-verifies on the trusted computer. Without the
-   admin code, a stolen shop code cannot lock the owner out.
+The tool generates two strong codes (or accepts `--shop`/`--admin` to set
+your own), writes their SHA-256 hashes to Firestore
+`securitySecrets/{shop,admin}`, and prints them. **Store them somewhere
+safe** — they are never readable again, and losing them means rotating with
+`--rotate`.
+
+Other commands:
+
+```bash
+node tools/bootstrap-access.mjs --key <sa.json> --list          # which codes are set
+node tools/bootstrap-access.mjs --key <sa.json> --rotate        # replace existing codes
+node tools/bootstrap-access.mjs --key <sa.json> --list-grants   # who has access
+node tools/bootstrap-access.mjs --key <sa.json> --revoke <uid>  # lock a browser out
+```
+
+### How it works
+
+1. **First visit (`login.html`):** enter the shop code. The app signs in
+   anonymously, hashes the code with SHA-256, and writes a one-time
+   `enrollments/{uid}` proof with `scope: 'shop'`. The rules compare the hash
+   against `securitySecrets/shop` — the code itself never leaves the browser
+   except as a hash, and the stored hash is unreadable by any client.
+2. **On success:** the rules mint an **active** `accessGrants/{uid}` record.
+   Every money rule calls `trusted()`, which reads that grant, so access is
+   decided by the server on every request.
+3. **Later visits:** the browser keeps its anonymous session. If the grant is
+   still active, the app signs in automatically and lands on the dashboard.
+   No code typed.
+4. **Revoked or removed browsers** land on `login.html` and must enter the
+   shop code again. Reactivation requires a shop-scope proof, so a revoked
+   admin comes back as shop, never as admin.
+5. **Unlocking the console (`/admin`):** the console is not linked from the
+   navigation. It asks for the **admin code**, writes a `scope: 'admin'`
+   enrollment, and on success mints an `accessGrants/{uid}` grant with
+   `role: 'admin'`. That grant is what `isAdmin()` checks in the rules.
+6. **Managing browsers:** the Developer console → **Trusted browsers** can
+   revoke / restore / remove any browser. Those actions require the admin
+   grant, which is the "what if the shop code leaks?" valve: an admin
+   revokes everything, then re-verifies on the trusted computer.
 
 - **No accounts, no members.** Everyone who proves the shop code gets full
   access to the *ledger*; the only capability split is the Developer console's
-  admin grant. `members/` and `pendingMembers/` from earlier builds are gone;
-  old data in those paths is unreachable.
+  admin grant.
 - **Honest trade-offs:** the shared code is see-and-share (anyone who gets it
-  can enroll a device and record sales), and a device credential is only as
-  safe as the browser profile holding it. The codes are never stored or
-  transmitted in plaintext in the app source past the default seed;
-  brute-forcing enrollment is limited by single-use nonces and short-lived
-  anonymous sessions, and hardened further with Firebase **App Check**
-  (recommended for production). Keep the codes private among the people who
-  use the shop.
-- **Sign out** returns to the login screen. Because the browser stays a
-  trusted device, it signs back in automatically — to stop that on a given
-  computer, revoke it from the Developer console (or clear the site data).
-- **Known limitation — the admin gate is client-side.** `ADMIN_CODE` is a
-  default seed that ships inside `js/auth.js`, so it is readable by anyone
-  who opens DevTools on the deployed site. The rules do the real work
-  (a grant still requires an unused `scope: 'admin'` enrollment, and it is
-  bound to a device the owner can see and revoke), but **treat the admin
-  code as discoverable**: it is a convenience gate, not a secret. Closing
-  this properly means moving the comparison server-side — a Cloud Function,
-  or an App Check–backed callable — and redeploying, which is out of scope
-  for the current build. Firebase **App Check** is the cheapest real
-  improvement and is worth enabling for production.
+  can enroll a browser and record sales). The codes are never stored or
+  transmitted in plaintext in the app source. Brute-forcing enrollment is
+  limited by the hash comparison happening server-side, and hardened further
+  with Firebase **App Check** (recommended for production). Keep the codes
+  private among the people who use the shop.
+- **Sign out** returns to the login screen. Because the browser stays
+  trusted, it signs back in automatically — to stop that on a given computer,
+  revoke it from the Developer console (or clear the site data).
+- **Known limitation — no App Check yet.** Without it, the code check is
+  server-side but still reachable by anyone who knows the endpoint. Enabling
+  App Check is the cheapest real improvement and is worth doing for
+  production.
 
 ## Tests
 
@@ -512,20 +529,18 @@ hardening pass.
   `renderAdminPage(ctx)` — renders the admin-code unlock card when
   `ctx.isAdmin` is false, otherwise service maintenance, the trust registry and
   the all-data browser.
-- Sign-in and trusted devices live in `js/auth.js`:
-  `SHOP_CODE` / `ADMIN_CODE` (the seeded defaults), `signInAnonymous()`,
-  `ensureShopRecord()` (silently creates `settings/general` and seeds
-  `settings/security` + `settings/admin` on first use), `getGeneral()`,
-  `enrollDevice({ label })` (server-verified, stores the credential),
-  `checkTrustedDevice()` (capability read of `devices/<hash>`),
-  `listTrustedDevices()`, `revokeDevice/restoreDevice/removeDevice`,
-  `updateDeviceLastUsed(hash)`, `generateDeviceToken()`, plus the
-  IndexedDB helpers (`loadDeviceCredential`, `saveDeviceCredential`)
-  and `canStoreDeviceCredential()`.
+- Sign-in and the trust gate live in `js/auth.js`:
+  `signInAnonymous()`, `enrollBrowser({ label })` (hashes the typed code and
+  writes the `enrollments/{uid}` proof), `getAccessGrant()`,
+  `touchAccessGrant()`, `requireAccess()` (the protected-page gate),
+  `listAccessGrants()`, `revokeGrant/restoreGrant/removeGrant`,
+  `grantAdminAccess()`, `hashAccessCode()`, `normalizeCode()`,
+  `ensureShopRecord()` (creates Firestore `shop/general` on first trusted
+  load) and `getGeneral()`.
 - The console gate lives in `js/auth.js` too:
   `checkAdminAccess()` (is this browser an admin?), `grantAdminAccess(code)`
-  (exchange the admin code for an `admins/{uid}` grant) and
-  `listAdminGrants()` (which browsers are admins).
+  (exchange the admin code for an `accessGrants/{uid}` admin grant) and
+  `listAccessGrants()` (the trust registry).
 - Ledger data lives in `js/ledger.js`:
   `fetchTodaySummary(dateKey?)`, `fetchServices({ includeInactive })`,
   `createTransaction({ serviceId, serviceName, quantity, rate, paymentMethod,
@@ -555,24 +570,23 @@ hardening pass.
 - **"Firebase is not configured yet."** — Replace the `YOUR_*` values in
   `js/firebase.js` (see *Connect Firebase* above).
 - **"That code is not recognised."** — the code you typed doesn't match the
-  code stored in the Realtime Database at `settings/security`. The default seed
-  is `TRUSTX`; it can only be changed from the Firebase console (Realtime
-  Database → `settings` → `security`) or by re-seeding — there is intentionally
-  no in-app setter. The admin code works the same way at `settings/admin`,
-  seeded `TRUSTXADMIN`.
+  hash stored in Firestore `securitySecrets/shop`. If this shop has never
+  been set up, **no codes exist yet**: create them with
+  `node tools/bootstrap-access.mjs --key <service-account.json>` and use the
+  shop code it prints. The old `TRUSTX` / `TRUSTXADMIN` seeds are gone — they
+  were readable in the shipped bundle, which is why they were removed.
 - **"That admin code is not recognised" / the console stays on the unlock
-  card** — either the code is wrong, or `firebase deploy --only database` has
-  not shipped the v0.10.0 rules yet (`settings/admin` missing, `admins/**`
-  denied).
+  card** — either the code is wrong, or the codes have not been created yet
+  (see above). The admin code is compared against `securitySecrets/admin`,
+  a different document from the shop code, so the shop code will not work here.
 - **"Realtime Database is not reachable."** — `databaseURL` in `js/firebase.js`
   is wrong, or the database has never been created for the project. The ledger
-  still records sales (they are Firestore), but the login gate, quick services,
-  expenses and the console are unavailable until it points at the right
-  database.
+  still records sales (they are Firestore), but expenses are unavailable until
+  it points at the right database.
 - **"The ledger rejected that request" on revoke / restore / remove** — those
   three actions need an admin grant. Unlock the console in a browser that has
-  one, or create `admins/{uid}` by hand in the Firebase console (uid = the
-  browser's anonymous sign-in uid).
+  one, or mint one with
+  `node tools/bootstrap-access.mjs --key <sa.json> --grant <uid> --role admin`.
 - **`auth/configuration-not-found`** — the Firebase project behind your web
   API key isn't available to the browser SDK. Confirm the key in
   `js/firebase.js` is the real Web API key for your project, the right
