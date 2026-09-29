@@ -429,10 +429,18 @@ service cloud.firestore {
         && t.amounts.due is int
         && t.amounts.collected is int
         && t.amounts.cash + t.amounts.upi + t.amounts.card + t.amounts.due == t.total
-        && (t.amounts.cash > 0) == (t.paymentMethod == 'cash')
-        && (t.amounts.upi > 0) == (t.paymentMethod == 'upi')
-        && (t.amounts.card > 0) == (t.paymentMethod == 'card')
-        && (t.amounts.due > 0) == (t.paymentMethod == 'due')
+        && (
+            (t.total == 0
+              && t.amounts.cash == 0
+              && t.amounts.upi == 0
+              && t.amounts.card == 0
+              && t.amounts.due == 0)
+            || (t.total > 0
+              && (t.amounts.cash > 0) == (t.paymentMethod == 'cash')
+              && (t.amounts.upi > 0) == (t.paymentMethod == 'upi')
+              && (t.amounts.card > 0) == (t.paymentMethod == 'card')
+              && (t.amounts.due > 0) == (t.paymentMethod == 'due'))
+          )
         && t.amounts.collected == t.total - t.amounts.due;
     }
 

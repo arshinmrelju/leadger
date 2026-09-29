@@ -88,8 +88,37 @@ function toAuthError(fbErr) {
   }
 }
 
-/** Convert any thrown error into a safe, human-readable message string. */
-export function reportError(err) {
+/* A permission denial is the one error the client genuinely cannot
+   explain. Firestore evaluates the rules and answers "denied" without
+   naming the clause that failed, so nothing here can recover the real
+   cause — and the previous wording made that worse by naming a cause
+   that is almost never the one. Telling a shop owner to redeploy the
+   rules sends them off to check the deployment while the actual fault
+   sits in the shop's own data: a closed business day, or a service that
+   was archived or renamed. So the message stops guessing and points at
+   the two checks that actually decide it, plus the console.
+
+   Never rewrite these to blame the deployment again without checking
+   `firebase deploy --only firestore:rules` first — it prints "already up
+   to date" when the live rules already match the repo, which is the
+   common case and makes the old advice a dead end. */
+const PERMISSION_DENIED = {
+  generic:
+    "The ledger refused that change. Open the browser console (F12) for the details.",
+  sale:
+    "The ledger refused the sale. Either this business day is closed, or the service has been archived or renamed. Open the browser console (F12) for the details.",
+};
+
+/**
+ * Convert any thrown error into a safe, human-readable message string.
+ *
+ * @param {*} err
+ * @param {object}  [opts]
+ * @param {string}  [opts.action] a key from PERMISSION_DENIED naming what
+ *         was attempted ("sale"), so a refusal can point at the checks
+ *         that actually apply to it.
+ */
+export function reportError(err, { action = "generic" } = {}) {
   if (err instanceof AuthError) return err.message;
   if (err && typeof err.message === "string") {
     if (/^auth\//.test(err.message)) return toAuthError(err).message;
@@ -98,7 +127,7 @@ export function reportError(err) {
        Firestore says permission-denied, Realtime Database says
        PERMISSION_DENIED, and both mean the same thing here. */
     if (isPermissionDenied(err)) {
-      return "The ledger rejected that request. Make sure the latest rules are deployed, then try again.";
+      return PERMISSION_DENIED[action] || PERMISSION_DENIED.generic;
     }
     return err.message;
   }

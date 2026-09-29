@@ -537,8 +537,14 @@ export async function countDayTransactions(dateKey) {
  * never fetched rejects while the client is offline, and the ledger
  * must stay readable offline — so a failed read reports "open" rather
  * than taking the page down. That cannot let a stale write through: the
- * rules re-check the head's state on the server and refuse the write,
- * which the page surfaces as a friendly message.
+ * rules re-check the head's state on the server and refuse the write.
+ *
+ * That refusal is why this is read at all. Firestore reports a denied
+ * write only as "permission-denied", never naming the clause, so a
+ * client that never asks cannot tell a closed day from a missing grant
+ * — both arrive as the same opaque error. The sale form calls this
+ * immediately before writing (see js/sale-form.js onSave) to turn the
+ * one case the shop can actually fix into a sentence that says so.
  */
 export async function fetchDayState(dateKey) {
   if (!isValidDateKey(dateKey)) return { dateKey, closed: false };
@@ -634,15 +640,13 @@ export async function createTransaction({
   const batch = fs.writeBatch(b.db);
   batch.set(txnRef(fs, b.db, dateKey, txnId), doc);
   batch.update(ref, {
-    counters: fs.increment({
-      txnCount: 1,
-      grossPaise: amounts.gross,
-      cashPaise: amounts.cash,
-      upiPaise: amounts.upi,
-      cardPaise: amounts.card,
-      duePaise: amounts.due,
-      collectedPaise: amounts.collected,
-    }),
+    "counters.txnCount": fs.increment(1),
+    "counters.grossPaise": fs.increment(amounts.gross),
+    "counters.cashPaise": fs.increment(amounts.cash),
+    "counters.upiPaise": fs.increment(amounts.upi),
+    "counters.cardPaise": fs.increment(amounts.card),
+    "counters.duePaise": fs.increment(amounts.due),
+    "counters.collectedPaise": fs.increment(amounts.collected),
     updatedAt: now,
     updatedBy: user.uid,
   });
@@ -917,15 +921,13 @@ export async function updateTransaction(txnId, dateKey, patch = {}) {
   const batch = fs.writeBatch(b.db);
   batch.update(ref, next);
   batch.update(head, {
-    counters: fs.increment({
-      txnCount: 0,
-      grossPaise: amounts.gross - prevAmounts.gross,
-      cashPaise: amounts.cash - prevAmounts.cash,
-      upiPaise: amounts.upi - prevAmounts.upi,
-      cardPaise: amounts.card - prevAmounts.card,
-      duePaise: amounts.due - prevAmounts.due,
-      collectedPaise: amounts.collected - prevAmounts.collected,
-    }),
+    "counters.txnCount": fs.increment(0),
+    "counters.grossPaise": fs.increment(amounts.gross - prevAmounts.gross),
+    "counters.cashPaise": fs.increment(amounts.cash - prevAmounts.cash),
+    "counters.upiPaise": fs.increment(amounts.upi - prevAmounts.upi),
+    "counters.cardPaise": fs.increment(amounts.card - prevAmounts.card),
+    "counters.duePaise": fs.increment(amounts.due - prevAmounts.due),
+    "counters.collectedPaise": fs.increment(amounts.collected - prevAmounts.collected),
     updatedAt: now,
     updatedBy: user.uid,
   });
@@ -990,15 +992,13 @@ export async function deleteTransaction(txnId, dateKey) {
   const batch = fs.writeBatch(b.db);
   batch.delete(ref);
   batch.update(headRef(fs, b.db, dateKey), {
-    counters: fs.increment({
-      txnCount: -1,
-      grossPaise: -amounts.gross,
-      cashPaise: -amounts.cash,
-      upiPaise: -amounts.upi,
-      cardPaise: -amounts.card,
-      duePaise: -amounts.due,
-      collectedPaise: -amounts.collected,
-    }),
+    "counters.txnCount": fs.increment(-1),
+    "counters.grossPaise": fs.increment(-amounts.gross),
+    "counters.cashPaise": fs.increment(-amounts.cash),
+    "counters.upiPaise": fs.increment(-amounts.upi),
+    "counters.cardPaise": fs.increment(-amounts.card),
+    "counters.duePaise": fs.increment(-amounts.due),
+    "counters.collectedPaise": fs.increment(-amounts.collected),
     updatedAt: fs.serverTimestamp(),
     updatedBy: user.uid,
   });

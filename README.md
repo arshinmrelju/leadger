@@ -618,7 +618,18 @@ hardening pass.
   is wrong, or the database has never been created for the project. The ledger
   still records sales (they are Firestore), but expenses are unavailable until
   it points at the right database.
-- **"The ledger rejected that request" on revoke / restore / remove** — those
+- **"The ledger refused that sale"** — the rules denied the write and
+  Firestore does not say which clause failed, so check the two things that
+  actually cause it, in this order:
+  1. **The business day is closed.** Look at `dayHeads/{today's dateKey}`
+     in Firestore; if `state` is `closed`, no sale can be recorded against
+     it. The sale form now says so outright instead of failing.
+  2. **The service was archived or renamed.** A sale must name a service
+     that exists, is `active: true`, and whose `name` matches the document
+     on disk exactly (see `validTransactionDoc` in `firestore.rules`).
+     Rename it in the Developer console and the stale name in the picker
+     is refused.
+- **"The ledger refused that change" on revoke / restore / remove** — those
   three actions need an admin grant. Sign in with an admin Google account,
   or mint one with
   `node tools/bootstrap-access.mjs --key <sa.json> --grant <uid> --role admin`.

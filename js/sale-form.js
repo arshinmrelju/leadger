@@ -27,6 +27,7 @@ import {
   fetchServices,
   createService,
   createTransaction,
+  fetchDayState,
   flushPendingWrites,
   isNetworkError,
 } from "./ledger.js";
@@ -441,6 +442,27 @@ async function onSave(event) {
   const btn = overlay.querySelector("#saveBtn");
   setLoading(btn, true);
   try {
+    const dateKey = todayKolkata();
+
+    /* The rules refuse a sale against a closed day (dayOpen in
+       firestore.rules), and they answer only "denied" — never which
+       clause failed. So the day is re-read here, immediately before the
+       write, rather than trusting whatever the page showed when this
+       dialog opened: another device on the counter can close the day
+       while the form is open. Without this the shop fills in a whole
+       sale and is told the rules are out of date, which is both wrong
+       and unactionable.
+
+       fetchDayState fails OPEN (an unreadable day reads as open), so a
+       dropped connection can never stop the counter recording a sale —
+       the server stays the authority, this is only here to turn a
+       predictable refusal into a sentence the shop can act on. */
+    const day = await fetchDayState(dateKey);
+    if (day.closed) {
+      showFormMsg("This business day is closed, so a sale cannot be recorded against it. Reopen the day in the Developer console, or record it against an open day.");
+      return;
+    }
+
     const result = await createTransaction({
       serviceId: selectedService.serviceId,
       serviceName: selectedService.name,
@@ -448,7 +470,7 @@ async function onSave(event) {
       rate: ratePaise / 100, // paise -> rupees input for createTransaction
       paymentMethod,
       customerName: customer,
-      dateKey: todayKolkata(),
+      dateKey,
     });
 
     if (navigator.onLine) {
@@ -464,7 +486,9 @@ async function onSave(event) {
   } catch (err) {
     console.error("[trustx-ledger] save:", err);
     showFormMsg(
-      isNetworkError(err) ? "Could not save right now. Check your connection and try again." : reportError(err)
+      isNetworkError(err)
+        ? "Could not save right now. Check your connection and try again."
+        : reportError(err, { action: "sale" })
     );
   } finally {
     saving = false;
