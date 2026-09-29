@@ -546,12 +546,17 @@
 
       const scopeText = scope === "day" ? formatDateKey(dateKey) : "all time";
       const capped = rows.length >= LIMIT;
+      /* The all-time read walks day by day (a collection-group query is
+         refused by firestore.rules), so it can also run out of days. Say
+         which end of the ledger this list actually reaches. */
+      const dayCapped = scope === "all" && rows.dayCapped;
       footer.innerHTML =
         "<strong>" +
         (filtered.length === 1 ? "1 transaction" : filtered.length + " transactions") +
         "</strong> &middot; " +
         scopeText +
-        (capped ? " &middot; showing the " + LIMIT + " most recent" : "");
+        (capped ? " &middot; showing the " + LIMIT + " most recent" : "") +
+        (dayCapped && !capped ? " &middot; the last " + rows.dayCap + " days" : "");
     }
 
     /* =========================================================

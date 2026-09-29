@@ -286,6 +286,35 @@ async function expectRead(name, path, shouldPass, uid) {
   }
 }
 
+/**
+ * Run a real query against the emulator as `uid`. The rules harness only
+ * ever did document reads, so the history page's query shape - the one
+ * thing the page cannot work without - went untested until it was denied
+ * in production and the cause was the catch-all rule at the bottom of
+ * firestore.rules. A group query over "transactions" is still denied, and
+ * that denial is the point of the next case: it is why js/ledger.js reads
+ * the history day by day instead.
+ */
+async function expectQuery(name, structuredQuery, shouldPass, uid) {
+  const headers = uid ? { "Content-Type": "application/json", Authorization: `Bearer ${fakeJwt(uid)}` } : { "Content-Type": "application/json" };
+  const res = await fetch(`http://127.0.0.1:${PORT}/v1/${DOCS}:runQuery`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ structuredQuery }),
+  });
+  if ((res.ok) === shouldPass) {
+    pass++;
+    console.log(`  ok   ${name}`);
+  } else {
+    fail++;
+    failures.push(name);
+    const why = (await res.text()).replace(/\s+/g, " ").slice(0, 120);
+    console.log(`  FAIL ${name} -> expected ${shouldPass ? "allowed" : "denied"}, got ${res.ok ? "allowed" : "denied"} ${why}`);
+  }
+}
+
+const byCreatedDesc = [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }];
+
 /* The allowlist entries cannot be written by any client, so they are
    planted as the project owner — the emulator's "Bearer owner" is exactly
    the privilege tools/bootstrap-access.mjs uses in production. */
@@ -552,6 +581,25 @@ async function run() {
   await expectSale('refuse a due sale that claims to be already collected ("t7")', { method: "due", status: "pending", amountsOverride: amounts(5000, "cash") }, false);
   await expectSale('refuse a sale whose total is not quantity x rate ("t8")', { quantity: 2, rate: 3000, total: 5000 }, false);
   await expectSale('accept a multi-unit sale priced consistently ("t9")', { quantity: 2, rate: 2500, total: 5000 }, true);
+
+  console.log("\nthe queries the history page actually runs:");
+  /* The history page walks the day heads newest-first and then reads one
+     day's sales. The day-heads query is checked here; the per-day read is
+     the same query the daily ledger already runs for the open day, and
+     the emulator's REST runQuery cannot express a subcollection at all. */
+  await expectQuery("a trusted browser can list the day heads it walks",
+    { from: [{ collectionId: "dayHeads" }], orderBy: [{ field: { fieldPath: "dateKey" }, direction: "DESCENDING" }], limit: 60 }, true, UID);
+  await expectQuery("an outsider cannot list the day heads",
+    { from: [{ collectionId: "dayHeads" }], orderBy: [{ field: { fieldPath: "dateKey" }, direction: "DESCENDING" }], limit: 60 }, false, OUTSIDER);
+  /* Documented here so the denial is not rediscovered as a bug: the
+     catch-all `match /{document=**}` denies the root-level
+     `transactions` collection, a group query spans that path too, and
+     Firestore refuses any query it cannot prove safe. This is why
+     js/ledger.js serves the all-time history day by day. */
+  await expectQuery("refuse a collection-group query over transactions (the catch-all denies it, by design)",
+    { from: [{ collectionId: "transactions", allDescendants: true }], orderBy: byCreatedDesc, limit: 200 }, false, UID);
+  await expectQuery("refuse an anonymous collection-group query over transactions",
+    { from: [{ collectionId: "transactions", allDescendants: true }], orderBy: byCreatedDesc, limit: 200 }, false, null);
 
   console.log("\nthe service catalog is not a suggestion:");
   /* A serviceId that does not exist used to raise an evaluation error

@@ -412,35 +412,66 @@ async function ensureDayHead(dateKey, fs, db, uid_) {
 
 /**
  * Read transactions for the all-data browser. With a `dateKey`, reads
- * that day's subcollection; without one, a collection-group query
- * reaches every day's sales at once, newest first.
+ * that day's subcollection; without one, the history page is served by
+ * walking the day heads newest-first and reading the days it needs.
+ *
+ * The all-time read is deliberately NOT one collection-group query.
+ * A `transactions` group query spans every `transactions` collection in
+ * the database, including the root-level path, and that path lands on
+ * the catch-all `allow read, write: if false` in `firestore.rules`.
+ * Firestore refuses a query it cannot prove safe, so the whole history
+ * page failed with permission-denied no matter how trusted the user
+ * was. Day-by-day reads are single-collection, which the rules allow,
+ * and they need no composite index either.
  */
+
+/** Days walked by one all-time read. The walk stops early as soon as it
+ *  has `limit` rows, so this only bites on a shop that is both older
+ *  than this and quieter than `limit` sales inside it; the history page
+ *  says so in its footer rather than passing the list off as "all time". */
+const HISTORY_DAY_CAP = 120;
+
 export async function fetchTransactions({ dateKey = null, limit = 200 } = {}) {
   const b = await bridge();
   const fs = b.firestore;
-  /* Both branches order by documentId as the tiebreak, not just by
-     createdAt. Firestore appends __name__ ASCENDING to any orderBy it is
-     not given explicitly, and the indexes declare it DESCENDING so the
-     cursor pagination in fetchDayPage and this list cannot swap rows as
-     the page changes. */
-  const snap = dateKey
-    ? await fs.getDocs(
-        fs.query(
-          dayTxnsRef(fs, b.db, dateKey),
-          fs.orderBy("createdAt", "desc"),
-          fs.orderBy(fs.documentId(), "desc"),
-          fs.limit(limit)
-        )
-      )
-    : await fs.getDocs(
-        fs.query(
-          fs.collectionGroup(b.db, "transactions"),
-          fs.orderBy("createdAt", "desc"),
-          fs.orderBy(fs.documentId(), "desc"),
-          fs.limit(limit)
-        )
-      );
-  return snap.docs.map((d) => normalizeTxn(d.id, d.data()));
+  /* Order by documentId as the tiebreak, not just by createdAt.
+     Firestore appends __name__ ASCENDING to any orderBy it is not given
+     explicitly, so stating it DESCENDING here is what keeps the cursor
+     pagination in fetchDayPage and this list from swapping rows as the
+     page changes. */
+  const newestFirst = [
+    fs.orderBy("createdAt", "desc"),
+    fs.orderBy(fs.documentId(), "desc"),
+  ];
+
+  if (dateKey) {
+    const snap = await fs.getDocs(fs.query(dayTxnsRef(fs, b.db, dateKey), ...newestFirst, fs.limit(limit)));
+    return snap.docs.map((d) => normalizeTxn(d.id, d.data()));
+  }
+
+  /* The rules make every day head carry `dateKey` equal to its own
+     document id (see validHeadCreate), so ordering by that field reaches
+     the newest days with no head silently left out of the walk. */
+  const heads = await fs.getDocs(
+    fs.query(fs.collection(b.db, "dayHeads"), fs.orderBy("dateKey", "desc"), fs.limit(HISTORY_DAY_CAP + 1))
+  );
+  /* One more than the cap is asked for so a truncated walk is detectable
+     rather than silent; the page turns this into a footer note. */
+  const dayCapped = heads.docs.length > HISTORY_DAY_CAP;
+
+  const rows = [];
+  for (const head of heads.docs.slice(0, HISTORY_DAY_CAP)) {
+    if (rows.length >= limit) break;
+    /* Days are visited newest first and each day is read newest first,
+       so concatenating them is already the global order the page wants. */
+    const snap = await fs.getDocs(
+      fs.query(dayTxnsRef(fs, b.db, head.id), ...newestFirst, fs.limit(limit - rows.length))
+    );
+    for (const doc of snap.docs) rows.push(normalizeTxn(doc.id, doc.data()));
+  }
+  rows.dayCapped = dayCapped;
+  rows.dayCap = HISTORY_DAY_CAP;
+  return rows;
 }
 
 /* ------------------------------------------------------------------
