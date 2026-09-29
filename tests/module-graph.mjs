@@ -147,6 +147,51 @@ test("the day layer and the data layer agree on the date-key source", () => {
 });
 
 /* =========================================================
+   Modal-visibility guard.
+
+   css/style.css holds `.modal-overlay` at `visibility: hidden` and only
+   reveals it on `.modal-overlay.is-open`, and `openModal()` is what adds
+   that class. So a dynamically built overlay that is merely appended to
+   the page is present, sized, and completely unclickable.
+
+   That is invisible to every other check here, and it failed silently
+   in the worst possible way: the shared `confirm()` in js/app.js did
+   exactly that, so all eight confirmation dialogs in the app - delete
+   a sale, mark a due paid, and all five in js/admin.js - opened as
+   nothing at all. The caller's promise never settled, so the write it
+   was guarding never ran, and a Delete button produced no dialog, no
+   error, and no sale deleted.
+
+   The test is scoped to `confirm()`'s own body on purpose. A file-level
+   check would pass either way: js/app.js is where `openModal` is
+   defined, so the name is present in the file regardless of whether
+   `confirm` calls it. Body-scoped, it pins the actual contract.
+   ========================================================= */
+
+test("the shared confirm() opens its overlay, so it is actually visible", () => {
+  const src = fs.readFileSync(path.join(ROOT, "js", "app.js"), "utf8");
+  const start = src.indexOf("export function confirm(");
+  assert.notEqual(start, -1, "js/app.js should still export confirm()");
+
+  /* Up to the next top-level export, or the end of the file. */
+  const rest = src.slice(start + 1);
+  const nextExport = rest.search(/\nexport\s/);
+  const body = nextExport === -1 ? rest : rest.slice(0, nextExport);
+
+  assert.match(
+    body,
+    /openModal\(\s*\w+\s*\)/,
+    "confirm() must open its overlay through openModal(); appending it alone leaves it " +
+      "visibility:hidden, so the dialog never appears and the guarded write never happens",
+  );
+  assert.doesNotMatch(
+    body,
+    /openOverlays\.push\(/,
+    "confirm() should let openModal() track the overlay in openOverlays, not push it directly",
+  );
+});
+
+/* =========================================================
    Dead-export guard (the mirror image of the check above).
 
    An export nothing imports is the cheapest kind of rot in a bundled-

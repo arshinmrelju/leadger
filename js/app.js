@@ -116,7 +116,15 @@ export function confirm({
         </div>
       </div>`;
     document.body.appendChild(overlay);
-    openOverlays.push(overlay);
+    /* Must go through openModal, not a bare push: css/style.css keeps
+       `.modal-overlay` at `visibility: hidden` until `is-open` is set,
+       so an overlay that is only appended sits in the page invisibly
+       and cannot be clicked. The promise then never settles and the
+       caller's write never happens - a delete button that does nothing
+       at all, with no error to show for it. openModal also focuses the
+       first focusable, which here is Cancel - the right default for a
+       confirm that can destroy a sale. */
+    openModal(overlay);
 
     const finish = (value) => {
       document.removeEventListener("keydown", onKey, true);
