@@ -476,13 +476,25 @@ async function onSave(event) {
     /* Close the modal immediately on success */
     closeModal(overlay);
 
-    /* Coin-split celebration */
+    /* Celebration: the cha-ching, the coin shower, and the splash
+       screen with the animated tick. */
     playCoinSound();
     showCoinBurst();
+    const online = navigator.onLine;
+    showSuccessSplash({
+      totalPaise: result.totalPaise,
+      serviceName: selectedService ? selectedService.name : "",
+      quantity: qty,
+      ratePaise,
+      customerName: customer,
+      method: paymentMethod,
+      online,
+    });
 
-    if (navigator.onLine) {
-      toast("Transaction saved \u2014 " + formatINR(result.totalPaise) + ".", "success");
-    } else {
+    /* The splash is the confirmation while online, so it says
+       everything the toast did. Offline still needs the toast: the
+       shop has to know this one is queued, not stored. */
+    if (!online) {
       toast("Saved offline \u2014 " + formatINR(result.totalPaise) + ". Will sync automatically.", "success", 5200);
       if (!waitingSync) scheduleSyncConfirmation();
     }
@@ -535,20 +547,40 @@ function scheduleSyncConfirmation() {
 
 /* ---------------- Coin celebration ---------------- */
 
+/* The coins are files, not CSS gradients: a reeded rim and an embossed
+   rupee cannot be drawn with a radial-gradient, and a hand-drawn one
+   reads as a gold dot. Loaded through <img>, so each copy is an
+   isolated document and the gradient ids inside cannot collide. */
+const COIN_ASSETS = [
+  new URL("../assets/coin-gold.svg", import.meta.url).href,
+  new URL("../assets/coin-silver.svg", import.meta.url).href,
+];
+
+/* Warm the cache so the first sale's bar does not show bare lanes while
+   the SVGs are still in flight. */
+for (const src of COIN_ASSETS) {
+  const img = new Image();
+  img.src = src;
+}
+
 const CHA_CHING_URL = new URL("../assets/cha-ching.mp3", import.meta.url).href;
-let preloadedChaChing = null;
+let chaChing = null;
 try {
-  preloadedChaChing = new Audio(CHA_CHING_URL);
-  preloadedChaChing.preload = "auto";
-  preloadedChaChing.load();
+  chaChing = new Audio(CHA_CHING_URL);
+  chaChing.preload = "auto";
+  chaChing.load();
 } catch (_) { }
 
 /**
  * Play the classic Cash Register "Cha-Ching!" sound.
+ *
+ * The element is built once and reused: a fresh `new Audio()` per sale
+ * throws away the buffered decode and makes the shop wait on the network
+ * for a sound that is supposed to be instant.
  */
 function playCoinSound() {
   try {
-    const audio = new Audio(CHA_CHING_URL);
+    const audio = chaChing || new Audio(CHA_CHING_URL);
     audio.currentTime = 0;
     const playPromise = audio.play();
     if (playPromise !== undefined) {
@@ -563,10 +595,13 @@ function playCoinSound() {
 
 
 /**
- * Jackpot coin shower celebration.
+ * A short burst of coins from the centre of the page, flipping as they
+ * arc up and rain down.
  *
- * Spills a shower of golden ₹ coins bursting upward from the center
- * and cascading / raining down across the viewport with 3D coin flips.
+ * Kept deliberately light: 38 coins for 2.4s buried the page the shop
+ * was trying to read, and this plays over the confirmation bar on every
+ * single sale. It is `pointer-events: none` (css/style.css), so it never
+ * blocks anything - the job here is to not be annoying.
  */
 function showCoinBurst() {
   const wrap = document.createElement("div");
@@ -574,7 +609,7 @@ function showCoinBurst() {
   wrap.setAttribute("aria-hidden", "true");
   document.body.appendChild(wrap);
 
-  const COIN_COUNT = 38;
+  const COIN_COUNT = 18;
 
   for (let i = 0; i < COIN_COUNT; i++) {
     const coin = document.createElement("div");
@@ -594,13 +629,12 @@ function showCoinBurst() {
     /* Falling down past the viewport bottom */
     const vyDown = 360 + Math.random() * 460;
 
-    /* Varied depth and coin sizes (22px to 40px) */
-    const size = Math.round(22 + Math.random() * 18);
-    const fontSize = Math.round(size * 0.48);
+    /* Varied depth and coin sizes (18px to 32px) */
+    const size = Math.round(18 + Math.random() * 14);
 
     /* Staggered eruption delay (0 to 320ms) for continuous spill */
     const delay = Math.round(Math.random() * 320);
-    const duration = (1.25 + Math.random() * 0.45).toFixed(2);
+    const duration = (1 + Math.random() * 0.35).toFixed(2);
 
     /* 3D spin properties */
     const spinX = Math.round((Math.random() - 0.5) * 360);
@@ -612,7 +646,6 @@ function showCoinBurst() {
       top: startY + "%",
       width: size + "px",
       height: size + "px",
-      fontSize: fontSize + "px",
       animationDelay: delay + "ms",
       animationDuration: duration + "s",
       "--vx": vx + "px",
@@ -623,12 +656,237 @@ function showCoinBurst() {
       "--spin-z": spinZ + "deg",
     });
 
-    coin.innerHTML = '<div class="jackpot-coin-face"><span>\u20B9</span></div>';
+    const face = document.createElement("img");
+    face.className = "jackpot-coin-face";
+    face.alt = "";
+    face.decoding = "async";
+    face.src = COIN_ASSETS[i % COIN_ASSETS.length];
+    coin.appendChild(face);
     wrap.appendChild(coin);
   }
 
-  /* Remove overlay after celebration finishes */
-  setTimeout(() => wrap.remove(), 2400);
+  /* Remove overlay after the longest coin has finished falling */
+  setTimeout(() => wrap.remove(), 1700);
+}
+
+/* ---------------- Success splash ---------------- */
+
+/* A confirmation, not a cutscene: long enough to read the tick draw and
+   the total land, short enough that the counter is not waiting on a
+   decoration before it can carry on. */
+const SPLASH_LIFETIME_MS = 2800;
+
+let splashEl = null;
+let splashTimer = 0;
+
+const ICON_TICK_CLOSE =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+/* The tick is drawn in three passes - the disc, then the amber ring
+   sweeping in behind it, then the check - so the stamp builds itself
+   rather than appearing. */
+const SPLASH_TICK =
+  '<div class="success-splash-tick">' +
+  '<svg viewBox="0 0 96 96" focusable="false" aria-hidden="true">' +
+  '<circle class="splash-tick-disc" cx="48" cy="48" r="42" />' +
+  '<circle class="splash-tick-ring" cx="48" cy="48" r="46" />' +
+  '<path class="splash-tick-mark" d="M32 49 L42.5 60.5 L65 37" />' +
+  "</svg></div>";
+
+/**
+ * Docked success confirmation: an animated tick, the total counting up,
+ * and the sale's own details, in a bar that slides down from the top of
+ * the viewport and takes itself away again.
+ *
+ * It deliberately does NOT cover the page and does NOT take focus. The
+ * save has just made the page start reloading its figures, and a modal
+ * over the top means the shop watches a coin shower instead of its own
+ * numbers landing. So the whole overlay is `pointer-events: none` and
+ * only the dismiss button is clickable, and it announces itself as a
+ * polite status rather than a dialog.
+ *
+ * Re-showing it (a second sale saved while the first is still up)
+ * replaces the old one rather than stacking two.
+ */
+function showSuccessSplash({
+  totalPaise,
+  serviceName,
+  quantity,
+  ratePaise,
+  customerName,
+  method,
+  online,
+}) {
+  dismissSplash(true);
+
+  const total = Number.isFinite(totalPaise) ? totalPaise : 0;
+
+  /* One line of context: what was sold, for whom, how it was paid. */
+  const bits = [];
+  if (serviceName) {
+    const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : null;
+    const rate = Number.isFinite(ratePaise) ? " @ " + formatINR(ratePaise) : "";
+    bits.push(
+      escapeHtml(serviceName) + (qty ? " × " + qty + escapeHtml(rate) : "")
+    );
+  }
+  if (customerName) bits.push("for " + escapeHtml(customerName));
+  if (isPaymentMethod(method)) {
+    bits.push(method === "due" ? "pending payment" : "paid by " + methodLabel(method));
+  }
+
+  const scrim = document.createElement("div");
+  scrim.className = "success-splash";
+
+  scrim.innerHTML =
+    '<div class="success-splash-bar" role="status">' +
+    '<div class="success-splash-coins" aria-hidden="true"></div>' +
+    SPLASH_TICK +
+    '<div class="splash-copy">' +
+    /* Offline is a change of wording, not an extra badge: the bar is
+       already one line of text, and the sync toast says the rest. */
+    '<p class="splash-title">' +
+    (online ? "Transaction saved" : "Saved offline \u2014 will sync") +
+    "</p>" +
+    (bits.length ? '<p class="splash-sub">' + bits.join(" &middot; ") + "</p>" : "") +
+    "</div>" +
+    '<p class="splash-amount" data-splash-amount></p>' +
+    '<button type="button" class="splash-close" data-splash-dismiss aria-label="Dismiss confirmation">' +
+    ICON_TICK_CLOSE +
+    "</button>" +
+    "</div>";
+
+  document.body.appendChild(scrim);
+  splashEl = scrim;
+
+  const bar = scrim.querySelector(".success-splash-bar");
+  fillSlidingCoins(bar);
+  countUpAmount(scrim.querySelector("[data-splash-amount]"), total);
+
+  const close = scrim.querySelector("[data-splash-dismiss]");
+  if (close) close.addEventListener("click", () => dismissSplash());
+
+  /* No Escape handler and no focus() here on purpose: this is a status,
+     not a dialog. Stealing the keyboard would fight whatever the shop
+     is doing on the page underneath, and Escape has a job there. */
+  splashTimer = setTimeout(() => dismissSplash(), SPLASH_LIFETIME_MS);
+}
+
+/** Fade the bar back up and detach it. `immediate` skips the animation. */
+function dismissSplash(immediate = false) {
+  if (!splashEl) return;
+  const el = splashEl;
+  splashEl = null;
+
+  clearTimeout(splashTimer);
+
+  if (immediate) {
+    el.remove();
+    return;
+  }
+  el.classList.add("is-closing");
+  setTimeout(() => el.remove(), 260);
+}
+
+/**
+ * Scatter coins sliding across the bar as low-opacity texture.
+ *
+ * The run is sized from the bar's own width (`--track`, set below)
+ * because the keyframes travel in px, not percentages - a percentage in
+ * a transform resolves against the coin, not the bar, which is how the
+ * first attempt sent them all flying off the end of a 560px strip.
+ *
+ * Delays are deliberately negative: a coin given `animation-delay: -3s`
+ * starts three seconds into its run, so the bar is already populated on
+ * the first frame instead of one coin entering an empty strip.
+ */
+function fillSlidingCoins(bar) {
+  if (!bar) return;
+  const host = bar.querySelector(".success-splash-coins");
+  if (!host) return;
+
+  const track = bar.clientWidth || 520;
+  host.style.setProperty("--track", track + "px");
+
+  const lanes = 2;
+  const laneHeight = bar.clientHeight || 64;
+
+  for (let row = 0; row < lanes; row++) {
+    /* Odd lanes reverse direction (see .is-reverse) so the coins are
+       not all travelling the same way. */
+    const lane = document.createElement("div");
+    lane.className = "splash-coin-track" + (row % 2 ? " is-reverse" : "");
+    host.appendChild(lane);
+
+    const y = ((row + 0.5) / lanes) * laneHeight;
+    const perLane = 3;
+
+    for (let i = 0; i < perLane; i++) {
+      const size = Math.round(30 + Math.random() * 16);
+      const coin = document.createElement("div");
+      coin.className = "splash-coin";
+
+      const face = document.createElement("img");
+      face.className = "splash-coin-face";
+      face.alt = "";
+      face.decoding = "async";
+      face.width = size;
+      face.height = size;
+      face.src = COIN_ASSETS[(row + i) % COIN_ASSETS.length];
+
+      Object.assign(coin.style, {
+        top: Math.round(y - size / 2) + "px",
+        width: size + "px",
+        height: size + "px",
+        "--bob": Math.round((Math.random() - 0.5) * 10) + "px",
+        "--slide-dur": (5 + Math.random() * 4).toFixed(2) + "s",
+        "--slide-delay": (-Math.random() * 9).toFixed(2) + "s",
+        "--spin-delay": (-Math.random() * 2.8).toFixed(2) + "s",
+      });
+      coin.appendChild(face);
+      lane.appendChild(coin);
+    }
+  }
+}
+
+/**
+ * Roll the total up to its real value so it lands with the tick rather
+ * than sitting there already finished, then pop it.
+ */
+function countUpAmount(el, totalPaise) {
+  if (!el) return;
+  if (prefersReducedMotion() || totalPaise <= 0) {
+    el.textContent = formatINR(totalPaise);
+    return;
+  }
+
+  const DURATION = 560;
+  /* Wait out the element's own entrance, or the total finishes counting
+     up while it is still faded out and nobody sees it land. */
+  const startedAt = performance.now() + 200;
+  const step = (now) => {
+    if (!el.isConnected) return;
+    if (now < startedAt) {
+      requestAnimationFrame(step);
+      return;
+    }
+    const t = Math.min(1, (now - startedAt) / DURATION);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const done = t === 1;
+    el.textContent = formatINR(done ? totalPaise : Math.round(totalPaise * eased));
+    if (done) el.classList.add("is-final");
+    else requestAnimationFrame(step);
+  };
+  el.textContent = formatINR(0);
+  requestAnimationFrame(step);
+}
+
+function prefersReducedMotion() {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (_) {
+    return false;
+  }
 }
 
 

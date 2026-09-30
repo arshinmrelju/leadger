@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Indian rupee coin">
+  <title>Indian rupee coin</title>
+  <defs>
+    <!-- Coin field: the slightly domed face inside the rim. -->
+    <radialGradient id="cgField" cx="36%" cy="28%" r="80%">
+      <stop offset="0" stop-color="#fff6c2"/>
+      <stop offset="0.42" stop-color="#f3c53a"/>
+      <stop offset="0.8" stop-color="#cf8f13"/>
+      <stop offset="1" stop-color="#94610a"/>
+    </radialGradient>
+    <!-- Rim: a light-to-dark-to-light metal band so the edge reads as round. -->
+    <linearGradient id="cgRim" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#ffe98f"/>
+      <stop offset="0.28" stop-color="#eab726"/>
+      <stop offset="0.52" stop-color="#a86a08"/>
+      <stop offset="0.74" stop-color="#efc22c"/>
+      <stop offset="1" stop-color="#7f4f03"/>
+    </linearGradient>
+    <radialGradient id="cgShine" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Baselines for the lettering that rings the face. -->
+    <path id="cgTop" d="M20.5 50A29.5 29.5 0 0 1 79.5 50"/>
+    <path id="cgBot" d="M24 50.5A26 26 0 0 0 76 50.5"/>
+    <!-- The rupee, borrowed from assets/logo.svg and reused as relief. -->
+    <path id="cgRupee" d="M138 92c18-3 33 7 33 22 0 13-13 21-33 21h-6l12 27M126 116h38"/>
+  </defs>
+
+  <!-- Reeded (milled) edge: two half-period-offset dashed strokes on the
+       same radius interleave into alternating light and dark ridges. -->
+  <circle cx="50" cy="50" r="46" fill="url(#cgRim)"/>
+  <circle cx="50" cy="50" r="45.5" fill="none" stroke="rgba(74,42,0,0.55)" stroke-width="9" stroke-dasharray="2.2 3.6"/>
+  <circle cx="50" cy="50" r="45.5" fill="none" stroke="rgba(255,238,160,0.7)" stroke-width="9" stroke-dasharray="2.2 3.6" stroke-dashoffset="-2.9"/>
+
+  <!-- Face, then the two bevel lines that separate it from the rim. -->
+  <circle cx="50" cy="50" r="41" fill="url(#cgField)"/>
+  <circle cx="50" cy="50" r="41" fill="none" stroke="rgba(255,240,180,0.5)" stroke-width="1.2"/>
+  <circle cx="50" cy="50" r="38.5" fill="none" stroke="rgba(110,66,6,0.28)" stroke-width="0.9"/>
+
+  <g font-family="'Nunito', 'Trebuchet MS', sans-serif" font-weight="800" text-anchor="middle">
+    <text font-size="8.5" letter-spacing="2.1" fill="rgba(122,74,6,0.72)">
+      <textPath href="#cgTop" startOffset="50%">INDIAN RUPEE</textPath>
+    </text>
+    <text font-size="6.5" letter-spacing="1.6" fill="rgba(122,74,6,0.58)">
+      <textPath href="#cgBot" startOffset="50%">TRUSTX LEDGER</textPath>
+    </text>
+  </g>
+
+  <!-- Embossed rupee: a shadow copy, a highlight copy, then the relief
+       itself, so the glyph catches the light like struck metal. -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="11" transform="translate(-35.4 -22.2) scale(0.575)">
+    <use href="#cgRupee" transform="translate(2.6 2.6)" stroke="rgba(96,56,0,0.5)"/>
+    <use href="#cgRupee" transform="translate(-2 -2)" stroke="rgba(255,247,205,0.85)"/>
+    <use href="#cgRupee" stroke="#a2690a"/>
+  </g>
+
+  <!-- Specular bloom across the upper-left shoulder. -->
+  <ellipse cx="34" cy="27" rx="15" ry="8.5" fill="url(#cgShine)" transform="rotate(-30 34 27)"/>
+  <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(80,46,0,0.45)" stroke-width="1"/>
+</svg>

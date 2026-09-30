@@ -1204,23 +1204,12 @@ hr {
 }
 
 .jackpot-coin-face {
+  display: block;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff8b8 0%, #f7c922 36%, #d89610 70%, #8c5600 100%);
-  border: 2px solid #ffea70;
-  box-shadow:
-    0 0 0 1px rgba(130, 75, 0, 0.7),
-    0 4px 12px rgba(0, 0, 0, 0.35),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.8),
-    inset 0 -1.5px 2px rgba(90, 45, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 900;
-  color: #6e3f00;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
   user-select: none;
+  -webkit-user-drag: none;
 }
 
 @keyframes jackpotCoinArc {
@@ -1267,6 +1256,302 @@ hr {
       rotateZ(var(--spin-z));
   }
 }
+/* =========================================================
+   Success splash — animated tick + sliding coins
+   Rendered by showSuccessSplash() in js/sale-form.js.
 
+   This is a CELEBRATION, not a dialog, and that is the whole design
+   constraint. The first version took the screen, held it for 3.4s and
+   hid the figures the save had just caused the page to load - the shop
+   was watching a coin shower while its own numbers updated unseen.
+   So it docks to the top of the viewport, never covers the content,
+   and is `pointer-events: none` all the way down: the page underneath
+   is readable and usable the instant it appears.
+   ========================================================= */
 
+.success-splash {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99990;
+  display: flex;
+  justify-content: center;
+  padding: 0.7rem 1rem 0;
+  /* The page below is never blocked - not even under the bar. */
+  pointer-events: none;
+  animation: splashBarIn 460ms cubic-bezier(0.22, 1.1, 0.36, 1);
+}
 
+.success-splash.is-closing {
+  animation: splashBarOut 240ms var(--ease) forwards;
+}
+
+@keyframes splashBarIn {
+  from { opacity: 0; transform: translateY(-120%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes splashBarOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-120%); }
+}
+
+.success-splash-bar {
+  position: relative;
+  width: min(560px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.6rem 0.6rem 0.6rem 0.75rem;
+  background: #fffdf9;
+  border: 1px solid #cfe4d6;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(19, 43, 30, 0.16), 0 2px 5px rgba(0, 0, 0, 0.05);
+  /* Clips the coins to the bar, so they read as texture on the
+     confirmation rather than as a shower over the page. */
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ---------- Sliding coins, inside the bar ---------- */
+
+.success-splash-coins {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  perspective: 700px;
+}
+
+.splash-coin-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+/* The lane travels; the face inside it spins. Two elements because one
+   transform cannot slide and flip at once. --track is the bar's own
+   width in px, set from JS, so the run is sized to the bar and not to
+   the viewport. */
+.splash-coin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  perspective: 300px;
+  animation: splashCoinSlide var(--slide-dur, 6s) linear infinite;
+  animation-delay: var(--slide-delay, 0s);
+  will-change: transform;
+}
+
+.splash-coin-face {
+  display: block;
+  border-radius: 50%;
+  opacity: 0.32;
+  filter: blur(0.6px) drop-shadow(0 2px 4px rgba(110, 75, 30, 0.18));
+  user-select: none;
+  -webkit-user-drag: none;
+  animation: splashCoinSpin 2.8s linear infinite;
+  animation-delay: var(--spin-delay, 0s);
+}
+
+@keyframes splashCoinSlide {
+  0% {
+    transform: translate3d(calc(var(--track, 520px) * -0.12), var(--bob, 0px), 0);
+  }
+  30% {
+    transform: translate3d(calc(var(--track, 520px) * 0.3), calc(var(--bob, 0px) - 5px), 0);
+  }
+  70% {
+    transform: translate3d(calc(var(--track, 520px) * 0.7), var(--bob, 0px), 0);
+  }
+  100% {
+    transform: translate3d(calc(var(--track, 520px) * 1.12), calc(var(--bob, 0px) - 4px), 0);
+  }
+}
+
+@keyframes splashCoinSpin {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(720deg); }
+}
+
+/* Reversed lanes travel right-to-left, so the coins are not all
+   travelling the same way. */
+.splash-coin-track.is-reverse .splash-coin,
+.splash-coin-track.is-reverse .splash-coin-face {
+  animation-direction: reverse;
+}
+
+/* ---------- Animated tick ---------- */
+
+.success-splash-tick {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+}
+
+.success-splash-tick svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.splash-tick-disc {
+  fill: var(--color-success);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: splashDiscPop 420ms cubic-bezier(0.22, 1.2, 0.36, 1) forwards;
+}
+
+@keyframes splashDiscPop {
+  0% { opacity: 0; transform: scale(0.2); }
+  60% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* 2*pi*46 = 289 */
+.splash-tick-ring {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 289;
+  stroke-dashoffset: 289;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  animation: splashRingDraw 620ms var(--ease) 260ms forwards;
+}
+
+@keyframes splashRingDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* The check is 32 -> 42.5 -> 65, about 48px of path, so 49 leaves the
+   stroke fully hidden at rest and still lands inside one run. */
+.splash-tick-mark {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 49;
+  stroke-dashoffset: 49;
+  animation: splashMarkDraw 320ms var(--ease) 540ms forwards;
+}
+
+@keyframes splashMarkDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ---------- Copy ---------- */
+
+.splash-copy {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  animation: splashRise 420ms var(--ease) 120ms backwards;
+}
+
+.splash-title {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  color: #1e1912;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.splash-sub {
+  margin: 0.1rem 0 0;
+  font-size: 0.79rem;
+  font-weight: 650;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.splash-amount {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: #1f7a42;
+  font-variant-numeric: tabular-nums;
+  animation: splashRise 420ms var(--ease) 200ms backwards;
+}
+
+/* Applied by countUpAmount() the frame the total reaches its value. */
+.splash-amount.is-final {
+  animation: splashAmountPop 380ms cubic-bezier(0.22, 1.3, 0.36, 1);
+}
+
+@keyframes splashRise {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes splashAmountPop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* The one part of the bar that is clickable, because the rest has to
+   let clicks through to the page. */
+.splash-close {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: var(--color-faint);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.splash-close:hover {
+  background: var(--color-bg);
+  color: var(--color-text-soft);
+}
+
+.splash-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---------- Reduced motion ----------
+   The global rule in responsive.css collapses durations but not
+   delays, which would leave the tick half-drawn. The stamp is instant
+   here, so it should be. The coins and the count-up are handled in
+   js/sale-form.js. */
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-tick-ring,
+  .splash-tick-mark,
+  .splash-copy,
+  .splash-amount {
+    animation-delay: 0s !important;
+  }
+  .splash-coin,
+  .splash-coin-face {
+    /* Nowhere to slide to without the animation, so they would sit in
+       one clump at the left edge. The bar reads fine without them. */
+    display: none;
+  }
+}

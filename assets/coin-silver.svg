@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Indian rupee coin">
+  <title>Indian rupee coin, cupro-nickel</title>
+  <defs>
+    <!-- Cupro-nickel field: cool silver, not gold. -->
+    <radialGradient id="csField" cx="36%" cy="28%" r="80%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.4" stop-color="#e2e7ea"/>
+      <stop offset="0.78" stop-color="#a9b3b9"/>
+      <stop offset="1" stop-color="#6f7a81"/>
+    </radialGradient>
+    <linearGradient id="csRim" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#f7fafb"/>
+      <stop offset="0.28" stop-color="#c3ccd1"/>
+      <stop offset="0.52" stop-color="#7b868d"/>
+      <stop offset="0.74" stop-color="#d7dee2"/>
+      <stop offset="1" stop-color="#5f696f"/>
+    </linearGradient>
+    <radialGradient id="csShine" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <path id="csTop" d="M20.5 50A29.5 29.5 0 0 1 79.5 50"/>
+    <path id="csBot" d="M24 50.5A26 26 0 0 0 76 50.5"/>
+    <path id="csRupee" d="M138 92c18-3 33 7 33 22 0 13-13 21-33 21h-6l12 27M126 116h38"/>
+  </defs>
+
+  <circle cx="50" cy="50" r="46" fill="url(#csRim)"/>
+  <circle cx="50" cy="50" r="45.5" fill="none" stroke="rgba(40,54,62,0.5)" stroke-width="9" stroke-dasharray="2.2 3.6"/>
+  <circle cx="50" cy="50" r="45.5" fill="none" stroke="rgba(255,255,255,0.72)" stroke-width="9" stroke-dasharray="2.2 3.6" stroke-dashoffset="-2.9"/>
+
+  <circle cx="50" cy="50" r="41" fill="url(#csField)"/>
+  <circle cx="50" cy="50" r="41" fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+  <circle cx="50" cy="50" r="38.5" fill="none" stroke="rgba(56,72,80,0.26)" stroke-width="0.9"/>
+
+  <g font-family="'Nunito', 'Trebuchet MS', sans-serif" font-weight="800" text-anchor="middle">
+    <text font-size="8.5" letter-spacing="2.1" fill="rgba(46,62,70,0.7)">
+      <textPath href="#csTop" startOffset="50%">INDIAN RUPEE</textPath>
+    </text>
+    <text font-size="6.5" letter-spacing="1.6" fill="rgba(46,62,70,0.56)">
+      <textPath href="#csBot" startOffset="50%">TRUSTX LEDGER</textPath>
+    </text>
+  </g>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="11" transform="translate(-35.4 -22.2) scale(0.575)">
+    <use href="#csRupee" transform="translate(2.6 2.6)" stroke="rgba(28,40,46,0.5)"/>
+    <use href="#csRupee" transform="translate(-2 -2)" stroke="rgba(255,255,255,0.85)"/>
+    <use href="#csRupee" stroke="#63707a"/>
+  </g>
+
+  <ellipse cx="34" cy="27" rx="15" ry="8.5" fill="url(#csShine)" transform="rotate(-30 34 27)"/>
+  <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(30,42,48,0.4)" stroke-width="1"/>
+</svg>
