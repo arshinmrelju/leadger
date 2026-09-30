@@ -11,7 +11,7 @@
    Pages subscribe with onSaleRecorded() to refresh their own data.
    ========================================================= */
 
-import { toast, setLoading, openModal } from "./app.js";
+import { toast, setLoading, openModal, closeModal } from "./app.js";
 import {
   formatINR,
   paiseToInput,
@@ -223,7 +223,7 @@ export function openSaleForm({ serviceId = "" } = {}) {
     .then(() => {
       if (serviceId) pickService(serviceId);
     })
-    .catch(() => {});
+    .catch(() => { });
 }
 
 /** Ctrl+N anywhere in the app opens the same dialog. */
@@ -473,6 +473,13 @@ async function onSave(event) {
       dateKey,
     });
 
+    /* Close the modal immediately on success */
+    closeModal(overlay);
+
+    /* Coin-split celebration */
+    playCoinSound();
+    showCoinBurst();
+
     if (navigator.onLine) {
       toast("Transaction saved \u2014 " + formatINR(result.totalPaise) + ".", "success");
     } else {
@@ -482,7 +489,6 @@ async function onSave(event) {
 
     emit(result);
     resetForm();
-    overlay.querySelector("#qtyInput").focus();
   } catch (err) {
     console.error("[trustx-ledger] save:", err);
     showFormMsg(
@@ -526,3 +532,104 @@ function scheduleSyncConfirmation() {
     { once: true }
   );
 }
+
+/* ---------------- Coin celebration ---------------- */
+
+const CHA_CHING_URL = new URL("../assets/cha-ching.mp3", import.meta.url).href;
+let preloadedChaChing = null;
+try {
+  preloadedChaChing = new Audio(CHA_CHING_URL);
+  preloadedChaChing.preload = "auto";
+  preloadedChaChing.load();
+} catch (_) { }
+
+/**
+ * Play the classic Cash Register "Cha-Ching!" sound.
+ */
+function playCoinSound() {
+  try {
+    const audio = new Audio(CHA_CHING_URL);
+    audio.currentTime = 0;
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn("[trustx-ledger] cha-ching play failed:", err);
+      });
+    }
+  } catch (err) {
+    console.warn("[trustx-ledger] audio error:", err);
+  }
+}
+
+
+/**
+ * Jackpot coin shower celebration.
+ *
+ * Spills a shower of golden ₹ coins bursting upward from the center
+ * and cascading / raining down across the viewport with 3D coin flips.
+ */
+function showCoinBurst() {
+  const wrap = document.createElement("div");
+  wrap.className = "coin-burst-overlay";
+  wrap.setAttribute("aria-hidden", "true");
+  document.body.appendChild(wrap);
+
+  const COIN_COUNT = 38;
+
+  for (let i = 0; i < COIN_COUNT; i++) {
+    const coin = document.createElement("div");
+    coin.className = "jackpot-coin";
+
+    /* Launch point around center */
+    const startX = 50 + (Math.random() - 0.5) * 16;
+    const startY = 48 + (Math.random() - 0.5) * 8;
+
+    /* Horizontal spread: spills across the screen */
+    const screenW = Math.min(window.innerWidth || 1000, 1200);
+    const vx = (Math.random() - 0.5) * screenW * 0.85;
+
+    /* Upward fountain burst: shoots up before arcing down */
+    const vyUp = -(180 + Math.random() * 260);
+
+    /* Falling down past the viewport bottom */
+    const vyDown = 360 + Math.random() * 460;
+
+    /* Varied depth and coin sizes (22px to 40px) */
+    const size = Math.round(22 + Math.random() * 18);
+    const fontSize = Math.round(size * 0.48);
+
+    /* Staggered eruption delay (0 to 320ms) for continuous spill */
+    const delay = Math.round(Math.random() * 320);
+    const duration = (1.25 + Math.random() * 0.45).toFixed(2);
+
+    /* 3D spin properties */
+    const spinX = Math.round((Math.random() - 0.5) * 360);
+    const spinY = Math.round((Math.random() < 0.5 ? 1 : -1) * (720 + Math.random() * 720));
+    const spinZ = Math.round((Math.random() - 0.5) * 180);
+
+    Object.assign(coin.style, {
+      left: startX + "%",
+      top: startY + "%",
+      width: size + "px",
+      height: size + "px",
+      fontSize: fontSize + "px",
+      animationDelay: delay + "ms",
+      animationDuration: duration + "s",
+      "--vx": vx + "px",
+      "--vy-up": vyUp + "px",
+      "--vy-down": vyDown + "px",
+      "--spin-x": spinX + "deg",
+      "--spin-y": spinY + "deg",
+      "--spin-z": spinZ + "deg",
+    });
+
+    coin.innerHTML = '<div class="jackpot-coin-face"><span>\u20B9</span></div>';
+    wrap.appendChild(coin);
+  }
+
+  /* Remove overlay after celebration finishes */
+  setTimeout(() => wrap.remove(), 2400);
+}
+
+
+
