@@ -153,6 +153,7 @@ export function mountPwaControls(container) {
   const onInstalled = () => {
     deferredInstallPrompt = null;
     installBtn.hidden = true;
+    installBtn.disabled = true;
     document.documentElement.classList.add("is-installed");
   };
 
@@ -241,6 +242,7 @@ export function mountPwaControls(container) {
      registered for, because an update is exactly what an installed app needs. */
   if (isInstalled()) {
     installBtn.hidden = true;
+    installBtn.disabled = true;
     document.documentElement.classList.add("is-installed");
   } else if (deferredInstallPrompt) {
     /* The prompt was captured before this button existed. Show it now. */
