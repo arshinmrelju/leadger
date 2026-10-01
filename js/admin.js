@@ -37,6 +37,12 @@ import {
   grantAdminAccess,
   AuthError,
 } from "./auth.js";
+import {
+  SPARK_LIMITS,
+  getUsage,
+  subscribeUsage,
+  resetUsage,
+} from "./quota.js";
 
 function svg(id) {
   const paths = {
@@ -44,12 +50,102 @@ function svg(id) {
     data: '<path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/>',
     devices:
       '<rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    quota:
+      '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   };
   return (
     '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     (paths[id] || "") +
     "</svg>"
   );
+}
+
+/* =========================================================
+   Free-plan usage
+
+   Firebase's Spark plan allows 50,000 reads, 20,000 writes and 20,000
+   deletes per day, and — because the project has no billing account —
+   offers no budget alert to warn of them coming. The console's own Usage
+   tab cannot be relied on as a warning either: it reports what was
+   charged, and it deliberately omits zero-result queries and index-entry
+   reads, so it is a floor rather than a total.
+
+   So the console counts what THIS browser spends and shows the headroom.
+   It is explicitly an estimate for one device, and the panel says so: its
+   job is to make the wall visible before the shop hits it, not to be an
+   accountant. The day rolls over at the Pacific midnight that Firestore
+   actually resets on, which is mid-afternoon in India — worth seeing
+   plainly, because a shop that is cut off at 1pm has no obvious reason why.
+   ========================================================= */
+
+function quotaBar(label, used, cap, pct) {
+  const level = pct >= 85 ? "danger" : pct >= 60 ? "warning" : "ok";
+  return (
+    '<div class="quota-row">' +
+    '<div class="quota-row-head"><span class="quota-row-label">' + escapeHtml(label) + "</span>" +
+    '<span class="quota-row-value">' + used.toLocaleString("en-IN") + " / " + cap.toLocaleString("en-IN") +
+    ' <span class="quota-row-pct">(' + pct.toFixed(pct < 1 ? 2 : 0) + "%)</span></span></div>" +
+    '<div class="quota-track"><div class="quota-fill quota-' + level + '" style="width:' +
+    Math.max(pct, used > 0 ? 1.5 : 0).toFixed(2) + '%"></div></div>' +
+    "</div>"
+  );
+}
+
+/** The panel's static half. */
+function quotaPanelMarkup() {
+  return (
+    '<p class="small muted" style="margin:0 0 .8rem;">This shop runs on Firebase\'s free Spark plan, which allows ' +
+    SPARK_LIMITS.readsPerDay.toLocaleString("en-IN") + " reads, " +
+    SPARK_LIMITS.writesPerDay.toLocaleString("en-IN") + " writes and " +
+    SPARK_LIMITS.deletesPerDay.toLocaleString("en-IN") +
+    " deletes a day. Crossing any of them stops every read and write until the daily reset — there is no partial service and no warning from Firebase, because a Spark project has no billing account to attach a budget alert to.</p>" +
+    '<div id="quotaBars">' + quotaBarsHtml(getUsage()) + "</div>" +
+    '<p class="small muted" id="quotaResetNote" style="margin:.8rem 0 0;"></p>'
+  );
+}
+
+function quotaBarsHtml(usage) {
+  return (
+    quotaBar("Document reads", usage.reads, SPARK_LIMITS.readsPerDay, usage.readsPct) +
+    quotaBar("Document writes", usage.writes, SPARK_LIMITS.writesPerDay, usage.writesPct) +
+    quotaBar("Document deletes", usage.deletes, SPARK_LIMITS.deletesPerDay, usage.deletesPct)
+  );
+}
+
+/** Keep the panel live as this browser spends more. */
+function mountQuotaPanel(mainContent) {
+  const bars = mainContent.querySelector("#quotaBars");
+  const note = mainContent.querySelector("#quotaResetNote");
+  if (!bars || !note) return;
+
+  subscribeUsage((usage) => {
+    bars.innerHTML = quotaBarsHtml(usage);
+
+    const resetAt = usage.resetAt ? usage.resetAt : "shortly";
+    const parts = [
+      "Counted by this browser only, and the Firebase console Usage tab is still the ground truth.",
+      "Resets around " + resetAt + " in India time.",
+    ];
+    if (usage.exhausted) {
+      parts.unshift("Today's limit has already been reached on this device — the app is running read-only until the reset.");
+    }
+    note.textContent = parts.join(" ");
+  });
+
+  const clearBtn = mainContent.querySelector("#quotaResetBtn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", async () => {
+      const ok = await confirm({
+        title: "Clear today's counter?",
+        message:
+          "This only zeroes the estimate shown above. It does not restore any Firestore quota — if the real daily limit is spent, only the reset brings it back.",
+        confirmText: "Clear counter",
+        cancelText: "Cancel",
+        variant: "secondary",
+      });
+      if (ok) resetUsage();
+    });
+  }
 }
 
 /* =========================================================
@@ -137,6 +233,15 @@ export async function renderAdminPage(ctx) {
     '<div id="servicesList"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading services<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></div>' +
     "</div></section>" +
 
+    '<section class="card mt-2" id="quotaCard">' +
+    '<div class="card-header"><h3>' + svg("quota") + "Free plan usage</h3>" +
+    '<div class="card-actions">' +
+    '<button type="button" class="btn btn-sm btn-secondary" id="quotaResetBtn">Clear counter</button>' +
+    "</div></div>" +
+    '<div class="card-body">' +
+    quotaPanelMarkup() +
+    "</div></section>" +
+
     '<section class="card mt-2" id="devicesCard">' +
     '<div class="card-header"><h3>' + svg("devices") + "Trusted browsers</h3>" +
     '<div class="card-actions">' +
@@ -181,6 +286,7 @@ export async function renderAdminPage(ctx) {
   wireAddService();
   wireSeedDefaults();
   loadServicesList();
+  mountQuotaPanel(mainContent);
   wireDataBrowser();
   loadDataBrowser();
   wireDevices();

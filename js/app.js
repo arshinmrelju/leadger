@@ -8,6 +8,7 @@ import {
   escapeHtml,
   formatKolkataLong,
 } from "./utils.js";
+import { onQuotaExhausted, quotaResetTime } from "./quota.js";
 
 /* ---------------- Toast notifications ---------------- */
 
@@ -229,6 +230,38 @@ document.addEventListener("click", (event) => {
   if (event.target === overlay) closeOverlay(overlay);
   if (event.target.closest("[data-close]")) closeOverlay(overlay);
 });
+
+/* ---------------- Free-plan banner ---------------- */
+
+/**
+ * Shown for the rest of the session once the Spark daily quota is gone.
+ *
+ * This is deliberately a banner and not a toast: a toast disappears after
+ * a few seconds, but a hard quota wall does not. Nothing will save — not
+ * this sale, not the next one — until the daily reset, and a shopkeeper
+ * who has just been told "something went wrong, please try again" will
+ * simply try again, and lose the sale again. So the page says plainly what
+ * is true: the limit is spent, the data on screen is real, nothing is being
+ * saved, and here is roughly when it comes back.
+ */
+function showQuotaBanner() {
+  if (document.getElementById("quotaBanner")) return;
+
+  const resetAt = quotaResetTime();
+  const when = resetAt ? ` It resets around ${resetAt} today.` : " It resets shortly.";
+  const banner = document.createElement("div");
+  banner.id = "quotaBanner";
+  banner.className = "quota-banner";
+  banner.setAttribute("role", "alert");
+  banner.innerHTML = `
+    <div class="quota-banner-inner">
+      <strong>Today's free Firebase limit is used up.</strong>
+      <span>Nothing can be saved until it resets${escapeHtml(when)} The figures on screen are real, but new sales will NOT be recorded — write them down and enter them again after the reset.</span>
+    </div>`;
+  document.body.appendChild(banner);
+}
+
+onQuotaExhausted(() => showQuotaBanner());
 
 /* ---------------- Global error handling ---------------- */
 

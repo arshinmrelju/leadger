@@ -52,6 +52,15 @@ import {
   amountsFromDoc,
   isCounterSetValid,
 } from "./day-heads.js";
+import { createReadCache } from "./read-cache.js";
+import {
+  guardQuota,
+  isQuotaExhausted,
+  noteReads,
+  noteWrites,
+  noteDeletes,
+  readsForQuery,
+} from "./quota.js";
 
 function toSafe(value) {
   const n = typeof value === "number" ? value : Number(value);
@@ -87,6 +96,127 @@ async function rtdbBridge() {
     );
   }
   return b;
+}
+
+/* ------------------------------------------------------------------
+   Free-plan accounting and read caching
+   ------------------------------------------------------------------
+   The shop is on the Spark plan: 50,000 reads, 20,000 writes and 20,000
+   deletes a DAY, with no billing account behind it to warn us first. Two
+   habits below keep a busy counter nowhere near those walls.
+
+   One, every read is counted (noteReads) so the Developer console can show
+   how close the day is to the edge. It is an estimate, and the rules'
+   own `trusted()` lookup is folded into readsForQuery so it does not
+   flatter the number.
+
+   Two, display reads go through a read-through cache. A read served from
+   the local Firestore cache is not billed, so re-showing a day the shop
+   looked at a minute ago costs nothing. Writes never use it: a sale always
+   re-reads its day head from the server, because firestore.rules verifies
+   the counter delta against the REAL pre-write state and a cached head
+   would quietly break the one guarantee the ledger makes. */
+
+const readCacheError = (err) => {
+  /* A failed background refresh is not worth a page-level error: the
+     caller already has a value, and the next read retries. */
+  console.warn("[trustx-ledger] background refresh failed:", err);
+};
+
+/** Shop identity, catalog. Changes only when an admin edits it. */
+const catalogCache = createReadCache({
+  freshTtlMs: 30_000,
+  staleTtlMs: 5 * 60_000,
+  onError: readCacheError,
+  persist: "catalog",
+});
+
+/**
+ * Day heads. This is the number the dashboard shows, so the fresh window is
+ * short: a sale on another device should show up almost immediately. The
+ * stale window is longer, and only means "painted instantly, corrected a
+ * moment later" — the write path never reads through here.
+ */
+const headCache = createReadCache({
+  freshTtlMs: 15_000,
+  staleTtlMs: 60_000,
+  onError: readCacheError,
+});
+
+/**
+ * The transaction lists and the all-time history walk.
+ *
+ * The only cache here that persists across a page load, and the one that
+ * most needs to be: the all-time walk is the most expensive read in the
+ * app — one query per day head it opens, each with a rules grant lookup
+ * behind it — and re-buying it in full on every refresh is the read budget
+ * going nowhere. Safe to persist because what is stored is plain,
+ * normalized rows: exactly what the server returned, never a part-filled
+ * local Firestore cache.
+ */
+const historyCache = createReadCache({
+  freshTtlMs: 15_000,
+  staleTtlMs: 60_000,
+  onError: readCacheError,
+  persist: "history",
+});
+
+/**
+ * One day's first page.
+ *
+ * Deliberately NOT persisted, unlike historyCache: the page's continuation
+ * cursor is a live Firestore document snapshot, which has no serialised form
+ * worth keeping and would come back as something that merely looks like a
+ * cursor. It is also a single query, so the cross-reload saving is not worth
+ * a corrupted "next page".
+ */
+const rowsCache = createReadCache({
+  freshTtlMs: 15_000,
+  staleTtlMs: 60_000,
+  onError: readCacheError,
+});
+
+/** Expenses live in the Realtime Database and are metered by bandwidth. */
+const expensesCache = createReadCache({
+  freshTtlMs: 60_000,
+  staleTtlMs: 5 * 60_000,
+  onError: readCacheError,
+  persist: "expenses",
+});
+
+/* A catalog edit in one tab has to reach the others. The Developer console
+   is rarely the same tab that is selling, so re-check whenever this tab
+   comes back to the front — cheap next to re-reading the whole catalog. */
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("focus", () => catalogCache.drop());
+}
+
+/** A counted, quota-classified single-document read. */
+function chargedGetDoc(fs, ref, options) {
+  return guardQuota(async () => {
+    const snap = await fs.getDoc(ref, options);
+    noteReads(readsForQuery(snap.exists() ? 1 : 0));
+    return snap;
+  });
+}
+
+/**
+ * A counted, quota-classified query.
+ *
+ * Every query reaches the server, so every query is billed — the free
+ * local cache is not something this app can lean on for this, because a
+ * query whose first page has never been fetched on this device returns
+ * nothing rather than a miss. Keeping a short-lived read-through cache in
+ * front (see rowsCache above) is what actually stops repeat views paying
+ * twice for the same walk; this function exists so that whatever does reach
+ * the server is counted and classified on the way through.
+ */
+function chargedGetDocs(fs, query) {
+  return guardQuota(async () => {
+    const snap = await fs.getDocs(query);
+    noteReads(readsForQuery(snap.size));
+    return snap;
+  });
 }
 
 /* ------------------------------------------------------------------
@@ -237,29 +367,59 @@ function summaryFromRows(rows, expensesPaise) {
    Realtime Database reads (catalog + expenses)
    ------------------------------------------------------------------ */
 
-/** Best-effort read of the quick-service catalog from Firestore, active first. */
-export async function fetchServices({ includeInactive = false } = {}) {
+/**
+ * Best-effort read of the quick-service catalog from Firestore, active first.
+ *
+ * Cache-first, because this is a whole-collection read with no limit and
+ * the picker, the sale form, the transaction editor and the Developer
+ * console all ask for it. It changes only when somebody edits the catalog,
+ * so a five-minute recheck keeps it current while turning a page load that
+ * used to cost a read per catalog entry into no read at all.
+ *
+ * The cache is dropped on window focus and by every catalog write below,
+ * so an edit lands in a selling tab on its next read.
+ */
+export async function fetchServices({ includeInactive = false, force = false } = {}) {
   const b = await bridge();
   const fs = b.firestore;
-  const snap = await fs.getDocs(fs.collection(b.db, "services"));
-  const list = snap.docs
-    .map((d) => normalizeService(d.id, d.data()))
-    .sort(
-      (x, y) =>
-        (x.active ? 0 : 1) - (y.active ? 0 : 1) ||
-        x.sortOrder - y.sortOrder ||
-        String(x.name).localeCompare(String(y.name))
-    );
+
+  const all = await catalogCache.read(
+    "all",
+    async () => {
+      const snap = await chargedGetDocs(fs, fs.collection(b.db, "services"));
+      return snap.docs.map((d) => normalizeService(d.id, d.data()));
+    },
+    { force }
+  );
+
+  const list = all.slice().sort(
+    (x, y) =>
+      (x.active ? 0 : 1) - (y.active ? 0 : 1) ||
+      x.sortOrder - y.sortOrder ||
+      String(x.name).localeCompare(String(y.name))
+  );
   return includeInactive ? list : list.filter((s) => s.active);
 }
 
-/** Read one day's expenses from its Realtime Database bucket. */
+/**
+ * Read one day's expenses from its Realtime Database bucket.
+ *
+ * Guarded and classified like the Firestore reads, even though RTDB is
+ * metered by bandwidth rather than by a daily count: the failure this
+ * prevents is that an out-of-bandwidth refusal gets reported as an ordinary
+ * offline blip, so the shop believes its expenses are simply empty rather
+ * than that the app has hit a wall.
+ */
 async function readExpensesForDay(dateKey) {
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
-  const snap = await rt.get(rt.ref(b.rtdb, "expenses", dateKey));
-  const raw = snap.val() || {};
-  return Object.keys(raw).map((id) => normalizeExpense(dateKey, id, raw[id]));
+  return expensesCache.read(`day:${dateKey}`, () =>
+    guardQuota(async () => {
+      const snap = await rt.get(rt.ref(b.rtdb, "expenses", dateKey));
+      const raw = snap.val() || {};
+      return Object.keys(raw).map((id) => normalizeExpense(dateKey, id, raw[id]));
+    })
+  );
 }
 
 /**
@@ -269,6 +429,12 @@ async function readExpensesForDay(dateKey) {
  * is one straight read. With no `dateKey`, the most recent DAYS buckets
  * are read and flattened — Realtime Database orders object keys, so the
  * newest days come first with no index and no query language involved.
+ *
+ * The one query already downloads every field of every bucket it returns,
+ * so the rows are normalized straight out of that payload. Reading each day
+ * again afterwards would ask the network for bytes it had already sent —
+ * thirty round-trips and roughly double the download for an identical
+ * answer.
  *
  * @param {object} [opts]
  * @param {string|null} [opts.dateKey] a single `YYYY-MM-DD`, or null for recent days
@@ -284,13 +450,22 @@ export async function fetchExpenses({ dateKey = null, limit = 200, days = 30 } =
 
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
-  const daySnap = await rt.get(
-    rt.query(rt.ref(b.rtdb, "expenses"), rt.orderByKey(), rt.limitToLast(days))
+  /* One query for the day buckets, then normalize from the payload it
+     already returned. See the note on fetchExpenses. */
+  const buckets = await expensesCache.read(`recent:${days}`, () =>
+    guardQuota(async () => {
+      const snap = await rt.get(
+        rt.query(rt.ref(b.rtdb, "expenses"), rt.orderByKey(), rt.limitToLast(days))
+      );
+      return snap.val() || {};
+    })
   );
-  const buckets = daySnap.val() || {};
-  const keys = Object.keys(buckets).sort();
-  const perDay = await Promise.all(keys.map((key) => readExpensesForDay(key)));
-  const flat = perDay.flat();
+
+  const flat = [];
+  for (const dateKey of Object.keys(buckets).sort()) {
+    const raw = buckets[dateKey] || {};
+    for (const id of Object.keys(raw)) flat.push(normalizeExpense(dateKey, id, raw[id]));
+  }
   /* Newest day first, matching the transactions browser beside it. */
   flat.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
   return flat.slice(0, limit);
@@ -334,13 +509,34 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
   try {
     expensesPaise = await expensesTotalForDay(dateKey);
   } catch (err) {
+    /* A spent quota is not "this day had no expenses". Swallowing it here
+       would put a confidently wrong NET in front of the shopkeeper — the
+       number would include expenses that were never subtracted — and the
+       banner would never appear, because the one caller that could report
+       it has just thrown the error away. */
+    if (isQuotaExhausted(err)) throw err;
     console.warn("[trustx-ledger] expenses unavailable for the summary:", err);
   }
 
   let head = null;
   try {
-    head = await fs.getDoc(headRef(fs, b.db, dateKey));
+    /* Cache-first: re-opening the dashboard should not re-buy the same
+       head. The fresh window is short, so a sale made on another device
+       shows up almost immediately; the stale window is longer, and only
+       means "painted off the last known value, corrected a moment later".
+       The write path never reads through here.
+       The key is shared with countDayTransactions() — they are the same
+       document, and two keys for one doc would mean paying twice for it. */
+    head = await headCache.read(`head:${dateKey}`, () =>
+      chargedGetDoc(fs, headRef(fs, b.db, dateKey))
+    );
   } catch (err) {
+    /* A spent daily quota is not a missing head. Folding the rows here
+       would read every sale on the day — the single most expensive thing
+       this app can do, at exactly the moment it can least afford it — and
+       then show a shopkeeper a confidently wrong total because some of
+       those reads failed too. Surface the real reason instead. */
+    if (isQuotaExhausted(err)) throw err;
     /* Offline with a never-fetched day: fall through to the rows. */
     console.warn("[trustx-ledger] day head unavailable, folding rows instead:", err);
   }
@@ -370,6 +566,9 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
     return summary;
   }
 
+  /* Folding the rows is a genuine fallback here, but it is the expensive
+     path by definition, so it must not run when the reason we could not
+     read the head is that the day's read budget is already spent. */
   const rows = await fetchTransactions({ dateKey, limit: MAX_DAY_LIMIT });
   return summaryFromRows(rows, expensesPaise);
 }
@@ -390,24 +589,52 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
  */
 async function ensureDayHead(dateKey, fs, db, uid_) {
   const ref = headRef(fs, db, dateKey);
-  const snap = await fs.getDoc(ref);
+  const snap = await chargedGetDoc(fs, ref);
   if (snap.exists()) return;
 
   try {
-    await fs.setDoc(ref, {
-      dateKey,
-      state: DAY_STATE.OPEN,
-      openedAt: fs.serverTimestamp(),
-      openedBy: uid_,
-      counters: emptyCounters(),
-      updatedAt: fs.serverTimestamp(),
-      updatedBy: uid_,
-    });
+    await guardQuota(() =>
+      fs.setDoc(ref, {
+        dateKey,
+        state: DAY_STATE.OPEN,
+        openedAt: fs.serverTimestamp(),
+        openedBy: uid_,
+        counters: emptyCounters(),
+        updatedAt: fs.serverTimestamp(),
+        updatedBy: uid_,
+      })
+    );
+    noteWrites();
   } catch (err) {
     /* The create rule only allows the write while the head is absent,
        so a denial means another device got there first. */
     if (!err || err.code !== "permission-denied") throw err;
   }
+}
+
+/**
+ * Drop every cached read that a sale, edit or delete just made untrue.
+ *
+ * Invalidated by prefix rather than by listing keys: the cache keys embed
+ * page sizes that the callers choose (a day page is 100 rows, the
+ * transactions list asks for 200, the history walk for up to 1000, the
+ * console asks for 300), so an enumerated list would have to be edited
+ * every time a page size changed and would silently leave a stale entry
+ * behind the first time somebody forgot — which reads as "the total does not
+ * move after I added a sale".
+ */
+function invalidateDayReads(dateKey) {
+  if (!dateKey) {
+    headCache.drop();
+    rowsCache.drop();
+    historyCache.drop();
+    return;
+  }
+  headCache.dropPrefix(`head:${dateKey}`);
+  rowsCache.dropPrefix(`day:${dateKey}:`);
+  historyCache.dropPrefix(`txns:${dateKey}:`);
+  /* The all-time walk holds rows from every day, including this one. */
+  historyCache.dropPrefix("txns:all:");
 }
 
 /**
@@ -434,44 +661,58 @@ const HISTORY_DAY_CAP = 120;
 export async function fetchTransactions({ dateKey = null, limit = 200 } = {}) {
   const b = await bridge();
   const fs = b.firestore;
-  /* Order by documentId as the tiebreak, not just by createdAt.
-     Firestore appends __name__ ASCENDING to any orderBy it is not given
-     explicitly, so stating it DESCENDING here is what keeps the cursor
-     pagination in fetchDayPage and this list from swapping rows as the
-     page changes. */
-  const newestFirst = [
-    fs.orderBy("createdAt", "desc"),
-    fs.orderBy(fs.documentId(), "desc"),
-  ];
 
-  if (dateKey) {
-    const snap = await fs.getDocs(fs.query(dayTxnsRef(fs, b.db, dateKey), ...newestFirst, fs.limit(limit)));
-    return snap.docs.map((d) => normalizeTxn(d.id, d.data()));
-  }
+  /* This is the most expensive read in the app by a wide margin: the
+     all-time walk costs one query per day head it opens, and firestore.rules
+     bills a grant lookup against every one of them. Re-reading the same
+     history on every visit is the fastest way to spend the Spark plan's
+     50,000 reads a day, so the result is cached and refreshed behind the
+     scenes — and, because this cache persists, it survives a page load. */
+  return historyCache.read(`txns:${dateKey || "all"}:${limit}`, async () => {
+    /* Order by documentId as the tiebreak, not just by createdAt.
+       Firestore appends __name__ ASCENDING to any orderBy it is not given
+       explicitly, so stating it DESCENDING here is what keeps the cursor
+       pagination in fetchDayPage and this list from swapping rows as the
+       page changes. */
+    const newestFirst = [
+      fs.orderBy("createdAt", "desc"),
+      fs.orderBy(fs.documentId(), "desc"),
+    ];
 
-  /* The rules make every day head carry `dateKey` equal to its own
-     document id (see validHeadCreate), so ordering by that field reaches
-     the newest days with no head silently left out of the walk. */
-  const heads = await fs.getDocs(
-    fs.query(fs.collection(b.db, "dayHeads"), fs.orderBy("dateKey", "desc"), fs.limit(HISTORY_DAY_CAP + 1))
-  );
-  /* One more than the cap is asked for so a truncated walk is detectable
-     rather than silent; the page turns this into a footer note. */
-  const dayCapped = heads.docs.length > HISTORY_DAY_CAP;
+    if (dateKey) {
+      const snap = await chargedGetDocs(
+        fs,
+        fs.query(dayTxnsRef(fs, b.db, dateKey), ...newestFirst, fs.limit(limit))
+      );
+      return snap.docs.map((d) => normalizeTxn(d.id, d.data()));
+    }
 
-  const rows = [];
-  for (const head of heads.docs.slice(0, HISTORY_DAY_CAP)) {
-    if (rows.length >= limit) break;
-    /* Days are visited newest first and each day is read newest first,
-       so concatenating them is already the global order the page wants. */
-    const snap = await fs.getDocs(
-      fs.query(dayTxnsRef(fs, b.db, head.id), ...newestFirst, fs.limit(limit - rows.length))
+    /* The rules make every day head carry `dateKey` equal to its own
+       document id (see validHeadCreate), so ordering by that field reaches
+       the newest days with no head silently left out of the walk. */
+    const heads = await chargedGetDocs(
+      fs,
+      fs.query(fs.collection(b.db, "dayHeads"), fs.orderBy("dateKey", "desc"), fs.limit(HISTORY_DAY_CAP + 1))
     );
-    for (const doc of snap.docs) rows.push(normalizeTxn(doc.id, doc.data()));
-  }
-  rows.dayCapped = dayCapped;
-  rows.dayCap = HISTORY_DAY_CAP;
-  return rows;
+    /* One more than the cap is asked for so a truncated walk is detectable
+       rather than silent; the page turns this into a footer note. */
+    const dayCapped = heads.docs.length > HISTORY_DAY_CAP;
+
+    const rows = [];
+    for (const head of heads.docs.slice(0, HISTORY_DAY_CAP)) {
+      if (rows.length >= limit) break;
+      /* Days are visited newest first and each day is read newest first,
+         so concatenating them is already the global order the page wants. */
+      const snap = await chargedGetDocs(
+        fs,
+        fs.query(dayTxnsRef(fs, b.db, head.id), ...newestFirst, fs.limit(limit - rows.length))
+      );
+      for (const doc of snap.docs) rows.push(normalizeTxn(doc.id, doc.data()));
+    }
+    rows.dayCapped = dayCapped;
+    rows.dayCap = HISTORY_DAY_CAP;
+    return rows;
+  });
 }
 
 /* ------------------------------------------------------------------
@@ -490,6 +731,12 @@ const MAX_DAY_LIMIT = 1000;
 
 /**
  * Fetch one page of a single business day, newest first.
+ *
+ * The first page is cache-first — it is what every page load of the ledger
+ * asks for, and re-reading a hundred rows to redraw a screen the shop is
+ * already looking at is the read budget going nowhere. Later pages are
+ * keyed on the caller's cursor and always read fresh, because they are
+ * walked past rarely and a cursor is not a stable cache key.
  *
  * @param {object} opts
  * @param {string} opts.dateKey      Asia/Kolkata `YYYY-MM-DD`.
@@ -515,19 +762,24 @@ export async function fetchDayPage({ dateKey, pageSize = 100, cursor = null } = 
   // second count query.
   parts.push(fs.limit(size + 1));
 
-  const snap = await fs.getDocs(fs.query(dayTxnsRef(fs, b.db, dateKey), ...parts));
-  const docs = snap.docs;
+  const loadPage = async () => {
+    const snap = await chargedGetDocs(fs, fs.query(dayTxnsRef(fs, b.db, dateKey), ...parts));
+    const docs = snap.docs;
 
-  if (docs.length <= size) {
-    return { rows: docs.map((d) => normalizeTxn(d.id, d.data())), cursor: null, hasMore: false };
-  }
+    if (docs.length <= size) {
+      return { rows: docs.map((d) => normalizeTxn(d.id, d.data())), cursor: null, hasMore: false };
+    }
 
-  const page = docs.slice(0, size);
-  return {
-    rows: page.map((d) => normalizeTxn(d.id, d.data())),
-    cursor: page[page.length - 1],
-    hasMore: true,
+    const page = docs.slice(0, size);
+    return {
+      rows: page.map((d) => normalizeTxn(d.id, d.data())),
+      cursor: page[page.length - 1],
+      hasMore: true,
+    };
   };
+
+  if (cursor) return loadPage();
+  return rowsCache.read(`day:${dateKey}:${size}`, loadPage);
 }
 
 /**
@@ -539,15 +791,19 @@ export async function fetchDayPage({ dateKey, pageSize = 100, cursor = null } = 
  * loaded, and still show it offline. The rules keep the counter and the
  * rows in step, so the two cannot disagree.
  *
- * If the head is unreadable the count is genuinely unknown, and the
- * caller is expected to fall back to the number of rows it holds rather
- * than treat this as an error.
+ * If the head is unreadable the count is genuinely unknown, and the caller
+ * is expected to leave it out rather than substitute a number. In
+ * particular this throws rather than answering 0 when the day's read quota
+ * is spent: a zero would be shown as "this day sold nothing", which is a
+ * different and very confident claim.
  */
 export async function countDayTransactions(dateKey) {
   if (!isValidDateKey(dateKey)) return 0;
   const b = await bridge();
   const fs = b.firestore;
-  const snap = await fs.getDoc(headRef(fs, b.db, dateKey));
+  const snap = await headCache.read(`head:${dateKey}`, () =>
+    chargedGetDoc(fs, headRef(fs, b.db, dateKey))
+  );
   /* No head at all means no sale was ever recorded on this day. */
   if (!snap.exists()) return 0;
   const counters = snap.data().counters;
@@ -555,8 +811,24 @@ export async function countDayTransactions(dateKey) {
   /* A head we cannot trust is the one case worth paying for a real count
      rather than showing a shopkeeper a wrong total. */
   console.warn("[trustx-ledger] day head counters unusable, counting the day directly:", counters);
-  const counted = await fs.getCountFromServer(dayTxnsRef(fs, b.db, dateKey));
-  return toSafe(counted.data().count);
+  /* But not when the day's read budget is already spent: a count aggregate
+     is billed per thousand index entries scanned, so this is the most
+     expensive call in the file and the least likely to be affordable. */
+  try {
+    const counted = await guardQuota(() =>
+      fs.getCountFromServer(dayTxnsRef(fs, b.db, dateKey))
+    );
+    /* An aggregate is billed per index entry scanned with a floor of one
+       read per query, so one is the honest minimum to charge it. */
+    noteReads(readsForQuery(1));
+    return toSafe(counted.data().count);
+  } catch (err) {
+    /* Deliberately rethrown rather than answered with 0. A spent quota is
+       not "this day sold nothing", and a zero here would be rendered as a
+       confident day count of none. The caller already treats a thrown count
+       as "unknown" and leaves it out — which is the truth. */
+    throw err;
+  }
 }
 
 /**
@@ -582,10 +854,21 @@ export async function fetchDayState(dateKey) {
   try {
     const b = await bridge();
     const fs = b.firestore;
-    const snap = await fs.getDoc(headRef(fs, b.db, dateKey));
+    /* Never cached: this read exists so a write can tell a closed day from
+       a missing grant, and answering that from a cached head would defeat
+       the reason it is made immediately before the write. */
+    const snap = await chargedGetDoc(fs, headRef(fs, b.db, dateKey));
     return { dateKey, closed: snap.exists() ? snap.data().state === DAY_STATE.CLOSED : false };
   } catch (err) {
-    console.warn("[trustx-ledger] day state unavailable, treating as open:", err);
+    /* Fail open, as documented, so a bad connection cannot stop the shop
+       recording a sale. A spent quota is reported though — the write that
+       follows is about to be refused, and the banner should already be up
+       before the shopkeeper meets that refusal in a dialog. */
+    if (isQuotaExhausted(err)) {
+      console.error("[trustx-ledger] day state unavailable, daily quota exhausted:", err);
+    } else {
+      console.warn("[trustx-ledger] day state unavailable, treating as open:", err);
+    }
     return { dateKey, closed: false };
   }
 }
@@ -681,7 +964,10 @@ export async function createTransaction({
     updatedAt: now,
     updatedBy: user.uid,
   });
-  await batch.commit();
+  await guardQuota(() => batch.commit());
+  /* Two documents go out in this batch: the sale and the day head. */
+  noteWrites(2);
+  invalidateDayReads(dateKey);
 
   /* `dateKey` is echoed back so a page that is parked on another day can
      follow the sale to the day it landed on. */
@@ -743,7 +1029,9 @@ export async function createService({ name, price, code = "", sortOrder = 0, ser
     updatedAt: fs.serverTimestamp(),
     updatedBy: user.uid,
   };
-  await fs.setDoc(fs.doc(b.db, "services", id), doc);
+  await guardQuota(() => fs.setDoc(fs.doc(b.db, "services", id), doc));
+  noteWrites();
+  catalogCache.drop();
   return { serviceId: id, name: cleanName, pricePaise };
 }
 
@@ -764,7 +1052,9 @@ export async function createService({ name, price, code = "", sortOrder = 0, ser
  * @returns {Promise<{created: object[], skipped: number, denied: number}>}
  */
 export async function seedDefaultServices({ onProgress } = {}) {
-  const existing = await fetchServices({ includeInactive: true });
+  /* `force`: which entries are missing is decided by what is actually in
+     the database, not by what this tab last saw. */
+  const existing = await fetchServices({ includeInactive: true, force: true });
   const missing = findMissingCatalogServices(existing);
   if (!missing.length) return { created: [], skipped: existing.length, denied: 0 };
 
@@ -849,7 +1139,9 @@ export async function updateService(serviceId, { name, price, active } = {}) {
 
   patch.updatedAt = fs.serverTimestamp();
   patch.updatedBy = user.uid;
-  await fs.updateDoc(fs.doc(b.db, "services", serviceId), patch);
+  await guardQuota(() => fs.updateDoc(fs.doc(b.db, "services", serviceId), patch));
+  noteWrites();
+  catalogCache.drop();
   return { serviceId, ...patch };
 }
 
@@ -887,7 +1179,7 @@ export async function updateTransaction(txnId, dateKey, patch = {}) {
   if (!user || !user.uid) throw new Error("You need to be signed in to edit a sale.");
 
   const ref = txnRef(fs, b.db, dateKey, id);
-  const before = await fs.getDoc(ref);
+  const before = await chargedGetDoc(fs, ref);
   if (!before.exists()) throw new Error("That sale could not be found.");
   const prev = before.data();
 
@@ -908,7 +1200,7 @@ export async function updateTransaction(txnId, dateKey, patch = {}) {
   if (!serviceId) throw new Error("Choose a service for this sale.");
 
   let serviceName = String(patch.serviceName || "").trim();
-  const svcSnap = await fs.getDoc(fs.doc(b.db, "services", serviceId));
+  const svcSnap = await chargedGetDoc(fs, fs.doc(b.db, "services", serviceId));
   if (!svcSnap.exists()) throw new Error("That service no longer exists.");
   const serviceDoc = svcSnap.data();
   if (serviceDoc.active !== true) throw new Error("That service is archived and cannot be used.");
@@ -962,7 +1254,9 @@ export async function updateTransaction(txnId, dateKey, patch = {}) {
     updatedAt: now,
     updatedBy: user.uid,
   });
-  await batch.commit();
+  await guardQuota(() => batch.commit());
+  noteWrites(2);
+  invalidateDayReads(dateKey);
 
   return { txnId: id, totalPaise, status };
 }
@@ -983,11 +1277,15 @@ export async function markTransactionPaid(txnId, dateKey) {
   const user = b.auth.currentUser;
   if (!user || !user.uid) throw new Error("You need to be signed in to settle a due sale.");
 
-  await fs.updateDoc(txnRef(fs, b.db, dateKey, id), {
-    status: "paid",
-    updatedAt: fs.serverTimestamp(),
-    updatedBy: user.uid,
-  });
+  await guardQuota(() =>
+    fs.updateDoc(txnRef(fs, b.db, dateKey, id), {
+      status: "paid",
+      updatedAt: fs.serverTimestamp(),
+      updatedBy: user.uid,
+    })
+  );
+  noteWrites();
+  invalidateDayReads(dateKey);
   return { txnId: id, status: "paid" };
 }
 
@@ -1012,7 +1310,7 @@ export async function deleteTransaction(txnId, dateKey) {
   }
 
   const ref = txnRef(fs, b.db, dateKey, id);
-  const snap = await fs.getDoc(ref);
+  const snap = await chargedGetDoc(fs, ref);
   if (!snap.exists()) return { txnId: id };
   const d = snap.data();
   /* No fallback argument: the document's own method is what its
@@ -1033,7 +1331,11 @@ export async function deleteTransaction(txnId, dateKey) {
     updatedAt: fs.serverTimestamp(),
     updatedBy: user.uid,
   });
-  await batch.commit();
+  await guardQuota(() => batch.commit());
+  /* One delete and one head update: they have separate Spark allowances. */
+  noteWrites();
+  noteDeletes();
+  invalidateDayReads(dateKey);
 
   return { txnId: id };
 }

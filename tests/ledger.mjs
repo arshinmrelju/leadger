@@ -2,6 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  isQuotaExhausted,
+  readsForQuery,
+  SPARK_LIMITS,
+  quotaResetTime,
+} from "../js/quota.js";
+
+import { createReadCache } from "../js/read-cache.js";
+
+import {
   toPaise,
   formatINR,
   paiseToInput,
@@ -900,4 +909,502 @@ test("the day state names are frozen, so a rule and a client cannot drift apart"
   assert.ok(Object.isFrozen(DAY_STATE), "DAY_STATE must not be editable at runtime");
   assert.deepEqual(Object.values(DAY_STATE).sort(), ["closed", "open"]);
   assert.ok(Object.isFrozen(COUNTER_FIELDS), "COUNTER_FIELDS must not be editable at runtime");
+});
+
+/* =========================================================
+   Free-plan survival kit
+   -----------------------------------------------------------------
+   The shop is on Firebase's Spark plan: 50,000 reads, 20,000 writes and
+   20,000 deletes a DAY, with nothing behind it to warn of them coming.
+   Two things guard that wall — a classifier that recognises the refusal,
+   and a cache so repeat views never pay for the same read twice. Both are
+   tested here because both fail silently when they are wrong: a
+   mis-classified quota error reaches the shop as "try again" (and the
+   sale is lost), and a cache that does not serve hits is just a bug
+   nobody notices until the 50,000th read.
+   ========================================================= */
+
+test("isQuotaExhausted recognises the Spark daily wall, and only that wall", () => {
+  /* Matched on the code, which is what the SDK actually sets. */
+  assert.equal(isQuotaExhausted({ code: "resource-exhausted" }), true);
+  /* And on the namespaced form newer builds may use. */
+  assert.equal(isQuotaExhausted({ code: "firestore/resource-exhausted" }), true);
+  assert.equal(isQuotaExhausted({ code: "RESOURCE_EXHAUSTED" }), true);
+
+  /* The documented message, as a fallback only. */
+  assert.equal(
+    isQuotaExhausted({
+      code: "unknown",
+      message: "This database has exceeded their daily quota, please retry with exponential backoff.",
+    }),
+    true
+  );
+
+  /* The errors that must NOT be softened into "try later". A dropped
+     connection recovers by itself; a quota refusal never does, and telling
+     the shop to retry is what loses the sale. */
+  assert.equal(isQuotaExhausted({ code: "unavailable" }), false);
+  assert.equal(isQuotaExhausted({ code: "permission-denied" }), false);
+  assert.equal(isQuotaExhausted({ code: "auth/network-request-failed" }), false);
+  assert.equal(isQuotaExhausted({ code: "not-found" }), false);
+  assert.equal(isQuotaExhausted({ code: "deadline-exceeded" }), false);
+
+  /* The client's own validation errors are plain Errors with no code and
+     must never be mistaken for a server-side wall. */
+  assert.equal(isQuotaExhausted(new Error("Choose a service for this sale.")), false);
+  assert.equal(isQuotaExhausted(new Error("Enter a valid rate (₹0 or more).")), false);
+  assert.equal(isQuotaExhausted(null), false);
+  assert.equal(isQuotaExhausted(undefined), false);
+
+  /* A code that merely CONTAINS the words must not match, or an unrelated
+     error could be misread as a wall. */
+  assert.equal(isQuotaExhausted({ code: "resource-exhausted-but-not-really" }), false);
+});
+
+test("readsForQuery counts the rules' grant lookup, not just the documents", () => {
+  /* A query returning N docs costs about N+1: Firestore bills a minimum of
+     one read per query, and firestore.rules gates every collection behind
+     trusted(), which itself costs a get(accessGrants/{uid}). Omitting that
+     +1 is what would let the meter flatter the app by ~40% on a history
+     walk, which is precisely the read pattern that hits the wall. */
+  assert.equal(readsForQuery(0), 1, "a zero-result query is still billed one read");
+  assert.equal(readsForQuery(1), 2);
+  assert.equal(readsForQuery(121), 122);
+  assert.equal(readsForQuery(200), 201);
+
+  /* Defensive: a missing snapshot must not read as free. */
+  assert.equal(readsForQuery(undefined), 1);
+  assert.equal(readsForQuery(null), 1);
+});
+
+test("the Spark limits the app guards against are the documented ones", () => {
+  /* Pinned so a plan change in the console is a deliberate edit here,
+     not a silent drift between what the meter promises and the wall. */
+  assert.deepEqual(SPARK_LIMITS, { readsPerDay: 50000, writesPerDay: 20000, deletesPerDay: 20000 });
+  assert.ok(Object.isFrozen(SPARK_LIMITS), "the limits must not be editable at runtime");
+});
+
+test("quotaResetTime lands in the afternoon in India, because that is when it is", () => {
+  /* Firestore resets around midnight Pacific, which is roughly 12:30-1:30pm
+     in India: mid-afternoon on a working day. The shop is told a time, so
+     the time has to be an India one. */
+  const when = quotaResetTime(new Date("2026-09-24T06:00:00Z"));
+  assert.match(String(when), /^\d{1,2}:\d{2}\s?(am|pm)$/);
+
+  /* No formatter must not throw — this is called from a catch path. */
+  assert.doesNotThrow(() => quotaResetTime(new Date("2026-09-24T06:00:00Z")));
+});
+
+test("the read cache serves a fresh value instead of paying for it twice", async () => {
+  let calls = 0;
+  const cache = createReadCache({ freshTtlMs: 60_000, staleTtlMs: 600_000 });
+
+  const loader = async () => {
+    calls += 1;
+    return { n: calls };
+  };
+
+  /* First call is a miss: the caller waits for the server. */
+  const first = await cache.read("k", loader);
+  assert.deepEqual(first, { n: 1 });
+  assert.equal(calls, 1);
+
+  /* Every call inside serveTtl is served from memory. Ten page loads in a
+     minute must not cost ten reads — this is the whole point. */
+  for (let i = 0; i < 10; i += 1) {
+    assert.deepEqual(await cache.read("k", loader), { n: 1 });
+  }
+  assert.equal(calls, 1, "a served-from-cache read must not reach the server");
+});
+
+test("a failed load is never cached, so the next read tries again", async () => {
+  let calls = 0;
+  const cache = createReadCache({ freshTtlMs: 60_000, staleTtlMs: 600_000 });
+  const loader = async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("transient");
+    return { n: calls };
+  };
+
+  /* The failure propagates to the caller rather than becoming a value. */
+  await assert.rejects(() => cache.read("k", loader), /transient/);
+
+  /* And it left no poisoned entry behind: a reader that swallowed the
+     error must not then be served `undefined` for the rest of the session. */
+  assert.deepEqual(await cache.read("k", loader), { n: 2 });
+});
+
+test("the write paths' escape hatch really bypasses the cache", async () => {
+  let calls = 0;
+  const cache = createReadCache({ freshTtlMs: 60_000, staleTtlMs: 600_000 });
+  const loader = async () => {
+    calls += 1;
+    return { n: calls };
+  };
+
+  await cache.read("head", loader);
+  assert.equal(calls, 1);
+
+  /* A sale must never verify its day head against a cached one. */
+  const fresh = await cache.read("head", loader, { force: true });
+  assert.deepEqual(fresh, { n: 2 });
+  assert.equal(calls, 2);
+});
+
+test("dropping a key forgets exactly that key", async () => {
+  let calls = 0;
+  const cache = createReadCache({ freshTtlMs: 60_000, staleTtlMs: 600_000 });
+  const loader = async () => {
+    calls += 1;
+    return { n: calls };
+  };
+
+  await cache.read("a", loader);
+  await cache.read("b", loader);
+  assert.equal(calls, 2);
+
+  cache.drop("a");
+  await cache.read("a", loader);
+  assert.equal(calls, 3, "the dropped key must be re-read");
+
+await cache.read("b", loader);
+  assert.equal(calls, 3, "the other key must be untouched");
+});
+
+test("dropPrefix forgets a whole family of keys, not just one", async () => {
+  let calls = 0;
+  const cache = createReadCache({ freshTtlMs: 60_000, staleTtlMs: 600_000 });
+  const loader = async () => {
+    calls += 1;
+    return { n: calls };
+  };
+
+  /* The shape of the real row cache: one day, many page sizes. A sale
+     invalidates all of them at once, and it must not take a new page size
+     appearing to invalidate correctly. */
+  await cache.read("day:2026-09-24:100", loader);
+  await cache.read("day:2026-09-24:200", loader);
+  await cache.read("day:2026-09-25:100", loader);
+  await cache.read("txns:2026-09-24:300", loader);
+  assert.equal(calls, 4);
+
+  /* Writing to the 24th forgets only the 24th. */
+  cache.dropPrefix("day:2026-09-24:");
+  await cache.read("day:2026-09-24:100", loader);
+  await cache.read("day:2026-09-24:200", loader);
+  await cache.read("day:2026-09-25:100", loader);
+  await cache.read("txns:2026-09-24:300", loader);
+  assert.equal(calls, 6, "both page sizes of the written day must be re-read");
+
+  /* A different prefix still misses only what it names. */
+  cache.dropPrefix("txns:2026-09-24:");
+  await cache.read("txns:2026-09-24:300", loader);
+  assert.equal(calls, 7);
+
+  /* An unknown prefix is harmless — writes must not have to know every key
+     that exists to be safe. */
+  assert.doesNotThrow(() => cache.dropPrefix("nothing-matches-this:"));
+});
+
+test("the cache hands the same value to concurrent readers", async () => {
+  let calls = 0;
+  const cache = createReadCache({ freshTtlMs: 60_000, staleTtlMs: 600_000 });
+
+  /* Two screens opening at once (dashboard and ledger in parallel tabs, or
+     a page that renders a summary and a count together) must not each start
+     their own request. */
+  const loader = async () => {
+    calls += 1;
+    await new Promise((r) => setTimeout(r, 5));
+    return { n: calls };
+  };
+
+  const [a, b, c] = await Promise.all([
+    cache.read("k", loader),
+    cache.read("k", loader),
+    cache.read("k", loader),
+  ]);
+
+  assert.equal(calls, 1, "concurrent callers must share one request");
+  assert.deepEqual(a, { n: 1 });
+  assert.deepEqual(b, { n: 1 });
+  assert.deepEqual(c, { n: 1 });
+});
+
+test("a cached value goes stale in the background without blocking the page", async () => {
+  let calls = 0;
+  /* Wide margins on purpose: these tests assert WHICH branch of the TTL
+     logic runs, so the gaps between steps are far larger than the jitter of
+     a busy test runner. A tight boundary here would make this test fail
+     occasionally and teach nobody anything. */
+  const cache = createReadCache({ freshTtlMs: 100, staleTtlMs: 1000 });
+  const loader = async () => {
+    calls += 1;
+    return { n: calls };
+  };
+  const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+  /* Let any background re-check actually finish rather than guessing. */
+  const settle = async () => {
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 1));
+  };
+
+  assert.deepEqual(await cache.read("k", loader), { n: 1 });
+  assert.equal(calls, 1);
+
+  /* Inside the fresh window: served with no request at all. This is the
+     common case — the same screen reopened a few times in a row. */
+  assert.deepEqual(await cache.read("k", loader), { n: 1 });
+  assert.equal(calls, 1, "a fresh value must not cost a read");
+
+  /* Past the fresh window but still inside the stale window the reader gets
+     the old value AT ONCE — the shop sees today's total rather than a
+     spinner — and the re-check happens off to the side. */
+  await tick(200);
+  assert.deepEqual(await cache.read("k", loader), { n: 1 });
+  assert.equal(calls, 2, "the re-check should have started in the background");
+
+  /* Once it lands, the next reader is served the corrected value. */
+  await settle();
+  assert.deepEqual(await cache.read("k", loader), { n: 2 });
+
+  /* Past the stale window the caller waits for the server again rather than
+     being shown something arbitrarily old. */
+  await tick(1200);
+  assert.deepEqual(await cache.read("k", loader), { n: 3 });
+});
+
+test("a rejected background refresh does not poison a good cached value", async () => {
+  let calls = 0;
+  const cache = createReadCache({ freshTtlMs: 100, staleTtlMs: 1000 });
+  const loader = async () => {
+    calls += 1;
+    if (calls === 2) throw new Error("re-check refused");
+    return { n: calls };
+  };
+  const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+  const settle = async () => {
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 1));
+  };
+
+  assert.deepEqual(await cache.read("k", loader), { n: 1 });
+
+  /* A read past the fresh window starts a re-check, and that re-check
+     fails. */
+  await tick(200);
+  assert.deepEqual(await cache.read("k", loader), { n: 1 });
+  await settle();
+  assert.equal(calls, 2, "the failing re-check should have happened");
+
+  /* The failure must not have replaced the good value with a rejected
+     promise or an undefined: the shop keeps seeing its last known totals,
+     rather than a screen that empties itself over a re-check nobody asked
+     for. */
+  assert.deepEqual(await cache.read("k", loader), { n: 1 });
+
+  /* That read also started the retry, because the failure left the entry at
+     its old age. So the re-check can still succeed: the shop sees the
+     corrected total, having never seen a blank or a broken screen. */
+  await settle();
+  assert.deepEqual(await cache.read("k", loader), { n: 3 });
+});
+
+test("a read that races a write cannot resurrect the pre-write value", async () => {
+  let calls = 0;
+  const cache = createReadCache({ freshTtlMs: 1000, staleTtlMs: 5000 });
+  let release;
+  const gate = new Promise((r) => {
+    release = r;
+  });
+  const loader = async () => {
+    calls += 1;
+    if (calls === 1) {
+      await gate;
+      return { n: 1 };
+    }
+    return { n: calls };
+  };
+
+  /* A read goes out, and while it is still open a sale lands and
+     invalidates everything it touches. */
+  const inFlight = cache.read("head:2026-09-24", loader);
+  await new Promise((r) => setTimeout(r, 5));
+  cache.dropPrefix("head:2026-09-24:");
+  release();
+
+  /* The in-flight read still answers its own caller — it cannot be
+     un-called — but it must NOT be stored. */
+  assert.deepEqual(await inFlight, { n: 1 });
+  assert.deepEqual(await cache.read("head:2026-09-24", loader), { n: 2 });
+  assert.equal(calls, 2, "the invalidated answer must not have been reused");
+
+  /* Otherwise the dashboard would show a total that does not include the
+     sale the shopkeeper just made, for the whole TTL. */
+});
+
+/* =========================================================
+   Surviving the page load
+   -----------------------------------------------------------------
+   These screens are separate HTML documents, so a module-scoped Map is
+   thrown away by every navigation and every refresh. Without the persisted
+   layer the all-time history walk — the most expensive read in the app —
+   would be bought again in full each time, which is the exact opposite of
+   what the cache is for.
+   ========================================================= */
+
+/** A minimal localStorage, since the module under test needs one. */
+function installFakeStorage() {
+  const data = new Map();
+  return {
+    get length() {
+      return data.size;
+    },
+    key(i) {
+      return [...data.keys()][i] ?? null;
+    },
+    getItem: (k) => (data.has(k) ? data.get(k) : null),
+    setItem: (k, v) => data.set(k, String(v)),
+    removeItem: (k) => data.delete(k),
+    _data: data,
+  };
+}
+
+/* Async on purpose: the caller awaits inside the callback, and a plain
+   try/finally wrapper would restore localStorage the moment that callback
+   returned its promise — i.e. before any of the reads below had run. */
+async function withFakeStorage(fn) {
+  const previous = globalThis.localStorage;
+  const fake = installFakeStorage();
+  globalThis.localStorage = fake;
+  try {
+    return await fn(fake);
+  } finally {
+    if (previous === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previous;
+  }
+}
+
+test("a persisted value is served after the page is reloaded", async () => {
+  await withFakeStorage(async () => {
+    let calls = 0;
+    const loader = async () => {
+      calls += 1;
+      return { rows: [{ id: "a" }, { id: "b" }] };
+    };
+
+    /* The "first page load": a real read. */
+    const before = createReadCache({ freshTtlMs: 100, staleTtlMs: 100_000, persist: "history" });
+    assert.deepEqual(await before.read("txns:all:200", loader), { rows: [{ id: "a" }, { id: "b" }] });
+    assert.equal(calls, 1);
+
+    /* The "reload": a brand new cache over the same storage, which is all a
+       page navigation leaves behind. */
+    const after = createReadCache({ freshTtlMs: 100, staleTtlMs: 100_000, persist: "history" });
+    assert.deepEqual(await after.read("txns:all:200", loader), { rows: [{ id: "a" }, { id: "b" }] });
+    assert.equal(calls, 1, "the reload must not have paid for the walk again");
+  });
+});
+
+test("a persisted value past the stale window is not served", async () => {
+  await withFakeStorage(async () => {
+    let calls = 0;
+    const loader = async () => {
+      calls += 1;
+      return { n: calls };
+    };
+
+    const first = createReadCache({ freshTtlMs: 50, staleTtlMs: 150, persist: "history" });
+    assert.deepEqual(await first.read("k", loader), { n: 1 });
+
+    /* Well past the stale window: the saved copy is no longer an answer,
+       so the new page must ask the server rather than show stale rows as
+       if they were current. */
+    await new Promise((r) => setTimeout(r, 250));
+    const reloaded = createReadCache({ freshTtlMs: 50, staleTtlMs: 150, persist: "history" });
+    assert.deepEqual(await reloaded.read("k", loader), { n: 2 });
+    assert.equal(calls, 2);
+  });
+});
+
+test("invalidating a persisted key clears it for the next page load too", async () => {
+  await withFakeStorage(async () => {
+    let calls = 0;
+    const loader = async () => {
+      calls += 1;
+      return { n: calls };
+    };
+
+    const first = createReadCache({ freshTtlMs: 100_000, staleTtlMs: 100_000, persist: "history" });
+    await first.read("txns:all:200", loader);
+    assert.equal(calls, 1);
+
+    /* A sale lands. The memory copy goes, and so must the persisted one —
+       otherwise the next page load would serve history from before it. */
+    first.dropPrefix("txns:all:");
+
+    const reloaded = createReadCache({ freshTtlMs: 100_000, staleTtlMs: 100_000, persist: "history" });
+    assert.deepEqual(await reloaded.read("txns:all:200", loader), { n: 2 });
+    assert.equal(calls, 2);
+  });
+});
+
+test("persisted namespaces are separate and never touch other storage", async () => {
+  await withFakeStorage(async (storage) => {
+    const loader = async () => ({ v: "x" });
+
+    const history = createReadCache({ freshTtlMs: 100_000, staleTtlMs: 100_000, persist: "history" });
+    const expenses = createReadCache({ freshTtlMs: 100_000, staleTtlMs: 100_000, persist: "expenses" });
+    await history.read("k", loader);
+    await expenses.read("k", loader);
+
+    storage.setItem("unrelated-app-key", "keep me");
+
+    /* Dropping one namespace entirely must not empty the other, and must
+       not reach past its own prefix into the rest of localStorage. */
+    history.drop();
+    assert.equal(storage.getItem("unrelated-app-key"), "keep me");
+
+    const expensesAfter = createReadCache({ freshTtlMs: 100_000, staleTtlMs: 100_000, persist: "expenses" });
+    let expensesCalls = 0;
+    assert.deepEqual(
+      await expensesAfter.read("k", async () => {
+        expensesCalls += 1;
+        return { v: "x" };
+      }),
+      { v: "x" },
+    );
+    assert.equal(expensesCalls, 0, "the other namespace should have survived");
+  });
+});
+
+test("a cache without storage is simply a cache, and never throws", async () => {
+  /* The persisted layer must never be load-bearing: a browser with storage
+     disabled, or a full disk, has to behave exactly as before. */
+  const boom = {
+    length: 0,
+    key: () => null,
+    getItem: () => {
+      throw new Error("storage disabled");
+    },
+    setItem: () => {
+      throw new Error("storage disabled");
+    },
+    removeItem: () => {},
+  };
+  const previous = globalThis.localStorage;
+  globalThis.localStorage = boom;
+  try {
+    let calls = 0;
+    const cache = createReadCache({ freshTtlMs: 100_000, staleTtlMs: 100_000, persist: "history" });
+    const loader = async () => {
+      calls += 1;
+      return { n: calls };
+    };
+    assert.deepEqual(await cache.read("k", loader), { n: 1 });
+    assert.deepEqual(await cache.read("k", loader), { n: 1 });
+    assert.equal(calls, 1);
+    assert.doesNotThrow(() => cache.drop("k"));
+  } finally {
+    if (previous === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previous;
+  }
 });

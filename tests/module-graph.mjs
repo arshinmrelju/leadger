@@ -192,6 +192,48 @@ test("the shared confirm() opens its overlay, so it is actually visible", () => 
 });
 
 /* =========================================================
+   Quota-salvage modal dismissal guard.
+
+   js/app.js delegates one document-level click handler that closes ANY
+   `.modal-overlay` when the click landed on the overlay itself — the
+   standard backdrop-dismiss. The salvage dialog in js/sale-form.js is
+   deliberately NOT dismissible that way: it has no close button, and the
+   only way out is an explicit "I have written it down" click, so that
+   acknowledging the dialog is a decision rather than a reflex.
+
+   Nothing in that file's own code would catch a regression here, because
+   the handler that breaks the promise lives in a different module and the
+   dialog builds and appends its markup perfectly well. The failure is also
+   the expensive kind: a stray click beside the dialog dismisses it, the
+   shopkeeper reads the sale summary and clicks away, and a sale that was
+   never saved is lost with no error anywhere.
+   ========================================================= */
+
+test("the quota salvage dialog cannot be dismissed by clicking beside it", () => {
+  const src = fs.readFileSync(path.join(ROOT, "js", "sale-form.js"), "utf8");
+  const start = src.indexOf("function showQuotaSalvageModal(");
+  assert.notEqual(start, -1, "js/sale-form.js should still define the salvage dialog");
+
+  const rest = src.slice(start + 1);
+  const nextFn = rest.search(/\n(?:function|export)\s/);
+  const body = nextFn === -1 ? rest : rest.slice(0, nextFn);
+
+  assert.match(
+    body,
+    /overlay\.addEventListener\(\s*"click"[\s\S]{0,120}stopPropagation/,
+    "the salvage dialog must stop click propagation, or app.js's document-level " +
+      "backdrop handler closes it and the shopkeeper loses an unsaved sale",
+  );
+
+  /* And the escape route must stay closed too: only the button removes it. */
+  assert.match(
+    body,
+    /data-ack[\s\S]{0,400}addEventListener\(\s*"click"\s*,\s*done\s*\)/,
+    "the dialog should still be dismissed by its acknowledgement button",
+  );
+});
+
+/* =========================================================
    Dead-export guard (the mirror image of the check above).
 
    An export nothing imports is the cheapest kind of rot in a bundled-

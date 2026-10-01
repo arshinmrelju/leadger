@@ -43,6 +43,7 @@ import {
   isNetworkError,
 } from "./ledger.js";
 import { reportError } from "./auth.js";
+import { isQuotaExhausted, quotaResetTime } from "./quota.js";
 
 /* ---------------- Icons ---------------- */
 
@@ -159,6 +160,16 @@ export async function handleTxnAction(event, { rows = [], isClosed = null, onCha
  * another device can close the day while a list is on screen.
  */
 function describeWriteError(err, closed) {
+  /* Checked before the offline branch, because the two feel similar and
+     the remedies are opposite: a queued write recovers by itself when the
+     connection returns, a quota refusal never recovers on its own. */
+  if (isQuotaExhausted(err)) {
+    const resetAt = quotaResetTime();
+    return (
+      "This shop has used up today's free Firebase limit, so the change was NOT saved" +
+      (resetAt ? ` and cannot be until it resets around ${resetAt}.` : " and cannot be until the limit resets.")
+    );
+  }
   if (isNetworkError(err)) {
     return "You appear to be offline. The change will sync when you reconnect.";
   }

@@ -29,6 +29,60 @@
    ========================================================= */
 
 import { getFirebridge } from "./firebase.js";
+import { createReadCache } from "./read-cache.js";
+import {
+  guardQuota,
+  isQuotaExhausted,
+  noteReads,
+  noteWrites,
+  noteDeletes,
+  readsForQuery,
+} from "./quota.js";
+
+/* ------------------------------------------------------------------
+   Free-plan accounting
+
+   Every page load used to spend three reads before it drew anything: this
+   browser's grant, the shop record, and a second grant read purely to
+   decide whether the hourly heartbeat was due. They are cached here so a
+   page refresh costs none of them.
+
+   Caching the GRANT is safe despite it being a trust decision, because it
+   is not the thing that enforces trust. firestore.rules re-reads
+   accessGrants/{uid} on every single request, so a revoked browser is
+   refused by the server on its next request regardless of what this tab
+   still believes. What the cache changes is only whether the UI bounces
+   the browser to the login screen a few seconds sooner or later. */
+
+const grantCache = createReadCache({
+  freshTtlMs: 30_000,
+  staleTtlMs: 2 * 60_000,
+  onError: (err) => console.warn("[trustx-ledger] access grant refresh failed:", err),
+});
+
+const shopCache = createReadCache({
+  freshTtlMs: 60_000,
+  staleTtlMs: 5 * 60_000,
+  onError: (err) => console.warn("[trustx-ledger] shop record refresh failed:", err),
+});
+
+/** A counted, quota-classified single-document read. */
+function chargedGetDoc(fs, ref) {
+  return guardQuota(async () => {
+    const snap = await fs.getDoc(ref);
+    noteReads(readsForQuery(snap.exists() ? 1 : 0));
+    return snap;
+  });
+}
+
+/** A counted, quota-classified query. */
+function chargedGetDocs(fs, query) {
+  return guardQuota(async () => {
+    const snap = await fs.getDocs(query);
+    noteReads(readsForQuery(snap.size));
+    return snap;
+  });
+}
 
 /* ---------------- Errors ---------------- */
 
@@ -44,6 +98,8 @@ const AUTH_MESSAGES = {
   "not-configured":
     "Firebase is not configured yet. Add your web app config in js/firebase.js.",
   "not-signed-in": "You are not signed in.",
+  "quota-exhausted":
+    "This shop has used up today's free Firebase limit, so nothing can be saved until it resets. Nothing you entered has been lost — try again after the reset.",
   "network-request-failed":
     "Network problem. Check your connection and try again.",
   "operation-not-allowed":
@@ -76,6 +132,9 @@ function toAuthError(fbErr) {
   const code = fbErr && fbErr.code ? fbErr.code : "";
   if (code === "CONFIG_REQUIRED" || code === "not-configured") return new AuthError("not-configured", friendly("not-configured"));
   if (code === "not-signed-in") return new AuthError(code, friendly(code));
+  /* Checked before the switch below so a spent daily quota is never
+     reported as a generic sign-in failure — they need different actions. */
+  if (isQuotaExhausted(fbErr)) return new AuthError("quota-exhausted", friendly("quota-exhausted"));
 
   switch (code) {
     case "auth/network-request-failed": return new AuthError("network-request-failed", friendly("network-request-failed"));
@@ -345,8 +404,10 @@ export async function getGeneral() {
   try {
     const b = await storeBridge();
     const fs = b.firestore;
-    const snap = await fs.getDoc(shopRef(fs, b.db));
-    return snap.exists() ? snap.data() : null;
+    return await shopCache.read("general", async () => {
+      const snap = await chargedGetDoc(fs, shopRef(fs, b.db));
+      return snap.exists() ? snap.data() : null;
+    });
   } catch (err) {
     console.warn("[trustx-ledger] shop record read failed:", err);
     return null;
@@ -370,8 +431,16 @@ export async function ensureShopRecord() {
   const now = fs.serverTimestamp();
 
   try {
-    const snap = await fs.getDoc(ref);
-    if (snap.exists()) return snap.data();
+    /* Through the same cache the shell's getGeneral() uses. This runs on
+       every single page load, so a fresh probe here would spend a read to
+       re-answer a question the rules cannot have changed — and the shell's
+       `ensureShopRecord() || getGeneral()` means the cached getGeneral()
+       behind it was never actually reached. */
+    const existing = await shopCache.read("general", async () => {
+      const snap = await chargedGetDoc(fs, ref);
+      return snap.exists() ? snap.data() : null;
+    });
+    if (existing) return existing;
   } catch (err) {
     /* Best effort: the create below is the real decision. */
     console.warn("[trustx-ledger] shop record probe skipped:", err);
@@ -385,14 +454,20 @@ export async function ensureShopRecord() {
     updatedBy: user.uid,
   };
   try {
-    await fs.setDoc(ref, doc);
+    await guardQuota(() => fs.setDoc(ref, doc));
+    noteWrites();
+    shopCache.drop();
     return doc;
   } catch (err) {
     if (!isPermissionDenied(err)) throw err;
-    /* Lost the race — another browser created it first. */
+    /* Lost the race — another browser created it first. Re-read for real,
+       because the cached answer was null a moment ago and is now wrong,
+       and remember it so the next page load does not pay for it again. */
     try {
-      const snap = await fs.getDoc(ref);
-      return snap.exists() ? snap.data() : null;
+      const snap = await chargedGetDoc(fs, ref);
+      const data = snap.exists() ? snap.data() : null;
+      shopCache.set("general", data);
+      return data;
     } catch (readErr) {
       return null;
     }
@@ -505,12 +580,15 @@ export async function enrollBrowser({ label } = {}) {
 
   /* Step 2 — the server-side allowlist check. */
   try {
-    await fs.setDoc(enrollRef(fs, b.db, user.uid), {
-      scope: "shop",
-      email,
-      createdAt: fs.serverTimestamp(),
-      createdBy: user.uid,
-    });
+    await guardQuota(() =>
+      fs.setDoc(enrollRef(fs, b.db, user.uid), {
+        scope: "shop",
+        email,
+        createdAt: fs.serverTimestamp(),
+        createdBy: user.uid,
+      })
+    );
+    noteWrites();
   } catch (err) {
     if (isPermissionDenied(err)) {
       /* Either the email is not in allowedUsers or the allowlist
@@ -527,18 +605,29 @@ export async function enrollBrowser({ label } = {}) {
      revocation already has one, and reactivates it. The rules pin which
      of the two is allowed. */
   const now = fs.serverTimestamp();
-  const existing = await getAccessGrant();
+  /* Forced, deliberately. The cached answer to "does this browser already
+     have a grant?" is exactly the decision this line makes, and it is
+     written fresh a moment ago by the sign-in that brought the user here —
+     so a cached `null` from the pre-login check would send an enrolling
+     browser down the create path, the rules would refuse it as an existing
+     record, and the shop would be told "not authorised" about an account
+     that is on the allowlist. */
+  const existing = await getAccessGrant({ force: true });
   if (existing) {
     try {
-      await fs.updateDoc(grantRef(fs, b.db, user.uid), {
-        active: true,
-        lastUsedAt: now,
-        updatedAt: now,
-        updatedBy: user.uid,
-      });
+      await guardQuota(() =>
+        fs.updateDoc(grantRef(fs, b.db, user.uid), {
+          active: true,
+          lastUsedAt: now,
+          updatedAt: now,
+          updatedBy: user.uid,
+        })
+      );
+      noteWrites();
+      grantCache.drop(user.uid);
     } catch (err) {
       console.error("[trustx-ledger] access restore refused:", err);
-      throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
+      throw toAuthError(err);
     }
     return { ...existing, active: true };
   }
@@ -555,10 +644,12 @@ export async function enrollBrowser({ label } = {}) {
     updatedBy: user.uid,
   };
   try {
-    await fs.setDoc(grantRef(fs, b.db, user.uid), grant);
+    await guardQuota(() => fs.setDoc(grantRef(fs, b.db, user.uid), grant));
+    noteWrites();
+    grantCache.drop(user.uid);
   } catch (err) {
     console.error("[trustx-ledger] access grant refused:", err);
-    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
+    throw toAuthError(err);
   }
 
   return grant;
@@ -571,17 +662,23 @@ export async function enrollBrowser({ label } = {}) {
  *
  * @returns {Promise<object|null>}
  */
-export async function getAccessGrant() {
+export async function getAccessGrant({ force = false } = {}) {
   const user = getCurrentUser();
   if (!user) return null;
   try {
     const b = await storeBridge();
     const fs = b.firestore;
-    const snap = await fs.getDoc(grantRef(fs, b.db, user.uid));
-    return snap.exists() ? { uid: snap.id, ...snap.data() } : null;
+    return await grantCache.read(
+      user.uid,
+      async () => {
+        const snap = await chargedGetDoc(fs, grantRef(fs, b.db, user.uid));
+        return snap.exists() ? { uid: snap.id, ...snap.data() } : null;
+      },
+      { force }
+    );
   } catch (err) {
-    /* Offline or rules denied: fail closed. A browser that cannot prove
-       it is trusted must not be treated as trusted. */
+    /* Offline, quota spent, or rules denied: fail closed. A browser that
+       cannot prove it is trusted must not be treated as trusted. */
     console.warn("[trustx-ledger] access grant read failed:", err);
     return null;
   }
@@ -596,19 +693,30 @@ export async function touchAccessGrant() {
   const user = getCurrentUser();
   if (!user) return;
   try {
+    /* The heartbeat exists to keep a "last seen" column roughly current,
+       so if the cached grant already says it was touched within the hour
+       the answer is already known and the probe read is pure cost. */
+    const known = await getAccessGrant();
+    const millis = known ? toMillis(known.lastUsedAt) : 0;
+    if (Date.now() - millis < HEARTBEAT_MS) return;
+
     const b = await storeBridge();
     const fs = b.firestore;
     const ref = grantRef(fs, b.db, user.uid);
-    const snap = await fs.getDoc(ref);
+    const snap = await chargedGetDoc(fs, ref);
     if (!snap.exists()) return;
     const last = snap.data().lastUsedAt;
-    const millis = last && typeof last.toMillis === "function" ? last.toMillis() : 0;
-    if (Date.now() - millis < HEARTBEAT_MS) return;
-    await fs.updateDoc(ref, {
-      lastUsedAt: fs.serverTimestamp(),
-      updatedAt: fs.serverTimestamp(),
-      updatedBy: user.uid,
-    });
+    const lastMillis = last && typeof last.toMillis === "function" ? last.toMillis() : 0;
+    if (Date.now() - lastMillis < HEARTBEAT_MS) return;
+    await guardQuota(() =>
+      fs.updateDoc(ref, {
+        lastUsedAt: fs.serverTimestamp(),
+        updatedAt: fs.serverTimestamp(),
+        updatedBy: user.uid,
+      })
+    );
+    noteWrites();
+    grantCache.drop(user.uid);
   } catch (err) {
     /* Cosmetic: never let a missed heartbeat interrupt the shop. */
     console.warn("[trustx-ledger] access heartbeat failed:", err);
@@ -627,7 +735,7 @@ export async function touchAccessGrant() {
 export async function listAccessGrants() {
   const b = await storeBridge();
   const fs = b.firestore;
-  const snap = await fs.getDocs(fs.collection(b.db, "accessGrants"));
+  const snap = await chargedGetDocs(fs, fs.collection(b.db, "accessGrants"));
   return snap.docs
     .map((d) => ({ uid: d.id, ...d.data() }))
     .sort((a, x) => toMillis(x.createdAt) - toMillis(a.createdAt));
@@ -647,7 +755,9 @@ export async function restoreGrant(uid) {
 export async function removeGrant(uid) {
   const b = await storeBridge();
   const fs = b.firestore;
-  await fs.deleteDoc(grantRef(fs, b.db, uid));
+  await guardQuota(() => fs.deleteDoc(grantRef(fs, b.db, uid)));
+  noteDeletes();
+  grantCache.drop(uid);
 }
 
 async function patchGrant(uid, active) {
@@ -656,16 +766,20 @@ async function patchGrant(uid, active) {
   const operator = getCurrentUser();
   if (!operator) throw new AuthError("not-signed-in", friendly("not-signed-in"));
   const ref = grantRef(fs, b.db, uid);
-  const snap = await fs.getDoc(ref);
+  const snap = await chargedGetDoc(fs, ref);
   if (!snap.exists()) throw new AuthError("enrollment-failed", "That browser is no longer registered.");
 
   const now = fs.serverTimestamp();
-  await fs.updateDoc(ref, {
-    active,
-    lastUsedAt: active === true ? now : snap.data().lastUsedAt,
-    updatedAt: now,
-    updatedBy: operator.uid,
-  });
+  await guardQuota(() =>
+    fs.updateDoc(ref, {
+      active,
+      lastUsedAt: active === true ? now : snap.data().lastUsedAt,
+      updatedAt: now,
+      updatedBy: operator.uid,
+    })
+  );
+  noteWrites();
+  grantCache.drop(uid);
 }
 
 /* =========================================================
@@ -720,31 +834,38 @@ export async function grantAdminAccess() {
   /* An admin-scope proof, checked server-side against
      allowedUsers/{email}. An unauthorised email never lands. */
   try {
-    await fs.setDoc(enrollRef(fs, b.db, user.uid), {
-      scope: "admin",
-      email,
-      createdAt: fs.serverTimestamp(),
-      createdBy: user.uid,
-    });
+    await guardQuota(() =>
+      fs.setDoc(enrollRef(fs, b.db, user.uid), {
+        scope: "admin",
+        email,
+        createdAt: fs.serverTimestamp(),
+        createdBy: user.uid,
+      })
+    );
+    noteWrites();
   } catch (err) {
     if (isPermissionDenied(err)) {
       throw new AuthError("not-authorized", friendly("not-authorized"));
     }
-    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
+    throw toAuthError(err);
   }
 
   /* Promotion. The rules allow this only from `shop` to `admin`, only
      while active, and only with the proof above on file. */
   const now = fs.serverTimestamp();
   try {
-    await fs.updateDoc(grantRef(fs, b.db, user.uid), {
-      role: "admin",
-      updatedAt: now,
-      updatedBy: user.uid,
-    });
+    await guardQuota(() =>
+      fs.updateDoc(grantRef(fs, b.db, user.uid), {
+        role: "admin",
+        updatedAt: now,
+        updatedBy: user.uid,
+      })
+    );
+    noteWrites();
+    grantCache.drop(user.uid);
   } catch (err) {
     console.error("[trustx-ledger] admin promotion rejected:", err);
-    throw new AuthError("enrollment-failed", friendly("enrollment-failed"));
+    throw toAuthError(err);
   }
 
   return true;

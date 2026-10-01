@@ -33,6 +33,7 @@ import {
 } from "./ledger.js";
 import { reportError } from "./auth.js";
 import { createServicePicker, serviceTile } from "./service-picker.js";
+import { isQuotaExhausted, quotaResetTime } from "./quota.js";
 
 const ICON_PLUS =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
@@ -422,6 +423,95 @@ function updateTotal() {
 
 /* ---------------- Save ---------------- */
 
+/**
+ * A sale that hit the free-plan wall, shown as a dialog the shop cannot
+ * dismiss by accident.
+ *
+ * This is the one place in the app where a wrong-looking screen costs
+ * actual money. Offline persistence holds a write while the connection is
+ * down, but it does NOT hold a write the server refused — and a spent daily
+ * quota refuses everything. So the sale the shopkeeper just typed is gone,
+ * the form is deliberately left filled in, and the numbers are put on the
+ * clipboard so nothing has to be remembered or retyped from a phone screen.
+ *
+ * The dialog has no close button and no backdrop-dismiss on purpose: the
+ * only way out is the explicit "I have written it down" button, so the
+ * acknowledgement is a decision rather than a reflex.
+ */
+function showQuotaSalvageModal({ totalPaise, serviceName, quantity, ratePaise, customerName, method }) {
+  const resetAt = quotaResetTime();
+  const when = resetAt ? `around ${resetAt} today` : "shortly";
+  const summary = [
+    `${formatINR(totalPaise)}`,
+    serviceName,
+    `x ${quantity}`,
+    `@ ${formatINR(ratePaise)}`,
+    methodLabel(method),
+    customerName ? `for ${customerName}` : "",
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay is-open";
+  overlay.setAttribute("role", "alertdialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.innerHTML = `
+    <div class="modal" role="document">
+      <div class="modal-header">
+        <h3>This sale was not saved</h3>
+      </div>
+      <div class="modal-body">
+        <p><strong>Today's free Firebase limit has been reached.</strong> The shop
+        cannot write anything until it resets ${escapeHtml(when)}.</p>
+        <p>Your entry is still in the form behind this dialog, and it has been
+        copied to the clipboard. Write this sale down now:</p>
+        <p class="quota-salvage-line">${escapeHtml(summary)}</p>
+        <p class="muted">Closing this dialog will NOT save it. Re-enter the sale
+        after the reset.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-ack>I have written it down</button>
+      </div>
+    </div>`;
+
+  /* Belt and braces: the overlay is created already open, so append it
+     directly rather than through openModal() and accept its focus
+     handling. Nothing closes it but the button. */
+  document.body.appendChild(overlay);
+
+  /* app.js has one document-level handler that closes ANY .modal-overlay
+     when the click landed on the backdrop itself. Left alone, a stray click
+     beside this dialog would dismiss it — and dismissing it is precisely
+     what loses the sale, because it looks like the message was dealt with.
+     Stopping propagation here means the acknowledgement really does take a
+     deliberate click on the button. */
+  overlay.addEventListener("click", (event) => event.stopPropagation());
+
+  const done = () => {
+    if (!overlay.isConnected) return;
+    overlay.classList.remove("is-open");
+    setTimeout(() => overlay.remove(), 190);
+  };
+
+  const ack = overlay.querySelector("[data-ack]");
+  if (ack) ack.addEventListener("click", done);
+  setTimeout(() => ack && ack.focus(), 60);
+
+  /* Best effort, and deliberately not awaited — a clipboard refusal must
+     not stop the dialog from appearing. The summary is on screen either
+     way, which is the part that matters. */
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(summary).catch(() => {});
+    }
+  } catch {
+    /* Clipboard unavailable (insecure context, permissions). */
+  }
+
+  return done;
+}
+
 async function onSave(event) {
   event.preventDefault();
   if (saving) return; // double-submit guard
@@ -503,6 +593,22 @@ async function onSave(event) {
     resetForm();
   } catch (err) {
     console.error("[trustx-ledger] save:", err);
+
+    /* The free-plan wall, handled before anything else can soften it. The
+       form is NOT reset and the modal is NOT closed: the entry is still
+       there and still correct, and the shop is told to write it down. */
+    if (isQuotaExhausted(err)) {
+      showQuotaSalvageModal({
+        totalPaise: total,
+        serviceName: selectedService ? selectedService.name : "",
+        quantity: qty,
+        ratePaise,
+        customerName: customer,
+        method: paymentMethod,
+      });
+      return;
+    }
+
     showFormMsg(
       isNetworkError(err)
         ? "Could not save right now. Check your connection and try again."
