@@ -14,25 +14,34 @@
       "tests/**",
       "*.log",
       "**/*.log",
-      "node_modules/**"
+      "node_modules/**",
+      "tools/**"
     ],
     "trailingSlash": false,
     "headers": [
       {
-        "source": "**/*.html",
+        "source": "sw.js",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       },
       {
-        "source": "**/*.css",
+        "source": "manifest.webmanifest",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
       },
       {
-        "source": "**/*.js",
+        "source": "js/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+      },
+      {
+        "source": "css/**",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
       },
       {
         "source": "assets/**",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+      },
+      {
+        "source": "**/*.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       },
       {
         "source": "**",

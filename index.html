@@ -6,7 +6,12 @@
   <title>TrustX Ledger</title>
   <meta name="description" content="TrustX Ledger — digital service shop ledger" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
-  <!-- Nunito font — preconnect first, then load non-blocking -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#2d8a4e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="TrustX Ledger" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Nunito font — preconnect first, then load non-blocking -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
@@ -107,6 +112,15 @@
         timeDisp.textContent = day + " " + month + " " + year;
       } catch (_) {}
     }
+  </script>
+
+  <script type="module">
+    /* index.html has no app shell, so it does not mount the topbar controls,
+       but it still installs the worker. Registering on the very first page a
+       shop visits means the shell is cached before they ever sign in, so the
+       installed app is offline-ready from the start. */
+    import { registerServiceWorker } from "./js/pwa.js";
+    registerServiceWorker();
   </script>
 </body>
 </html>

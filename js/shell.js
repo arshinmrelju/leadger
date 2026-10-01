@@ -16,6 +16,7 @@
 import { toast, confirm } from "./app.js";
 import { escapeHtml, formatKolkataLong, todayKolkata } from "./utils.js";
 import { ensureCatalogSeeded } from "./ledger.js";
+import { mountPwaControls } from "./pwa.js";
 import {
   requireAccess,
   guardPage,
@@ -129,6 +130,21 @@ function wireConnection(onDayChange) {
   }, 60000);
 }
 
+/**
+ * Put the install and update controls in the topbar.
+ *
+ * Rendered from JS rather than written into each page's HTML: the same
+ * topbar is duplicated across four pages, and a control that has to be
+ * remembered in four places is one that will eventually be missing from
+ * one of them. The buttons start hidden and reveal themselves when the
+ * browser actually has something to offer — see js/pwa.js.
+ */
+function mountPwaChrome() {
+  const topbar = document.querySelector(".topbar");
+  if (!topbar) return;
+  mountPwaControls(topbar);
+}
+
 function registerGlobalKeys() {
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && (event.key === "n" || event.key === "N")) {
@@ -178,6 +194,7 @@ export async function initAppShell({ onReady, onDayChange, requireAdmin = false 
 
     renderShopName(general);
     wireConnection(typeof onDayChange === "function" ? onDayChange : null);
+    mountPwaChrome();
 
     const ctx = {
       user: real,

@@ -1,0 +1,63 @@
+{
+  "name": "TrustX Ledger — Shop Record",
+  "short_name": "TrustX Ledger",
+  "description": "Offline-first ledger for a digital service shop: record sales, track dues and expenses, and keep the day's takings on screen even without a connection.",
+  "id": "/dashboard.html",
+  "start_url": "/dashboard.html",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "any",
+  "background_color": "#f7f3ea",
+  "theme_color": "#2d8a4e",
+  "categories": ["business", "finance", "productivity"],
+  "lang": "en-IN",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today",
+      "short_name": "Today",
+      "description": "Today's takings",
+      "url": "/dashboard.html"
+    },
+    {
+      "name": "All transactions",
+      "short_name": "Transactions",
+      "description": "Every recorded sale",
+      "url": "/transactions.html"
+    },
+    {
+      "name": "Day ledger",
+      "short_name": "Ledger",
+      "description": "One business day in full",
+      "url": "/ledger.html"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="title">
+  <title id="title">TrustX Ledger</title>
+  <!--
+    Maskable icon, composed for a mask rather than drawn to look good in a
+    square. Everything that matters is kept inside the central 80% circle,
+    because that is the largest area a platform is allowed to guarantee:
+    the rounded-square edges of logo.svg would be sliced off by a circular
+    mask and by Windows' own squircle.
+
+    The background is therefore full-bleed and square (no corner radius for
+    the mask to reveal), and the mark is scaled to fit the safe circle: its
+    furthest visible point ends up 190.5px from the centre, inside the
+    204.8px limit, so the book and the rupee survive any mask.
+
+    The 1.3 scale is not arbitrary and should not be "tidied up": it is
+    close to the 1.398 ceiling, and the arithmetic behind that ceiling is
+    the rounded square's own corner arc sitting 146.5 logo-units from the
+    centre. Shrinking it makes the mark vanish into the background; enlarging
+    it past 1.4 gets the corners sliced off.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4b8bbf"/>
+      <stop offset="0.55" stop-color="#3a709e"/>
+      <stop offset="1" stop-color="#2d8a4e"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f5a623"/>
+      <stop offset="1" stop-color="#e8921a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Full-bleed background: the mask decides the corners. -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- The mark, from logo.svg's 256 grid: scaled 1.3x and centred. -->
+  <g transform="translate(256 256) scale(1.3) translate(-128 -128)">
+    <rect x="8" y="8" width="240" height="240" rx="56" fill="rgba(255,255,255,0.10)"/>
+    <path d="M46 72c22-8 46-8 68 0v112c-22-8-46-8-68 0V72z" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="12" stroke-linejoin="round"/>
+    <path d="M210 72c-22-8-46-8-68 0v112c22-8 46-8 68 0V72z" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="12" stroke-linejoin="round"/>
+    <path d="M114 72v112" stroke="rgba(255,255,255,0.92)" stroke-width="12" stroke-linecap="round"/>
+    <path d="M138 92c18-3 33 7 33 22 0 13-13 21-33 21h-6l12 27" fill="none" stroke="url(#amber)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M126 116h38" stroke="url(#amber)" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="208" cy="216" r="12" fill="rgba(255,255,255,0.18)"/>
+    <circle cx="208" cy="216" r="6" fill="rgba(245,166,35,0.95)"/>
+  </g>
+</svg>

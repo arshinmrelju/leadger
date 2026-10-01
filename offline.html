@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline — TrustX Ledger</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#2d8a4e" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" /></noscript>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/forms.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+</head>
+<!--
+  Shown when the service worker has no cached copy of the page that was asked
+  for and there is no connection. In a standalone desktop window the browser's
+  own error page would be a blank white void with no way back, so this exists
+  to at least say what happened and offer the two screens that always work.
+
+  Reaching this page at all should be rare: every real screen is precached, so
+  the shop's normal screens open offline. It catches the case where the
+  worker was installed mid-session and has not yet cached the page in
+  question.
+-->
+<body class="auth-body" data-page="offline">
+  <div class="receipt-wrapper">
+    <div class="receipt-dispenser" aria-hidden="true">
+      <div class="dispenser-bar"></div>
+      <div class="dispenser-slot"></div>
+    </div>
+
+    <main class="auth-card receipt-card">
+      <div class="receipt-inner">
+        <div class="receipt-top-row">
+          <div class="receipt-header-left">
+            <span class="receipt-status-tag">NO CONNECTION</span>
+            <h1 class="receipt-title">TrustX Ledger</h1>
+            <p class="receipt-subtitle">Offline &bull; &#x20B9; INR</p>
+          </div>
+          <div class="receipt-stamp" title="TrustX Ledger Verified">
+            <span class="receipt-stamp-brand">TrustX</span>
+            <span class="receipt-stamp-brand">LEDGER</span>
+          </div>
+        </div>
+
+        <hr class="receipt-divider" />
+
+        <div class="receipt-items">
+          <div class="receipt-item-row">
+            <span class="receipt-item-label">STATUS</span>
+            <span class="receipt-item-val" id="offlineState">NOT CACHED YET</span>
+          </div>
+          <div class="receipt-item-row">
+            <span class="receipt-item-label">YOUR DATA</span>
+            <span class="receipt-item-val">SAFE ON THIS DEVICE</span>
+          </div>
+        </div>
+
+        <hr class="receipt-divider" />
+
+        <div id="bootArea">
+          <p class="muted small text-center" style="margin:0 0 0.5rem;">
+            This page has not been saved to the device yet, and there is no
+            connection to fetch it. Nothing has been lost &mdash; recorded sales
+            are stored here and sync as soon as the connection is back.
+          </p>
+          <div class="flex" style="gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:0.75rem;">
+            <a href="dashboard.html" class="btn btn-primary" style="text-decoration:none;">Today's takings</a>
+            <a href="ledger.html" class="btn btn-secondary" style="text-decoration:none;">Day ledger</a>
+          </div>
+          <p class="receipt-footer-note">
+            <button type="button" class="btn btn-secondary btn-sm" id="retryBtn">Try again</button>
+          </p>
+        </div>
+      </div>
+
+      <div class="receipt-tear-edge" aria-hidden="true"></div>
+    </main>
+
+    <div class="auth-footer-caption">
+      TrustX Ledger &bull; Fast, Offline-First Shop Record
+    </div>
+  </div>
+
+  <script>
+    /* Say plainly whether this is "no connection" or "not cached yet" —
+       they need different reactions, and guessing wrong is worse than
+       admitting the app does not know. */
+    (function () {
+      var el = document.getElementById("offlineState");
+      if (el && typeof navigator !== "undefined" && navigator.onLine === false) {
+        el.textContent = "NO CONNECTION";
+      }
+      var retry = document.getElementById("retryBtn");
+      if (retry) {
+        retry.addEventListener("click", function () {
+          window.location.reload();
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

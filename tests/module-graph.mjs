@@ -324,3 +324,233 @@ test("no module exports a name that nothing imports", () => {
 
   assert.deepEqual(orphans, [], `unused exports:\n  ${orphans.join("\n  ")}`);
 });
+
+/* =========================================================
+   PWA wiring
+   -----------------------------------------------------------------
+   The install button failed twice before these tests existed, both times
+   because a file was correct on its own but disagreed with another file:
+   a CSS specificity problem hid a button that existed, and the shell mounted
+   the control after the browser had already spent its one-shot install event.
+   Neither shows up in a unit test of the individual file, so these assert the
+   agreements between files.
+   ========================================================= */
+
+const PAGES = [
+  "index.html",
+  "login.html",
+  "dashboard.html",
+  "transactions.html",
+  "ledger.html",
+  "admin.html",
+];
+
+test("every page links the manifest and declares a theme colour", () => {
+  const problems = [];
+  for (const page of PAGES) {
+    const html = fs.readFileSync(path.join(ROOT, page), "utf8");
+    if (!/rel="manifest"/.test(html)) problems.push(`${page}: no <link rel="manifest">`);
+    if (!/name="theme-color"/.test(html)) problems.push(`${page}: no theme-color meta`);
+    if (!/manifest\.webmanifest/.test(html)) {
+      problems.push(`${page}: manifest link does not point at manifest.webmanifest`);
+    }
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("the install prompt is captured before any async shell init can run", () => {
+  const code = fs.readFileSync(path.join(ROOT, "js", "pwa.js"), "utf8");
+
+  /* `beforeinstallprompt` fires at most once per page load. If the only
+     listener sits inside mountPwaControls, then a shell that mounts after an
+     await on Firebase Auth has already missed it and the button can never
+     light up. A module-level listener is the only thing that is early enough. */
+  const moduleLevel = /(?:^|\n)\s*(?:if\s*\([^)]*addEventListener|window\.addEventListener)[\s\S]*?addEventListener\(\s*["']beforeinstallprompt["']/;
+  assert.ok(
+    moduleLevel.test(code),
+    "pwa.js must attach a beforeinstallprompt listener at module load, " +
+      "not only inside mountPwaControls",
+  );
+
+  /* And mounting late must still find the held prompt. */
+  assert.ok(
+    /deferredInstallPrompt\s*\)\s*\{[\s\S]{0,120}installBtn\.hidden\s*=\s*false/.test(code),
+    "mountPwaControls must show the button when a prompt was already captured",
+  );
+});
+
+test("a hidden pwa control cannot be shown by the .btn display rule", () => {
+  const css = fs.readFileSync(path.join(ROOT, "css", "style.css"), "utf8");
+
+  /* .btn sets `display: inline-flex`, which beats the user-agent's
+     `[hidden] { display: none }` because author styles win over the UA sheet.
+     Without an explicit reset the install button stays on screen while its
+     prompt is still null, and clicking it does nothing. */
+  const btnBlock = css.match(/\.btn\s*\{[^}]*\}/);
+  assert.ok(btnBlock, ".btn rule not found in css/style.css");
+  assert.match(
+    btnBlock[0],
+    /display\s*:\s*(inline-)?flex/,
+    ".btn is expected to set display; the [hidden] reset depends on that",
+  );
+
+  assert.ok(
+    /\.pwa-control\[hidden\]\s*\{[^}]*display\s*:\s*none\s*;?\s*\}/.test(css),
+    "css/style.css must reset .pwa-control[hidden] to display:none, " +
+      "otherwise the button is visible but inert",
+  );
+});
+
+test("the service worker caches only deliberate CDN hosts", () => {
+  const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+
+  /* Anything the worker caches is served from disk, so a Firestore or Auth
+     response landing in a cache is a correctness bug, not a performance one:
+     the shop could read a stale balance and believe it. An allowlist is the
+     mechanism that prevents it, so the set is asserted exactly — adding a
+     broad suffix match like ".googleapis.com" would silently widen it. */
+  const block = sw.match(/VENDOR_HOSTS\s*=\s*new Set\(\[([\s\S]*?)\]\)/);
+  assert.ok(block, "sw.js must declare a VENDOR_HOSTS allowlist");
+
+  const hosts = [...block[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
+  assert.deepEqual(
+    hosts.sort(),
+    ["fonts.googleapis.com", "fonts.gstatic.com", "www.gstatic.com"],
+    "VENDOR_HOSTS changed — review why before allowing a new origin",
+  );
+
+  /* Belt and braces: the forbidden origins must not appear anywhere near the
+     allowlist, in case a second mechanism was added. */
+  for (const forbidden of ["firebaseio.com", "identitytoolkit", "securetoken", "googleapis.com/identitytoolkit"]) {
+    assert.ok(
+      !sw.includes(`"${forbidden}"`),
+      `sw.js references ${forbidden}, which must never be cached`,
+    );
+  }
+});
+
+test("the service worker's SDK version matches the import maps", () => {
+  const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+  const pinned = new Set();
+
+  /* Every page pins the SDK in its import map; the worker has to cache the
+     same version or an offline boot imports a version nothing else uses. */
+  for (const page of PAGES) {
+    const html = fs.readFileSync(path.join(ROOT, page), "utf8");
+    for (const m of html.matchAll(/gstatic\.com\/firebasejs\/([\d.]+)\//g)) {
+      pinned.add(m[1]);
+    }
+  }
+
+  assert.ok(pinned.size > 0, "no Firebase version found in any import map");
+  assert.equal(
+    pinned.size,
+    1,
+    `pages pin different Firebase versions: ${[...pinned].join(", ")}`,
+  );
+
+  const version = [...pinned][0];
+  const declared = sw.match(/FIREBASE_VERSION\s*=\s*["']([\d.]+)["']/);
+  assert.ok(declared, "sw.js must declare FIREBASE_VERSION");
+  assert.equal(
+    declared[1],
+    version,
+    `sw.js caches Firebase ${declared[1]} but the pages pin ${version}`,
+  );
+
+  /* Every module a page actually imports must be in the worker's list. */
+  const sdkBlock = sw.match(/FIREBASE_SDK\s*=\s*\[([\s\S]*?)\]/);
+  assert.ok(sdkBlock, "sw.js must declare a FIREBASE_SDK list");
+  for (const page of PAGES) {
+    const html = fs.readFileSync(path.join(ROOT, page), "utf8");
+    for (const m of html.matchAll(/firebasejs\/[\d.]+\/(firebase-[a-z]+\.js)/g)) {
+      assert.ok(
+        sdkBlock[1].includes(m[1]),
+        `${page} imports ${m[1]} but sw.js does not precache it`,
+      );
+    }
+  }
+});
+
+test("firebase.json keeps the worker and its shell out of long-lived HTTP cache", () => {
+  const config = JSON.parse(fs.readFileSync(path.join(ROOT, "firebase.json"), "utf8"));
+  const rules = config.hosting.headers || [];
+
+  const ccFor = (source) => {
+    const rule = rules.find((r) => r.source === source);
+    if (!rule) return null;
+    const hit = rule.headers.find((h) => h.key === "Cache-Control");
+    return hit ? hit.value : null;
+  };
+
+  /* A cached sw.js is an old worker: the browser would keep serving the
+     previous version of every app file, which is how a money-handling fix
+     fails to reach the shop. */
+  assert.equal(
+    ccFor("sw.js"),
+    "no-cache",
+    "sw.js must be served no-cache or updates cannot roll out",
+  );
+  assert.equal(
+    ccFor("**/*.html"),
+    "no-cache",
+    "HTML must be no-cache so a reload picks up new markup",
+  );
+
+  /* A broad js-glob rule would also match sw.js, and Firebase does not
+     document which of two matching Cache-Control values wins — so the rules
+     are scoped to directories to remove the ambiguity entirely. */
+  assert.equal(
+    ccFor("**/*.js"),
+    null,
+    "a **/*.js rule also matches sw.js and its precedence is undefined; " +
+      "scope cache rules to js/** instead",
+  );
+});
+
+test("deploy ignores the tools directory, which holds admin scripts", () => {
+  const config = JSON.parse(fs.readFileSync(path.join(ROOT, "firebase.json"), "utf8"));
+  const ignore = config.hosting.ignore || [];
+  assert.ok(
+    ignore.includes("tools/**"),
+    "tools/** must be ignored: hosting.public is '.', so those admin scripts " +
+      "would be published at the site root",
+  );
+});
+
+test("every file the worker precaches actually exists", () => {
+  const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+  const block = sw.match(/SHELL_FILES\s*=\s*\[([\s\S]*?)\]/);
+  assert.ok(block, "sw.js must declare a SHELL_FILES list");
+
+  const missing = [];
+  for (const m of block[1].matchAll(/["']([^"']+)["']/g)) {
+    const rel = m[1];
+    if (rel.includes("..") || /^https?:/.test(rel)) continue;
+    if (!fs.existsSync(path.join(ROOT, rel))) missing.push(rel);
+  }
+  assert.deepEqual(missing, [], `precached but not on disk: ${missing.join(", ")}`);
+});
+
+test("each precached app module is reachable from a page", () => {
+  const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+  const block = sw.match(/SHELL_FILES\s*=\s*\[([\s\S]*?)\]/);
+  const cached = new Set([...block[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]));
+
+  /* A module that is cached but never imported is dead weight in the precache;
+     one that is imported but never cached is an offline boot that breaks on
+     the first cold start. Both are cheap to detect here. */
+  const pages = PAGES.map((p) => fs.readFileSync(path.join(ROOT, p), "utf8")).join("\n");
+  const referenced = new Set(
+    [...(pages + fs.readFileSync(path.join(ROOT, "js", "shell.js"), "utf8")).matchAll(
+      /["']((?:\.\/)?js\/[A-Za-z0-9._-]+\.js)["']/g
+    )].map((m) => m[1].replace(/^\.\//, ""))
+  );
+
+  const uncached = [...referenced].filter((f) => !cached.has(f));
+  assert.deepEqual(
+    uncached,
+    [],
+    `imported by a page but missing from the precache: ${uncached.join(", ")}`,
+  );
+});
