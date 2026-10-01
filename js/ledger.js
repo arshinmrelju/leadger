@@ -241,7 +241,7 @@ function txnRef(fs, db, dateKey, txnId) {
    docs written with the old split-field shape are mapped defensively.
    ------------------------------------------------------------------ */
 
-function normalizeTxn(id, raw) {
+function normalizeTxn(id, raw, dateKey = "") {
   const totalPaise = toPaiseInt(raw.total ?? raw.amountPaise);
 
   let paymentMethod;
@@ -275,7 +275,14 @@ function normalizeTxn(id, raw) {
 
   return {
     txnId: id,
+    /* `dateKey` lives on the PARENT day head, not on the sale document, so
+       `...raw` cannot supply it. Every write path is addressed by
+       (dateKey, txnId) - deleteTransaction, updateTransaction and
+       markTransactionPaid all refuse an invalid dateKey - so a row without it
+       cannot be edited, deleted or settled at all. It is set after the spread
+       so a stray field on a legacy document can never shadow the real day. */
     ...raw,
+    dateKey: String(dateKey || raw.dateKey || ""),
     serviceName,
     serviceId: String(raw.serviceId || ""),
     quantity: toSafe(raw.quantity),
@@ -684,7 +691,7 @@ export async function fetchTransactions({ dateKey = null, limit = 200 } = {}) {
         fs,
         fs.query(dayTxnsRef(fs, b.db, dateKey), ...newestFirst, fs.limit(limit))
       );
-      return snap.docs.map((d) => normalizeTxn(d.id, d.data()));
+      return snap.docs.map((d) => normalizeTxn(d.id, d.data(), dateKey));
     }
 
     /* The rules make every day head carry `dateKey` equal to its own
@@ -707,7 +714,7 @@ export async function fetchTransactions({ dateKey = null, limit = 200 } = {}) {
         fs,
         fs.query(dayTxnsRef(fs, b.db, head.id), ...newestFirst, fs.limit(limit - rows.length))
       );
-      for (const doc of snap.docs) rows.push(normalizeTxn(doc.id, doc.data()));
+      for (const doc of snap.docs) rows.push(normalizeTxn(doc.id, doc.data(), head.id));
     }
     rows.dayCapped = dayCapped;
     rows.dayCap = HISTORY_DAY_CAP;
@@ -767,12 +774,12 @@ export async function fetchDayPage({ dateKey, pageSize = 100, cursor = null } = 
     const docs = snap.docs;
 
     if (docs.length <= size) {
-      return { rows: docs.map((d) => normalizeTxn(d.id, d.data())), cursor: null, hasMore: false };
+      return { rows: docs.map((d) => normalizeTxn(d.id, d.data(), dateKey)), cursor: null, hasMore: false };
     }
 
     const page = docs.slice(0, size);
     return {
-      rows: page.map((d) => normalizeTxn(d.id, d.data())),
+      rows: page.map((d) => normalizeTxn(d.id, d.data(), dateKey)),
       cursor: page[page.length - 1],
       hasMore: true,
     };

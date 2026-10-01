@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 import {
   isQuotaExhausted,
@@ -1407,4 +1412,110 @@ test("a cache without storage is simply a cache, and never throws", async () => 
     if (previous === undefined) delete globalThis.localStorage;
     else globalThis.localStorage = previous;
   }
+});
+
+/* =========================================================
+   A row must know which day it belongs to.
+
+   `dateKey` lives on the PARENT dayHeads document, never on the sale itself,
+   so `...raw` in normalizeTxn cannot supply it. Every write path is addressed
+   by (dateKey, txnId): deleteTransaction, updateTransaction and
+   markTransactionPaid all begin with isValidDateKey(dateKey) and throw
+   "That business day is not valid." otherwise.
+
+   When normalizeTxn dropped that argument, deleting a sale failed before it
+   ever reached Firestore � a dead button and a rules layer that was never
+   consulted. Nothing else in the app noticed, because every other consumer of
+   a row (totals, filters, labels) reads fields the sale really does carry.
+
+   normalizeTxn is not exported, so it is lifted out of js/ledger.js verbatim
+   and exercised with the same helpers that module has in scope. That keeps the
+   test honest about the shipping implementation instead of a copy of it.
+   ========================================================= */
+
+function loadNormalizeTxn() {
+  const src = fs.readFileSync(path.join(ROOT, "js", "ledger.js"), "utf8");
+  const start = src.indexOf("function normalizeTxn(");
+  const end = src.indexOf("\nfunction normalizeExpense(");
+  assert.notEqual(start, -1, "js/ledger.js should still define normalizeTxn()");
+  assert.notEqual(end, -1, "could not find the end of normalizeTxn()");
+
+  const preamble = [
+    'import { isPaymentMethod, methodLabel } from "file:///E:/Ledger/js/utils.js";',
+    "function toSafe(value) {",
+    '  const n = typeof value === "number" ? value : Number(value);',
+    "  return Number.isFinite(n) ? n : 0;",
+    "}",
+    "function toPaiseInt(value) { return Math.max(0, Math.round(toSafe(value))); }",
+    "",
+  ].join("\n");
+
+  return import(
+    "data:text/javascript," +
+      encodeURIComponent(preamble + src.slice(start, end) + "\nexport { normalizeTxn };\n")
+  ).then((m) => m.normalizeTxn);
+}
+
+/* A sale exactly as firestore.rules has it on disk � note the absence of any
+   dateKey field, which is the whole point. */
+const STORED_SALE = {
+  txnId: "abc123",
+  serviceId: "svc_print",
+  serviceName: "Photocopy",
+  quantity: 2,
+  rate: 5000,
+  total: 10000,
+  paymentMethod: "cash",
+  status: "paid",
+  amounts: { gross: 10000, cash: 10000, upi: 0, card: 0, due: 0, collected: 10000 },
+  customerName: "Asha",
+  createdBy: "u1",
+  updatedBy: "u1",
+};
+
+test("a day row carries the dateKey its write paths require", async () => {
+  const normalizeTxn = await loadNormalizeTxn();
+
+  const row = normalizeTxn("abc123", { ...STORED_SALE }, "2026-10-01");
+
+  assert.equal(
+    row.dateKey,
+    "2026-10-01",
+    "the row must carry the day it was read from",
+  );
+  assert.ok(
+    isValidDateKey(row.dateKey),
+    "deleteTransaction/updateTransaction/markTransactionPaid all refuse an " +
+      "invalid dateKey, so a row without a usable one cannot be written at all",
+  );
+});
+
+test("a row's dateKey comes from the caller, never from the sale document", async () => {
+  const normalizeTxn = await loadNormalizeTxn();
+
+  /* A legacy or hand-edited document carrying a stale dateKey must not be able
+     to redirect a write to the wrong day � the day the row was actually READ
+     from is the only trustworthy answer. */
+  const row = normalizeTxn("abc123", { ...STORED_SALE, dateKey: "1999-01-01" }, "2026-10-01");
+  assert.equal(row.dateKey, "2026-10-01", "a stored dateKey must not shadow the real day");
+});
+
+test("every place that builds a row passes the day it already knows", () => {
+  const src = fs.readFileSync(path.join(ROOT, "js", "ledger.js"), "utf8");
+
+  /* The all-time history walk reads each day's subcollection in turn, so it
+     must pass THAT head's id rather than one shared variable. */
+  assert.match(
+    src,
+    /normalizeTxn\(doc\.id,\s*doc\.data\(\),\s*head\.id\)/,
+    "the history walk must pass head.id, or every historical row is unaddressable",
+  );
+
+  /* The three single-day readers all have `dateKey` in scope. */
+  const singleDay = [...src.matchAll(/normalizeTxn\(\s*\w+\.id,\s*\w+\.data\(\)\s*\)/g)];
+  assert.deepEqual(
+    singleDay.map((m) => m[0]),
+    [],
+    "every normalizeTxn call must be given the day it read from",
+  );
 });
