@@ -65,6 +65,9 @@
   "database": {
     "rules": "database.rules.json"
   },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "emulators": {
     "firestore": { "port": 8080 },
     "database": { "port": 9300 },

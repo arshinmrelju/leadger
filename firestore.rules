@@ -604,7 +604,8 @@ service cloud.firestore {
               'txnId', 'serviceId', 'serviceName', 'quantity',
               'rate', 'total', 'amounts', 'paymentMethod',
               'customerId', 'customerName', 'status', 'dateKey',
-              'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+              'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
+              'receiptImageUrl', 'notes'
             ])
           && doc.txnId is string && doc.txnId.size() <= 120
           && doc.txnId == txnId
@@ -632,7 +633,13 @@ service cloud.firestore {
           && doc.createdBy == request.auth.uid
           && doc.updatedBy == request.auth.uid
           && doc.createdAt == request.time
-          && doc.updatedAt == request.time;
+          && doc.updatedAt == request.time
+          && (doc.receiptImageUrl is string || !('receiptImageUrl' in doc) || doc.receiptImageUrl == null)
+          && (!(doc.receiptImageUrl is string)
+              || (doc.receiptImageUrl.size() >= 1 && doc.receiptImageUrl.size() <= 1000
+                  && doc.receiptImageUrl.matches('^https://firebasestorage\\.googleapis\\.com/.*trustxplpy\\.firebasestorage\\.app.*$')))
+          && (doc.notes is string || !('notes' in doc) || doc.notes == null)
+          && (!(doc.notes is string) || doc.notes.size() <= 400);
       }
 
       function validTransactionEdit(before, after) {
@@ -640,7 +647,8 @@ service cloud.firestore {
               'txnId', 'serviceId', 'serviceName', 'quantity',
               'rate', 'total', 'amounts', 'paymentMethod',
               'customerId', 'customerName', 'status', 'dateKey',
-              'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+              'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
+              'receiptImageUrl', 'notes'
             ])
           && after.txnId == before.txnId
           && after.serviceId == before.serviceId
@@ -666,7 +674,13 @@ service cloud.firestore {
           && ((after.paymentMethod == 'due' && after.status in ['pending', 'paid'])
               || (after.paymentMethod != 'due' && after.status == 'paid'))
           && after.updatedBy == request.auth.uid
-          && after.updatedAt == request.time;
+          && after.updatedAt == request.time
+          && (after.receiptImageUrl is string || !('receiptImageUrl' in after) || after.receiptImageUrl == null)
+          && (!(after.receiptImageUrl is string)
+              || (after.receiptImageUrl.size() >= 1 && after.receiptImageUrl.size() <= 1000
+                  && after.receiptImageUrl.matches('^https://firebasestorage\\.googleapis\\.com/.*trustxplpy\\.firebasestorage\\.app.*$')))
+          && (after.notes is string || !('notes' in after) || after.notes == null)
+          && (!(after.notes is string) || after.notes.size() <= 400);
       }
 
       // `read` also authorizes a collection-group query across every
