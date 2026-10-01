@@ -306,11 +306,15 @@
     import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
     import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
+    import { openScanReceiptModal } from "./js/image-receipt.js";
 
     const mainContent = document.getElementById("mainContent");
 
     const ICON_PLUS =
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+
+    const ICON_CAMERA =
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
 
     function ic(paths) {
       return (
@@ -381,10 +385,16 @@
         '<span class="receipt-stamp-brand">TrustX</span>' +
         '<span class="receipt-stamp-sub">VERIFIED</span>' +
         '</div>' +
+        '<div style="display:flex;gap:0.55rem;flex-wrap:wrap;">' +
+        '<button type="button" class="btn-receipt-pay btn-scan-receipt" id="scanReceiptBtn" style="background:linear-gradient(180deg,#6366f1 0%,#4f46e5 100%);border-color:#4338ca;">' +
+        ICON_CAMERA +
+        '<span>SCAN RECEIPT</span>' +
+        '</button>' +
         '<button type="button" class="btn-receipt-pay btn-new-sale-receipt" id="newTxnBtn">' +
         ICON_PLUS +
         '<span>NEW TRANSACTION</span>' +
         '</button>' +
+        '</div>' +
         '</div>' +
         '</div>' +
         '<hr class="receipt-divider" />' +
@@ -471,12 +481,15 @@
     function applyHooks() {
       /* Sales are recorded in a dialog, so the dashboard never navigates
          away and the figures behind it stay loaded. */
+      const scanBtn = document.getElementById("scanReceiptBtn");
+      if (scanBtn) scanBtn.addEventListener("click", () => openScanReceiptModal());
+
       document.getElementById("newTxnBtn").addEventListener("click", () => openSaleForm());
 
-      document.getElementById("refreshBtn").addEventListener("click", () => {
-        const btn = document.getElementById("refreshBtn");
-        setLoading(btn, true);
-        loadDashboardData().finally(() => setLoading(btn, false));
+      const refreshBtn = document.getElementById("refreshBtn");
+      if (refreshBtn) refreshBtn.addEventListener("click", () => {
+        setLoading(refreshBtn, true);
+        loadDashboardData().finally(() => setLoading(refreshBtn, false));
       });
     }
 

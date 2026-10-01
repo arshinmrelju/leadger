@@ -995,5 +995,87 @@ function prefersReducedMotion() {
   }
 }
 
+/* =========================================================
+   External prefill API (used by Scan Receipt / AI extraction)
+   -----------------------------------------------------------------
+   Safe to call any time — if the modal hasn't been built yet it
+   is lazily built; if a value is omitted it is not touched.
+   ========================================================= */
+
+/**
+ * Pre-fill the record-a-sale form from an external source.
+ * Does NOT open or close the modal — caller decides visibility.
+ *
+ * @param {object} opts
+ * @param {string} [opts.serviceId]  catalog service id — if not found in loaded list, the
+ *                                   picker's text field is pre-filled with fallbackServiceName
+ * @param {string} [opts.serviceNameFallback]  typed into the picker when serviceId doesn't match
+ * @param {number} [opts.quantity]   integer ≥ 1
+ * @param {number} [opts.rateRupees] rate in RUPEES (not paise)
+ * @param {string} [opts.customerName]
+ * @param {"cash"|"upi"|"card"|"due"} [opts.paymentMethod]
+ */
+export function prefillSaleForm({
+  serviceId = "",
+  serviceNameFallback = "",
+  quantity = null,
+  rateRupees = null,
+  customerName = null,
+  paymentMethod = null,
+} = {}) {
+  if (!overlay) overlay = buildOverlay();
+  const root = overlay;
+
+  // Service: try setValue by id first
+  if (serviceId && picker && services.some((s) => s.serviceId === serviceId)) {
+    selectedService = services.find((s) => s.serviceId === serviceId);
+    try { picker.setValue(serviceId); } catch (_) { /* noop */ }
+  } else if (serviceNameFallback) {
+    // Typed fallback — user can pick match from dropdown or "Add service"
+    const input = root.querySelector(".svc-pick-input");
+    if (input) {
+      input.value = String(serviceNameFallback).slice(0, 80);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+
+  // Quantity
+  if (quantity !== null && quantity !== undefined) {
+    const q = Number(quantity);
+    if (Number.isFinite(q) && q >= 1) {
+      const el = root.querySelector("#qtyInput");
+      if (el) { el.value = String(Math.max(1, Math.floor(q))); el.dispatchEvent(new Event("input")); }
+    }
+  }
+
+  // Rate (rupees)
+  if (rateRupees !== null && rateRupees !== undefined) {
+    const r = Number(rateRupees);
+    if (Number.isFinite(r) && r >= 0) {
+      const el = root.querySelector("#rateInput");
+      if (el) {
+        const pretty = (Math.round(r * 100) / 100).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+        el.value = pretty;
+        el.dispatchEvent(new Event("input"));
+      }
+    }
+  }
+
+  // Customer
+  if (customerName !== null && customerName !== undefined) {
+    const el = root.querySelector("#customerInput");
+    if (el) el.value = String(customerName).slice(0, 120);
+  }
+
+  // Payment method
+  if (paymentMethod && isPaymentMethod(paymentMethod)) {
+    const methodRow = root.querySelector("#methodRow");
+    const btn = methodRow && methodRow.querySelector(`.seg-btn[data-method="${paymentMethod}"]`);
+    if (btn && !btn.classList.contains("is-active")) btn.click();
+  }
+
+  updateTotal();
+}
+
 
 

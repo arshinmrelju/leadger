@@ -92,10 +92,12 @@ const SHELL_FILES = [
 
   "js/app.js",
   "js/admin.js",
+  "js/ai-config.js",
   "js/auth.js",
   "js/day-heads.js",
   "js/day-ledger.js",
   "js/firebase.js",
+  "js/image-receipt.js",
   "js/ledger.js",
   "js/pwa.js",
   "js/quota.js",
