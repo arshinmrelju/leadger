@@ -387,7 +387,7 @@ test("catalog: sortOrder runs in group order, so the groups stay together", () =
 
 test("catalog: covers the counter's groups", () => {
   const labels = SERVICE_CATALOG_GROUPS.map((g) => g.label.toLowerCase());
-  for (const expected of ["printing", "government", "online", "photo", "dtp"]) {
+  for (const expected of ["printing", "government", "online", "photo", "dtp", "bill"]) {
     assert.ok(
       labels.some((l) => l.includes(expected)),
       `catalog is missing a ${expected} group`,

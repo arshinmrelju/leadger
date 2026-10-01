@@ -73,6 +73,7 @@ const GROUPS = [
     services: [
       ["Document Formatting", "DF"],
       ["Document Preparation", "DR"],
+      ["CV / Resume", "CV"],
     ],
   },
   {
@@ -110,6 +111,15 @@ const GROUPS = [
       ["Passport Size Photo", "PS"],
       ["Photo Printing", "PH"],
       ["Photo Editing", "PE"],
+    ],
+  },
+  {
+    id: "bills",
+    label: "Bill payment / utility services",
+    base: 600,
+    services: [
+      ["KSEB Bill", "KSEB"],
+      ["Water Bill", "WB"],
     ],
   },
 ];

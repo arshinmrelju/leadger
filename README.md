@@ -310,8 +310,8 @@ keeps an **Add default services** button for the same job, as a repair tool.
   keys with `hasOnly([...])`, so a `category` field would be rejected without
   a rules change. Instead each group owns a `sortOrder` band (100s = printing,
   200s = computer/DTP, 300s = government/certificates, 400s = online, 500s =
-  photo), which `fetchServices()` already sorts by — so the counter's groups
-  appear in order in every picker, dropdown and grid.
+  photo, 600s = bill payment/utility), which `fetchServices()` already sorts by —
+  so the counter's groups appear in order in every picker, dropdown and grid.
 - **`code` is the tile.** The two-letter code is the badge on the quick grids
   (the UI truncates it to two characters), so it is a display shortcut, not an
   inventory code.

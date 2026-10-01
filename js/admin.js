@@ -219,7 +219,7 @@ export async function renderAdminPage(ctx) {
     '<section class="card" id="servicesCard">' +
     '<div class="card-header"><h3>' + svg("services") + "Services</h3>" +
     '<div class="card-actions">' +
-    '<button type="button" class="btn btn-secondary btn-sm" id="seedSvcBtn" title="Add the default service list (printing, certificates, online work, photos)">Add default services</button>' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="seedSvcBtn" title="Add the default service list (printing, certificates, online work, photos, bill payments)">Add default services</button>' +
     "</div></div>" +
     '<div class="card-body">' +
     '<div class="rule-row">' +
@@ -229,7 +229,7 @@ export async function renderAdminPage(ctx) {
     '<button type="button" class="btn btn-secondary btn-sm" id="addSvcClear">Clear</button>' +
     '<button type="button" class="btn btn-primary btn-sm" id="addSvcSave">Add service</button>' +
     "</div></div>" +
-    '<p class="small muted" id="seedSvcNote" style="margin:.75rem 0 .25rem;">The default list is added automatically the first time a device opens the app &mdash; printing, DTP, certificates, online applications and photos. Every service starts at &curren;0, so set your rate on the row below. The button only adds whatever is still missing.</p>' +
+    '<p class="small muted" id="seedSvcNote" style="margin:.75rem 0 .25rem;">The default list is added automatically the first time a device opens the app &mdash; printing, DTP, CV/resume, certificates, online applications, photos and bill payments. Every service starts at &curren;0, so set your rate on the row below. The button only adds whatever is still missing.</p>' +
     '<div id="servicesList"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading services<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></div>' +
     "</div></section>" +
 
