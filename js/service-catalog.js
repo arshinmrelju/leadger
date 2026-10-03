@@ -50,6 +50,18 @@ export const DEFAULT_SERVICE_PRICE_RUPEES = 0;
  * under both "printing" and "computer / DTP". Those are the same billed
    job, so each one is listed once, under the group the counter reads it
    from first.
+ *
+ * A band is 100 wide (serviceGroupOf() matches base <= order < base + 100)
+ * and entries step by 10, so one group holds at most 10 services - an 11th
+ * would spill past the band and be listed under the next heading. Past that
+ * the job needs a band of its own: take the next base 100 above the last one
+ * and append the group, because GROUPS has to stay in ascending base order.
+ *
+ * New entries are appended at the END of their group on purpose. An entry
+ * inserted in the middle renumbers the ones after it, and the services a
+ * shop already has keep the sortOrder they were seeded with - so the array
+ * would order one shop's catalog differently from another's. Appending gives
+ * a fresh shop and an upgraded one the same order.
  */
 const GROUPS = [
   {
@@ -88,6 +100,8 @@ const GROUPS = [
       ["E-Challan", "EC"],
       ["PAN Card Work", "PN"],
       ["Legal Document Work", "LG"],
+      ["PVC Card", "PV"],
+      ["Passport Application", "PP"],
     ],
   },
   {
@@ -120,6 +134,15 @@ const GROUPS = [
     services: [
       ["KSEB Bill", "KSEB"],
       ["Water Bill", "WB"],
+    ],
+  },
+  {
+    id: "property",
+    label: "Property / land record services",
+    base: 700,
+    services: [
+      ["Encumbrance Certificate", "EN"],
+      ["Land Tax", "LT"],
     ],
   },
 ];
