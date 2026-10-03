@@ -265,21 +265,3 @@
   .txn-row-actions { justify-content: stretch; }
   .txn-row-actions .btn { flex: 1; }
 }
-
-/* ---------------- Telegram delivery indicator ---------------- */
-
-.ledger-telegram {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
-  margin: -0.5rem 0 1rem;
-  border: 1px solid var(--color-border, #e5e7eb);
-  background: var(--color-surface-soft, #f9fafb);
-  color: var(--color-text-soft, #4b5563);
-  border-radius: var(--radius-md, 10px);
-  font-size: 0.86rem;
-}
-
-.ledger-telegram .btn { margin-left: 0.25rem; }
