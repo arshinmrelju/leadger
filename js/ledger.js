@@ -361,6 +361,11 @@ function normalizeService(id, raw) {
 function emptySummary() {
   return {
     transactions: [],
+    /* Whether the day holds more sales than `transactions` carries. A head
+       answers the totals but holds no rows, so the recent list is read
+       separately and bounded — the count is the truth about how much is
+       there, and this only says whether the list above it was cut short. */
+    hasMore: false,
     count: 0,
     amountPaise: 0,
     paidPaise: 0,
@@ -527,6 +532,16 @@ async function expensesTotalForDay(dateKey) {
    ------------------------------------------------------------------ */
 
 /**
+ * How many of the day's most recent sales a summary carries.
+ *
+ * The day head gives the totals for the price of one document read, but it
+ * holds no rows — so the recent list the dashboard draws is a separate read,
+ * and this bounds it. Twelve is what the dashboard can show without scrolling
+ * the receipt, and reading more would be reads nobody looks at.
+ */
+const SUMMARY_RECENT_LIMIT = 12;
+
+/**
  * One-shot summary of a single business day (default: today in India).
  *
  * The day head answers "how did today go?" from a single document, so
@@ -536,6 +551,13 @@ async function expensesTotalForDay(dateKey) {
  * instead, so the numbers on screen are never worse than they were
  * before the day was given a head. Expenses come from the Realtime
  * Database and are subtracted either way.
+ *
+ * `transactions` is the day's most recent sales, newest first, capped at
+ * SUMMARY_RECENT_LIMIT — read separately even when the head answered,
+ * because a head carries counters and no rows, and a summary whose
+ * `transactions` is empty is indistinguishable from a day with no sales.
+ * `hasMore` says whether that list was cut short, and the full count is
+ * always on `count`.
  *
  * NET = today's collections (cash + UPI + card) − today's expenses.
  * Dues are money not yet received and are excluded from NET.
@@ -595,6 +617,25 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
       const summary = summaryFromCounters(dateKey, counters);
       summary.expensesPaise = expensesPaise;
       summary.netPaise = summary.paidPaise - expensesPaise;
+      /* The head carries no rows, so the day's recent sales are read here —
+         one cached, bounded page, the same one every reload serves from the
+         rows cache (a sale drops it, see invalidateDayReads). Without this
+         the summary would come back with an empty list while reporting a
+         non-zero count, and the dashboard's recent table would claim the
+         shop had sold nothing all day. */
+      try {
+        const recent = await fetchDayPage({ dateKey, pageSize: SUMMARY_RECENT_LIMIT });
+        summary.transactions = recent.rows;
+        summary.hasMore = recent.hasMore;
+      } catch (err) {
+        /* The totals above are real and stay on screen; only the list is
+           missing, so this is flagged rather than thrown — taking the whole
+           dashboard down over the rows would throw away good figures. The
+           flag stops the empty state from reading as "no sales today". */
+        if (isQuotaExhausted(err)) throw err;
+        console.warn("[trustx-ledger] recent sales unavailable for the summary:", err);
+        summary.transactionsUnavailable = true;
+      }
       return summary;
     }
     console.warn("[trustx-ledger] day head counters failed the consistency check, folding rows instead:", counters);

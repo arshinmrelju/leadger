@@ -507,7 +507,7 @@
       try {
         const summary = await fetchTodaySummary(todayKolkata());
         renderStats(summary);
-        renderRecent(summary.transactions);
+        renderRecent(summary);
         if (sub) sub.textContent = formatKolkataLong(new Date()) + " \u00B7 Asia/Kolkata";
       } catch (err) {
         console.error("[trustx-ledger] dashboard load:", err);
@@ -587,10 +587,24 @@
       );
     }
 
-    function renderRecent(transactions) {
+    function renderRecent(summary) {
       const body = document.getElementById("recentBody");
       const footer = document.getElementById("recentFooter");
       if (!body || !footer) return;
+      const transactions = summary.transactions || [];
+      /* The day's totals came back but its rows did not. Saying "no
+         transactions yet" here would be a confident claim about a list that
+         was never read, so the list says what actually happened instead. */
+      if (!transactions.length && summary.transactionsUnavailable) {
+        body.innerHTML =
+          '<tr><td colspan="7"><div class="state is-error">' +
+          '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>' +
+          "<h3>Today&rsquo;s list could not be loaded</h3>" +
+          "<p>The totals above are real, but the sales rows could not be read. Use Refresh to try again.</p>" +
+          "</div></td></tr>";
+        footer.style.display = "none";
+        return;
+      }
       if (!transactions.length) {
         body.innerHTML =
           '<tr><td colspan="7"><div class="empty-state-modern">' +
@@ -609,13 +623,17 @@
       footer.style.display = "";
       const shown = transactions.slice(0, 12);
       body.innerHTML = shown.map(txnRow).join("");
+      /* `count` is the day's true total and `hasMore` says the list above was
+         cut short — the summary is free to cap the rows it carries, so the
+         footer must not infer "that is all of them" from the row count. */
+      const total = Number(summary.count) || transactions.length;
       footer.innerHTML =
-        transactions.length > 12
-          ? "Showing the most recent " + shown.length + " of " + transactions.length + ". " +
+        summary.hasMore || transactions.length > 12
+          ? "Showing the most recent " + shown.length + " of " + total + ". " +
             '<a href="transactions.html">View the full history</a>.'
-          : transactions.length === 1
+          : total === 1
           ? "1 transaction today."
-          : transactions.length + " transactions today.";
+          : total + " transactions today.";
     }
 
     /* ---------- Quick services ---------- */

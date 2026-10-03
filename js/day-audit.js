@@ -413,10 +413,6 @@ export function planDayRepair(audit) {
     );
   }
 
-  if (a.ok) {
-    return plan(REPAIR_STATUS.NOT_NEEDED, day + " is already in step. There is nothing to repair.");
-  }
-
   /* Every branch that permits a closed head to change its counters
      requires them UNCHANGED (the close and reopen rules both pin
      `request.resource.data.counters == resource.data.counters`).
@@ -428,6 +424,10 @@ export function planDayRepair(audit) {
       day + " is closed. A closed day's counters are frozen by the rules on purpose — reopen the day, repair " +
         "it, then close it again."
     );
+  }
+
+  if (a.ok) {
+    return plan(REPAIR_STATUS.NOT_NEEDED, day + " is already in step. There is nothing to repair.");
   }
 
   if (!counterStepAllowed(before, target)) {
@@ -477,9 +477,14 @@ export function describeRefusal(audit, plan) {
     );
   }
 
-  const remedy = p.repairable
-    ? "The Developer console's Day integrity card can put it back in one step."
-    : "The Developer console's Day integrity card will show the difference in full.";
+  let remedy;
+  if (p.status === REPAIR_STATUS.CLOSED) {
+    remedy = "Reopen " + day + " in the ledger, then fix its totals and close it again.";
+  } else {
+    remedy = p.repairable
+      ? "The Developer console's Day integrity card can put it back in one step."
+      : "The Developer console's Day integrity card will show the difference in full.";
+  }
 
   return (
     said.headline + " Nothing on " + day + " can be changed until that is put right. " + remedy
