@@ -141,6 +141,7 @@ import { setLoading, toast, confirm } from "./js/app.js";
     import {
       formatINR,
       formatKolkataLong,
+      formatKolkataTime,
       escapeHtml,
       todayKolkata,
       isValidDateKey,
@@ -151,6 +152,9 @@ import { setLoading, toast, confirm } from "./js/app.js";
       fetchDayState,
       closeDay,
       reopenDay,
+      fetchDailyReport,
+      queueDailyReport,
+      retryDailyReport,
       isNetworkError,
     } from "./js/ledger.js";
     import {
@@ -190,6 +194,10 @@ import { setLoading, toast, confirm } from "./js/app.js";
     let hasMore = false;
     let dayCount = 0;         // server-side count for the day
     let closed = false;       // dayHeads/{dateKey}.state === "closed"
+    /* dailyReports/{dateKey}: undefined = not loaded yet, null = no report
+       on file, object = the delivery record the bridge maintains. */
+    let report;
+    let reportLoaded = false;
     let loading = false;
     let loadError = null;     // kept so render() can preserve the error state
 
@@ -234,6 +242,9 @@ import { setLoading, toast, confirm } from "./js/app.js";
           "<div><strong>This day is closed.</strong> Its sales can be read but not added to, edited, settled or deleted. " +
           "Reopen it above if something still needs changing.</div>" +
         "</div>" +
+
+        /* The bridge's delivery state for this day, drawn under the notice. */
+        '<div class="ledger-telegram is-hidden" id="ledgerTelegram" aria-live="polite"></div>' +
 
         '<div class="card ledger-card">' +
           '<div class="card-header">' +
@@ -342,6 +353,12 @@ import { setLoading, toast, confirm } from "./js/app.js";
           dayHeading(dateKey) + (dateKey === todayKolkata() ? " (today)" : "");
       }
       if (closedBox) closedBox.classList.toggle("is-hidden", !closed);
+
+      const telegramBox = document.getElementById("ledgerTelegram");
+      if (telegramBox) {
+        telegramBox.classList.toggle("is-hidden", !closed);
+        if (closed) telegramBox.innerHTML = telegramStatusMarkup();
+      }
 
       /* One of close/reopen is always the right action, and the sale
          button goes with the closed state: offering to add a sale to a
@@ -457,6 +474,49 @@ import { setLoading, toast, confirm } from "./js/app.js";
        Data
        ========================================================= */
 
+    /* The day's Telegram delivery record, drawn under the closed-day
+       notice. A failed read says so instead of pretending there is no
+       report: undefined means "not loaded", null means "none on file". */
+    async function refreshReport(requested) {
+      try {
+        const r = await fetchDailyReport(requested);
+        if (dateKey === requested && closed) {
+          report = r;
+          reportLoaded = true;
+          render();
+        }
+      } catch (err) {
+        console.warn("[trustx-ledger] daily report status unavailable:", err);
+        if (dateKey === requested) {
+          report = undefined;
+          reportLoaded = false;
+          render();
+        }
+      }
+    }
+
+    function telegramStatusMarkup() {
+      if (!reportLoaded) {
+        return '<span class="muted">Checking Telegram delivery status&hellip;</span>';
+      }
+      if (report === null) {
+        return "<strong>Telegram:</strong> no report is queued for this day. " +
+          '<button class="btn btn-secondary btn-sm" type="button" id="ledgerTelegramQueue">Queue report</button>';
+      }
+      if (report.status === "sent") {
+        return "🟢 <strong>Telegram sent</strong> &mdash; " + escapeHtml(formatKolkataTime(report.sentAt));
+      }
+      if (report.status === "failed") {
+        return "🔴 <strong>Telegram delivery failed</strong>" +
+          (report.lastError ? " &mdash; " + escapeHtml(String(report.lastError)) : "") +
+          ' <button class="btn btn-secondary btn-sm" type="button" id="ledgerTelegramRetry">Retry</button>';
+      }
+      if (report.status === "sending") {
+        return "📤 <strong>Telegram:</strong> the office bridge is sending this report now.";
+      }
+      return "⏳ <strong>Telegram report queued</strong> &mdash; the office bridge sends it automatically.";
+    }
+
     async function reload() {
       if (loading) return;
       loading = true;
@@ -504,6 +564,9 @@ import { setLoading, toast, confirm } from "./js/app.js";
       } catch (err) {
         console.warn("[trustx-ledger] ledger count unavailable:", err);
       }
+
+      if (closed) await refreshReport(requested);
+      else { report = null; reportLoaded = true; }
     }
 
     function renderError(err) {
@@ -589,6 +652,26 @@ import { setLoading, toast, confirm } from "./js/app.js";
       document.getElementById("ledgerRecordBtn").addEventListener("click", () => openSaleForm({ dateKey }));
       document.getElementById("ledgerCloseBtn").addEventListener("click", () => onCloseDay());
       document.getElementById("ledgerReopenBtn").addEventListener("click", () => onReopenDay());
+      document.getElementById("ledgerTelegram").addEventListener("click", async (e) => {
+        const btn = e.target.closest("button");
+        if (!btn || (btn.id !== "ledgerTelegramRetry" && btn.id !== "ledgerTelegramQueue")) return;
+        setLoading(btn, true);
+        try {
+          if (btn.id === "ledgerTelegramRetry") {
+            await retryDailyReport(dateKey);
+            toast("Report queued for the office bridge again.", "success");
+          } else {
+            await queueDailyReport(dateKey);
+            toast("Report queued for the office bridge.", "success");
+          }
+          await refreshReport(dateKey);
+        } catch (err) {
+          toast(reportError(err), "error");
+        } finally {
+          setLoading(btn, false);
+        }
+      });
+
       document.getElementById("ledgerBody").addEventListener("click", onTableClick);
 
       document.getElementById("ledgerMethod").addEventListener("change", (e) => {

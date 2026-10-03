@@ -1566,7 +1566,13 @@ function forgetReceiptImage(dateKey, txnId) {
  * @returns {Promise<{dateKey: string, closed: boolean}>}
  */
 export async function closeDay(dateKey) {
-  return setDayState(dateKey, DAY_STATE.CLOSED);
+  const result = await setDayState(dateKey, DAY_STATE.CLOSED);
+  /* Queue the day's Telegram report for the office bridge. The queue
+     swallows every failure of its own: the close above already
+     succeeded, and closing the shop must never depend on Telegram,
+     the bridge phone or the internet being reachable. */
+  await queueDailyReport(dateKey);
+  return result;
 }
 
 /**
@@ -1585,7 +1591,12 @@ export async function closeDay(dateKey) {
  * @returns {Promise<{dateKey: string, closed: boolean}>}
  */
 export async function reopenDay(dateKey) {
-  return setDayState(dateKey, DAY_STATE.OPEN);
+  const result = await setDayState(dateKey, DAY_STATE.OPEN);
+  /* A report queued for a day that is being un-closed must never
+     reach the owner as a "shop closed" message. Delivered reports
+     stay; everything still on the queue goes with the undone close. */
+  await pruneDailyReport(dateKey);
+  return result;
 }
 
 /**
@@ -1637,6 +1648,205 @@ async function setDayState(dateKey, state) {
   invalidateDayReads(dateKey);
 
   return { dateKey, closed: closing };
+}
+
+/* ------------------------------------------------------------------
+   Telegram daily report — the office bridge's queue
+   ------------------------------------------------------------------
+   Closing a day leaves a dailyReports/{dateKey} snapshot behind for
+   the office bridge (the Flutter app on the dedicated Android phone)
+   to pick up and deliver to the owner's Telegram. The web app never
+   talks to Telegram and never holds a bot token: it only snapshots
+   the day's authoritative totals here; the bridge owns the delivery
+   state machine (pending -> sending -> sent | failed), and the rules
+   in firestore.rules keep every writer inside its own lane.
+
+   Everything in this section is best-effort BY CONSTRUCTION: the
+   functions log and swallow their own failures, because closing the
+   shop must keep working when the bridge is stopped, the phone is
+   dead or the internet is gone. The ledger's closed-day indicator
+   says when a report is missing and offers to queue it again.
+   ------------------------------------------------------------------ */
+
+function reportRef(fs, db, dateKey) {
+  return fs.doc(db, "dailyReports", dateKey);
+}
+
+/**
+ * Queue this day's closing report for the office bridge.
+ *
+ * Snapshots the head's own counters (never re-derived from rows) and
+ * the Realtime Database expense total, exactly as the dashboard's
+ * summary does, then writes dailyReports/{dateKey} with status
+ * "pending". A re-close of an already-reported day bumps
+ * reportVersion instead of creating a second document; a double call
+ * for the SAME close (the head's closing stamp has not moved) is a
+ * no-op, so one close event can never be queued twice.
+ *
+ * Never throws — see the note above.
+ *
+ * @param {string} dateKey
+ * @returns {Promise<void>}
+ */
+export async function queueDailyReport(dateKey) {
+  try {
+    if (!isValidDateKey(dateKey)) return;
+    const b = await bridge();
+    const fs = b.firestore;
+    const user = b.auth.currentUser;
+    if (!user || !user.uid) return;
+
+    /* Fresh, never cached: firestore.rules compares this write against
+       the head on the server, so the local mirror has to be the truth. */
+    const headSnap = await chargedGetDoc(fs, headRef(fs, b.db, dateKey));
+    if (!headSnap.exists()) return;
+    const head = headSnap.data();
+    if (head.state !== DAY_STATE.CLOSED || !head.closedAt) return;
+    const counters = head.counters;
+    if (!isCounterSetValid(counters)) {
+      console.warn("[trustx-ledger] daily report not queued: head counters failed the consistency check", counters);
+      return;
+    }
+
+    let expensesPaise = 0;
+    try {
+      expensesPaise = await expensesTotalForDay(dateKey);
+    } catch (err) {
+      if (isQuotaExhausted(err)) throw err;
+      console.warn("[trustx-ledger] expenses unavailable for the daily report:", err);
+    }
+    expensesPaise = Math.max(0, Math.round(expensesPaise));
+
+    const ref = reportRef(fs, b.db, dateKey);
+    const existingSnap = await chargedGetDoc(fs, ref);
+    const existing = existingSnap.exists() ? existingSnap.data() : null;
+    if (
+      existing && existing.closedAt &&
+      typeof existing.closedAt.isEqual === "function" &&
+      existing.closedAt.isEqual(head.closedAt)
+    ) {
+      /* This exact close is already on the bridge's queue (or has been
+         delivered). Bumping here would re-send a report nobody changed. */
+      return;
+    }
+
+    const payload = {
+      businessDate: dateKey,
+      status: "pending",
+      reportVersion: existing ? toSafe(existing.reportVersion) + 1 : 1,
+      createdAt: fs.serverTimestamp(),
+      closedAt: head.closedAt,
+      /* The original reporter keeps ownership across a re-close. */
+      createdBy: existing && existing.createdBy ? existing.createdBy : user.uid,
+      counters: {
+        txnCount: counters.txnCount,
+        grossPaise: counters.grossPaise,
+        cashPaise: counters.cashPaise,
+        upiPaise: counters.upiPaise,
+        cardPaise: counters.cardPaise,
+        duePaise: counters.duePaise,
+        collectedPaise: counters.collectedPaise,
+      },
+      expensesPaise,
+      netPaise: counters.collectedPaise - expensesPaise,
+      attemptCount: 0,
+    };
+
+    /* setDoc, not updateDoc: a re-close REPLACES the document, so the
+       delivery stamps of an earlier attempt cannot linger on a fresh
+       pending report — which is exactly what the rules demand. */
+    await guardQuota(() => fs.setDoc(ref, payload));
+    noteWrites();
+    console.info("[trustx-ledger] daily report queued:", dateKey);
+  } catch (err) {
+    /* Closing is already done and must never be reported as failed
+       because the Telegram queue could not be written. */
+    console.warn("[trustx-ledger] daily report could not be queued (the close itself is unaffected):", err);
+  }
+}
+
+/**
+ * Drop a queued-but-undelivered report when its day is reopened, so an
+ * undone close can never reach the owner as a "shop closed" message.
+ *
+ * A report the bridge already delivered stays put — reopening a day
+ * does not unsend a Telegram the owner is holding — and a report
+ * mid-flight (status "sending") is left for the bridge to finish
+ * rather than being deleted out from under its markSent write.
+ * Never throws.
+ *
+ * @param {string} dateKey
+ * @returns {Promise<void>}
+ */
+async function pruneDailyReport(dateKey) {
+  try {
+    if (!isValidDateKey(dateKey)) return;
+    const b = await bridge();
+    const fs = b.firestore;
+    const ref = reportRef(fs, b.db, dateKey);
+    const snap = await chargedGetDoc(fs, ref);
+    if (!snap.exists()) return;
+    const status = snap.data().status;
+    if (status !== "pending" && status !== "failed") return;
+    await guardQuota(() => fs.deleteDoc(ref));
+    noteDeletes();
+    console.info("[trustx-ledger] undelivered daily report dropped on reopen:", dateKey);
+  } catch (err) {
+    console.warn("[trustx-ledger] daily report could not be pruned on reopen:", err);
+  }
+}
+
+/**
+ * This day's Telegram delivery record, for the ledger's indicator.
+ *
+ * @param {string} dateKey
+ * @returns {Promise<object|null>} the document, or null when no report
+ *   has ever been queued for this day. Read errors reject: the caller
+ *   must be able to tell "offline" from "none on file".
+ */
+export async function fetchDailyReport(dateKey) {
+  if (!isValidDateKey(dateKey)) return null;
+  const b = await bridge();
+  const fs = b.firestore;
+  const snap = await chargedGetDoc(fs, reportRef(fs, b.db, dateKey));
+  return snap.exists() ? snap.data() : null;
+}
+
+/**
+ * Put a FAILED report back on the bridge's queue — the ledger's
+ * Retry button. Only "failed" moves: "pending" is already queued,
+ * "sending" belongs to the bridge, and "sent" is terminal. The rules
+ * refuse these transitions server-side too; this refuses the rest
+ * with a sentence before the network does.
+ *
+ * @param {string} dateKey
+ * @returns {Promise<string>} the resulting status
+ */
+export async function retryDailyReport(dateKey) {
+  if (!isValidDateKey(dateKey)) throw new Error("That business day is not valid.");
+  const b = await bridge();
+  const fs = b.firestore;
+  const ref = reportRef(fs, b.db, dateKey);
+  const snap = await chargedGetDoc(fs, ref);
+  if (!snap.exists()) throw new Error("No Telegram report has ever been queued for this day.");
+  const report = snap.data();
+  if (report.status === "sent") throw new Error("That day's report has already been sent.");
+  if (report.status === "pending") return "pending";
+  if (report.status === "sending") throw new Error("The office bridge is sending that report right now.");
+
+  /* Back to a virgin queue entry: the delivery stamps of the failed
+     attempt go, the attempt counter stays as the history it is. */
+  await guardQuota(() =>
+    fs.updateDoc(ref, {
+      status: "pending",
+      sendingAt: fs.deleteField(),
+      lastAttemptAt: fs.deleteField(),
+      lastError: fs.deleteField(),
+    })
+  );
+  noteWrites();
+  console.info("[trustx-ledger] daily report requeued for the bridge:", dateKey);
+  return "pending";
 }
 
 /**

@@ -551,6 +551,104 @@ node tools/bootstrap-access.mjs --key <sa.json> --revoke <uid>             # loc
   App Check is the cheapest real improvement and is worth doing for
   production.
 
+## Telegram daily closing report (Flutter office bridge)
+
+Closing a day in the ledger can also deliver the day's closing report to
+the shop owner's Telegram — with **no Cloud Functions and no paid backend**:
+the free Spark plan is enough. The web app only *queues* the report; a
+dedicated office Android phone running `leadger_office_bridge/` (a Flutter
+app) listens, claims the report atomically and sends it through the
+Telegram Bot API.
+
+The **bot token never appears in the web app, in Firestore, or in this
+repository**: it is pasted once into the phone's secure storage
+(Android Keystore via `flutter_secure_storage`), is masked on every screen,
+and log lines pass through a redactor before they can render.
+
+### How it works
+
+- **The web app queues.** `closeDay()` in `js/ledger.js` writes
+  `dailyReports/{businessDate}` with `status: "pending"` — a snapshot of the
+  closed day head's `counters`, the day's `expensesPaise`, the derived
+  `netPaise` and the closing stamp — and never throws if Telegram is not in
+  play. Reopening a day prunes an undelivered report; a re-close bumps
+  `reportVersion`. The ledger shows the delivery state under its
+  closed-day notice (**sent 🟢 / failed 🔴 + Retry / sending / pending ⏳**).
+- **The phone delivers.** The bridge listens to `pending`, `sending` and
+  `failed` documents, claims one with a transaction
+  (`pending → sending`; a fresh `sending` cannot be re-claimed, so two
+  instances or a retry storm cannot double-send), sends the §16 report
+  message, then records `sent` (`sentAt`, `telegramMessageId`) or `failed`
+  (`lastError`). A claim left `sending` by a crashed phone becomes
+  reclaimable after two minutes. The app runs as an Android foreground
+  service so Android does not silence it overnight.
+- **The rules keep both halves honest.** `firestore.rules` gives the
+  bridge a single scope — `dailyReports/{businessDate}` claim/deliver
+  transitions — and nothing else: it holds no `accessGrant`, so every
+  money path still denies it. The snapshot is pinned against the closed
+  `dayHeads/{dateKey}` on create and against *itself* on every delivery
+  transition, so neither writer can move a rupee, and `hasOnly()` means a
+  document carrying a `telegramBotToken` field would be refused outright.
+- **The bridge's whole identity is a custom claim.** Firestore rules
+  can read `request.auth.token.bridge`; clients cannot forge claims. The
+  claim is minted server-side by `tools/set-bridge-claim.mjs` with a
+  service-account key — never by any app code.
+
+### First-time setup
+
+1. **Create the bot.** In Telegram, talk to **@BotFather** → `/newbot` →
+   pick a name and username. Copy the **token** (`123456789:AA...`). Treat
+   it like a password: it is never committed, never pasted into the web
+   app, and never written to Firestore.
+2. **Open a chat with your bot** and send `/start` — without that first
+   message the bot cannot message you. Get your **Chat ID** (e.g. by
+   calling `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser;
+   the `message.chat.id` is usually a negative group id or your user id).
+3. **Register the Android app** in the Firebase console (Project settings
+   → Add app → Android, package `com.leadger.leadger_office_bridge`) and
+   paste the real `appId` into the `REPLACE_WITH_ANDROID_APP_ID`
+   placeholder in `leadger_office_bridge/lib/firebase_options.dart`.
+4. **Build and open the app:**
+   ```bash
+   cd leadger_office_bridge
+   flutter pub get
+   flutter run        # or flutter build apk --release
+   ```
+5. **Configure it on the phone.** First launch shows the setup screen:
+   paste the bot token and Chat ID, press **Test connection** (the app
+   calls `getMe` and sends a test message), then **Save**. Follow the
+   on-screen battery checklist — allow the notification, exempt the app
+   from battery optimisation, and disable aggressive RAM optimisation if
+   the phone offers it; a bridge that Android dozes is a report that
+   arrives at breakfast.
+6. **Authorise this phone.** The setup screen shows the phone's **bridge
+   UID** (it signs in anonymously — no Google account on the office
+   phone). Mint its claim from the repo root:
+   ```bash
+   node tools/set-bridge-claim.mjs --key <service-account.json> --uid <bridge-uid>
+   ```
+   then tap **Check Now** in the app. `--clear` revokes the claim — a lost
+   phone fails closed the moment you do.
+7. **Deploy the rules** (the `dailyReports` block and `isBridge()` are
+   new): `firebase deploy --only firestore`.
+8. **Close a shop day normally.** The ledger's Telegram box walks
+   ⏳ pending → 🟢 sent; the message lands in your Telegram. A failure
+   shows 🔴 with the error and a **Retry** button (web and app), and the
+   bridge retries by itself with backoff.
+
+### Tests
+
+```bash
+cd leadger_office_bridge
+flutter analyze   # clean
+flutter test      # 38 tests
+```
+
+The Dart tests pin what must never drift: `formatINR` byte-for-byte
+against the real `js/utils.js` vectors (₹1,00,000 grouping, `₹-5` sign
+placement), the Kolkata time/date keys, the claim/backoff/staleness
+policy, and the exact Telegram message layout, line by line.
+
 ## Tests
 
 Pure money/validation helpers (`js/utils.js`) and the pure day-view helpers
