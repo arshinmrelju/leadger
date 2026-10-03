@@ -75,6 +75,7 @@ import {
   REPAIR_STATUS,
   auditDayCounters,
   describeAudit,
+  amountsRulesCannotUse,
   describeRefusal,
   planDayRepair,
   sumDayCounters,
@@ -1075,7 +1076,11 @@ test("auditDayCounters: a sale the rules cannot read is named, never guessed at"
   });
 
   assert.equal(audit.status, AUDIT_STATUS.UNREADABLE);
-  assert.deepEqual(audit.unreadable, ["old1"], "the row is named so it can be looked at");
+  assert.deepEqual(
+    audit.unreadable,
+    [{ txnId: "old1", why: "it carries no amounts map" }],
+    "the row is named with the reason, so it can be looked at",
+  );
   assert.equal(audit.saleCount, 2, "the day's sale count is the truth, not the readable subset");
 
   const said = describeAudit(audit);
@@ -1172,6 +1177,92 @@ test("auditDayCounters survives rubbish, because a diagnostic that crashes is us
   assert.equal(audit.saleCount, 1, "holes in the list are skipped, and the real sale still counts");
   assert.deepEqual(audit.unreadable, [], "a hole is not a malformed sale, so it is not named as one");
   assert.equal(typeof describeAudit(audit).detail, "string");
+});
+
+/* =========================================================
+   A sale the client can read and the rules cannot
+   -----------------------------------------------------------------
+   amountsFromDoc() fills an absent bucket with 0, so a document
+   written before the per-method split still adds up on the client
+   and the day's totals can be perfectly in step.
+
+   firestore.rules has no such patience. headSteppedBy() reads
+   `a.cash` by name, and on a document without that key the engine
+   RAISES rather than answering false: the evaluation errors and the
+   whole batch is refused. A delete cannot happen, an edit cannot
+   happen, and no repair of the head will change it, because the
+   head is not what is wrong.
+
+   This is the case the first version of this check could not see,
+   because it summed rows with the client's tolerant reader — so it
+   agreed with the write path and disagreed with the rules, and
+   reported a day whose every sale was undeletable as "in step".
+   ========================================================= */
+
+test("amountsRulesCannotUse names what the rules would choke on", () => {
+  assert.equal(amountsRulesCannotUse(storedSale("t1", 10000, "cash")), null, "a modern sale is fine");
+
+  /* The whole point: the client reads this happily. */
+  const legacy = { txnId: "old1", total: 10000, paymentMethod: "cash", amounts: { gross: 10000, cash: 10000 } };
+  assert.deepEqual(amountsFromDoc(legacy), { gross: 10000, cash: 10000, upi: 0, card: 0, due: 0, collected: 0 });
+  assert.match(amountsRulesCannotUse(legacy), /missing upi, card, due, collected/);
+
+  /* `is int` in the rules. A string does not merely compare unequal —
+     multiplying it by a step is not an operation the language has. */
+  const asText = storedSale("t2", 10000, "cash");
+  asText.amounts = { ...asText.amounts, cash: "10000" };
+  assert.match(amountsRulesCannotUse(asText), /not whole paise: cash/);
+
+  assert.match(amountsRulesCannotUse({ txnId: "x", total: 5, paymentMethod: "cash" }), /no amounts map/);
+  assert.match(amountsRulesCannotUse({ txnId: "x", amounts: 7 }), /no amounts map/);
+  assert.ok(typeof amountsRulesCannotUse(null) === "string", "a missing document is reported, not thrown on");
+});
+
+test("a day of legacy sales reads as in step to the client and unusable to the rules", () => {
+  /* Three sales, every one missing the later buckets — the shape a
+     build older than the per-method split left behind. */
+  const legacy = [10000, 25000, 40000].map((total, i) => ({
+    txnId: "old" + i,
+    total,
+    paymentMethod: "cash",
+    amounts: { gross: total, cash: total },
+  }));
+
+  /* What the client believes, and what it would compute for the head. */
+  const clientSum = headFor(legacy);
+  assert.equal(clientSum.txnCount, 3);
+  assert.equal(clientSum.grossPaise, 75000);
+
+  /* So the head is in step, and the old check said so: nothing to do. */
+  const trusting = auditDayCounters({
+    dateKey: "2026-10-03",
+    head: { state: DAY_STATE.OPEN, counters: clientSum },
+    rows: legacy.map((d) => ({ ...d, amounts: { ...d.amounts, upi: 0, card: 0, due: 0, collected: 0 } })),
+  });
+  assert.equal(trusting.status, AUDIT_STATUS.OK, "with the fields filled in, the day is genuinely fine");
+
+  /* The real documents are refused, and the report has to say so. */
+  const audit = auditDayCounters({
+    dateKey: "2026-10-03",
+    head: { state: DAY_STATE.OPEN, counters: clientSum },
+    rows: legacy,
+  });
+  assert.equal(audit.status, AUDIT_STATUS.UNREADABLE);
+  assert.equal(audit.unreadable.length, 3, "every sale on the day is affected, not just one");
+
+  /* And no repair of the head is offered, because the head is right. */
+  const plan = planDayRepair(audit);
+  assert.equal(plan.status, REPAIR_STATUS.UNUSABLE);
+  assert.equal(plan.repairable, false, "writing the head cannot free a document the rules cannot read");
+
+  /* The refusal the shop sees must not send them to repair a head that
+     is already correct. */
+  const said = describeRefusal(audit, plan);
+  assert.match(said, /2026-10-03/);
+  assert.match(said, /not a head out of step/i, "the usual explanation is ruled out in words, not left implied");
+  assert.ok(!/put it back in one step/i.test(said), "nothing here is repairable, so nothing may promise a repair");
+  assert.match(said, /old0/, "the sale itself is named, because that is what has to be looked at");
+  assert.match(describeAudit(audit).detail, /missing/, "and the missing field is named");
 });
 
 /* =========================================================

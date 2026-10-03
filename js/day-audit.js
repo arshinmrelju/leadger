@@ -73,20 +73,57 @@ function asInt(value) {
 }
 
 /**
- * Does this sale document carry the per-method amounts map?
- *
- * firestore.rules reads `resource.data.amounts.gross` on every edit,
- * settle and delete of a sale. A document without that field does not
- * fail the check, it ERRORS the evaluation, and the whole write is
- * refused. Such a row can therefore never be deleted however healthy
- * the head is — while the client can still read it, because
- * amountsFromDoc falls back to the row's own total and method. That
- * gap between the two readings is exactly the sort of thing this
- * check exists to name.
+ * The six fields firestore.rules reads off a sale's amounts map:
+ * validAmounts pins them with hasOnly, and headSteppedBy /
+ * headShiftedBy then read every one of them by name.
  */
-function hasAmountsMap(doc) {
+const AMOUNT_KEYS = Object.freeze(["gross", "cash", "upi", "card", "due", "collected"]);
+
+/**
+ * Can firestore.rules use this sale's amounts map AT ALL?
+ *
+ * The client's own reader is forgiving and the rules' is not, and that
+ * difference is the whole answer to "the totals add up yet the delete is
+ * refused":
+ *
+ *   - amountsFromDoc() fills an absent bucket with 0 and carries on, so
+ *     the day still adds up and the check reports it in step.
+ *   - headSteppedBy() reads `a.cash` directly. On a document without
+ *     that key the rules engine RAISES rather than answering false, the
+ *     evaluation errors, and the entire batch is refused — a delete
+ *     cannot happen, an edit cannot happen, and no amount of fixing the
+ *     head will change it, because the head is not what is wrong.
+ *
+ * `validAmounts` requires all six keys and requires each to be an int,
+ * so a document missing one was written by a build older than the
+ * per-method split, and one holding a string was written by something
+ * that did not write paise as numbers.
+ *
+ * Returning the REASON rather than a bare false is what lets the report
+ * name the missing field, which is the difference between "this row is
+ * broken" and a fix.
+ *
+ * @param {object} doc  a stored sale document
+ * @returns {string|null} why the rules cannot use it, or null if they can
+ */
+export function amountsRulesCannotUse(doc) {
   const a = doc ? doc.amounts : null;
-  return !!(a && typeof a === "object" && a.gross !== undefined);
+  if (!a || typeof a !== "object") return "it carries no amounts map";
+
+  const missing = AMOUNT_KEYS.filter((k) => a[k] === undefined || a[k] === null);
+  if (missing.length) {
+    return "its amounts map is missing " + missing.join(", ");
+  }
+
+  /* `is int` in the rules, and a string here does not merely compare
+     unequal: multiplying it by a step is not an operation the language
+     has, so the write errors the same way a missing key does. */
+  const notInt = AMOUNT_KEYS.filter((k) => !Number.isInteger(a[k]));
+  if (notInt.length) {
+    return "its amounts are not whole paise: " + notInt.join(", ");
+  }
+
+  return null;
 }
 
 /**
@@ -96,7 +133,7 @@ function hasAmountsMap(doc) {
  * rule would ever agree with.
  *
  * @param {object[]} rows  stored sale documents for one business day
- * @returns {{counters: object, saleCount: number, unreadable: string[]}}
+ * @returns {{counters: object, saleCount: number, unreadable: object[]}}
  */
 export function sumDayCounters(rows) {
   let counters = emptyCounters();
@@ -107,8 +144,9 @@ export function sumDayCounters(rows) {
     if (!row) continue;
     saleCount += 1;
 
-    if (!hasAmountsMap(row)) {
-      unreadable.push(String(row.txnId || "(unnamed)"));
+    const why = amountsRulesCannotUse(row);
+    if (why) {
+      unreadable.push({ txnId: String(row.txnId || "(unnamed)"), why });
       continue;
     }
     counters = stepCounters(counters, amountsFromDoc(row));
@@ -231,9 +269,11 @@ export function describeAudit(audit) {
             ? "A sale on " + day + " cannot be read by the rules."
             : a.unreadable.length + " sales on " + day + " cannot be read by the rules.",
         detail:
-          "They carry no per-method amounts map, so firestore.rules errors when it reads one and refuses " +
-          "to delete or edit it, however healthy the head is: " + a.unreadable.join(", ") +
-          ". This check cannot tell you what they are worth.",
+          "Their totals may still add up exactly — this is not a head out of step. It is that firestore.rules " +
+          "reads a field off each of them that is not there, and a missing field makes the engine raise " +
+          "instead of answer, so the whole write is refused however healthy the head is: " +
+          a.unreadable.map((u) => u.txnId + " (" + u.why + ")").join("; ") +
+          ". No repair of the head will free them; the document itself has to be completed.",
       };
 
     case AUDIT_STATUS.INCOMPLETE:
@@ -355,11 +395,13 @@ export function planDayRepair(audit) {
     return plan(
       REPAIR_STATUS.UNUSABLE,
       a.unreadable.length === 1
-        ? "One sale on " + day + " carries no per-method amounts map, so its contribution cannot be added up. " +
-          "Writing a total that leaves it out would make the day wrong in a new way."
-        : a.unreadable.length + " sales on " + day + " carry no per-method amounts map, so their " +
-          "contributions cannot be added up. Writing a total that leaves them out would make the day wrong " +
-          "in a new way."
+        ? "One sale on " + day + " has an amounts map the rules cannot read (" +
+          a.unreadable[0].why +
+          "), so its contribution cannot be added up. Writing a total that leaves it out would make the day " +
+          "wrong in a new way."
+        : a.unreadable.length + " sales on " + day + " have amounts maps the rules cannot read, so their " +
+          "contributions cannot be added up. Writing a total that leaves them out would make the day wrong in " +
+          "a new way."
     );
   }
 
