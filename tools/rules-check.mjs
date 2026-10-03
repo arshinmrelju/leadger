@@ -159,7 +159,7 @@ const headWrite = ({
   return { update: { name: `${DOCS}/dayHeads/${day}`, fields } };
 };
 
-const baseTxn = (id, { total = 5000, quantity = 1, rate = total, method = "cash", status = "paid", createdBy = UID, amountsOverride = null, serviceId = "svc_a", serviceName = "Photocopy" } = {}) => ({
+const baseTxn = (id, { total = 5000, quantity = 1, rate = total, method = "cash", status = "paid", createdBy = UID, amountsOverride = null, serviceId = "svc_a", serviceName = "Photocopy", hasReceipt = false } = {}) => ({
   txnId: id,
   serviceId,
   serviceName,
@@ -172,6 +172,10 @@ const baseTxn = (id, { total = 5000, quantity = 1, rate = total, method = "cash"
   customerName: "",
   status,
   dateKey: DAY,
+  /* A sale says whether it has a photograph; the photograph itself is a
+     separate document, so this marker is all a listing of the day ever
+     reads — which is the point of keeping the picture out of the sale. */
+  hasReceipt,
   createdAt: PINNED,
   updatedAt: PINNED,
   createdBy,
@@ -191,11 +195,35 @@ const txnFields = (row) => ({
   customerName: str(row.customerName),
   status: str(row.status),
   dateKey: str(row.dateKey),
+  hasReceipt: bool(row.hasReceipt),
   createdAt: ts(row.createdAt),
   updatedAt: ts(row.updatedAt),
   createdBy: str(row.createdBy),
   updatedBy: str(row.updatedBy),
 });
+
+/* The photograph of a receipt: its own small document beside the sale, not a
+   field on the sale and not a file in Cloud Storage. `bytes` is the decoded
+   JPEG size, which is what the ceiling is really about — base64 is just the
+   wire form of the same picture. The payload below is a real JPEG header, not
+   a picture: the rules judge the shape and the size, not the photograph. */
+const JPEG_HEAD = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD";
+
+const imageWrite = (id, over = {}) => ({
+  update: {
+    name: `${DOCS}/dayHeads/${DAY}/receiptImages/${id}`,
+    fields: {
+      txnId: str(id),
+      image: str(JPEG_HEAD),
+      bytes: num(1024),
+      capturedAt: ts(),
+      createdBy: str(UID),
+      ...over,
+    },
+  },
+});
+
+const imageDel = (id) => ({ delete: `${DOCS}/dayHeads/${DAY}/receiptImages/${id}` });
 
 /* --- runner -------------------------------------------------------- */
 
@@ -217,10 +245,11 @@ function skip(name, reason) {
  *
  * `Bearer owner` is the Firestore emulator's documented admin credential: it
  * bypasses security rules the way the Admin SDK does. The harness uses it for
- * ONE thing — planting a genuinely closed day head, because closing a day
- * through the rules trips this emulator's 1000-expression ceiling (the
- * pre-existing BADRQ cases above). Without that, every reopen case would be
- * testing an OPEN day and would prove nothing.
+ * TWO things — planting the allowlist and the service catalog (which no
+ * client may write at all), and planting a genuinely closed day head as a
+ * fallback, in case the close through the rules ever fails to evaluate.
+ * Without a real closed day, every reopen case would be testing an OPEN day
+ * and would prove nothing.
  *
  * It is deliberately not used to make an assertion pass: the seed only writes
  * the state the rules are then judged against, and every assertion below it
@@ -644,6 +673,39 @@ async function run() {
   await expectSale('refuse a sale whose total is not quantity x rate ("t8")', { quantity: 2, rate: 3000, total: 5000 }, false);
   await expectSale('accept a multi-unit sale priced consistently ("t9")', { quantity: 2, rate: 2500, total: 5000 }, true);
 
+  console.log("\nthe receipt photograph, kept in its own document:");
+  /* The photo is committed in the SAME batch as the sale it belongs to, so
+     a photograph can never outlive a sale or arrive without one. That is
+     also why the rule reads the sale with getAfter() rather than exists():
+     a rule judging `exists` sees the world as it was BEFORE the batch, and
+     the sale is not in it yet — the photo would be refused for the company
+     of a sale that is arriving in the very same commit. */
+  const photoSale = baseTxn("tR1", { hasReceipt: true });
+  await expect('accept a sale and its receipt photograph in one commit ("tR1")',
+    [txnWrite(photoSale), dayWrite(stepFor(photoSale)), imageWrite("tR1")], true);
+  rows.set("tR1", photoSale);
+  commitDay(stepFor(photoSale));
+
+  await expect("refuse a photograph for a sale that is not there", [imageWrite("tGhost")], false);
+  await expect("refuse a photograph whose decoded size is over the ceiling", [imageWrite("tR1", { bytes: num(614401) })], false);
+  await expect("refuse a photograph that is not a JPEG", [imageWrite("tR1", { image: str("data:image/png;base64,iVBORw0KGgo=") })], false);
+  await expect("refuse a photograph that claims somebody else as its author", [imageWrite("tR1", { createdBy: str("someone-else") })], false);
+  await expect("refuse a photograph filed under another sale's id", [imageWrite("tR1", { txnId: str("t9") })], false);
+  /* A scan is a record of what the paper said. Rewriting it in place would
+     let the picture attached to a sale quietly become a different picture,
+     so the document is create-only: re-scanning deletes and re-creates. */
+  await expect("refuse rewriting a stored photograph in place", [imageWrite("tR1", { image: str(JPEG_HEAD + "AAAA") })], false);
+  await expect("refuse a photograph from a browser with no grant", [imageWrite("tR2")], false, OUTSIDER);
+  await expect("refuse a photograph from an anonymous caller", [imageWrite("tR2")], false, null);
+
+  await expectRead("a trusted browser can read the photograph", `dayHeads/${DAY}/receiptImages/tR1`, true, UID);
+  await expectRead("a browser with no grant cannot", `dayHeads/${DAY}/receiptImages/tR1`, false, OUTSIDER);
+  await expectRead("an anonymous caller cannot either", `dayHeads/${DAY}/receiptImages/tR1`, false, null);
+  /* The photo goes when its sale goes, and while the day is still open that
+     is a write like any other; the closed-day case below refuses it. */
+  await expect("accept deleting a photograph while the day is open", [imageDel("tR1")], true);
+  await expect("accept re-attaching a photograph to the same sale", [imageWrite("tR1")], true);
+
   console.log("\nthe queries the history page actually runs:");
   /* The history page walks the day heads newest-first and then reads one
      day's sales. The day-heads query is checked here; the per-day read is
@@ -709,16 +771,15 @@ async function run() {
   console.log("\nclosing the day:");
   const failsBeforeClose = failures.length;
   await expect("accept closing an open day", [headWrite({ state: "closed" })], true);
-  /* Whether the close actually committed. On this emulator a head update
-     trips the 1000-expression ceiling (see the pre-existing BADRQ cases
-     above), so the close can fail to evaluate — which means the head on
-     the server is still open, and every case below would then be quietly
-     testing an OPEN day. That is a broken test, not a red test, so the
-     closed state is planted out of band: the close itself is already
-     recorded above as whatever the rules actually did with it, and the
-     refusals here are judged against a real closed day. If even the
-     admin-token seed cannot be made, the cases are reported as NOT driven
-     rather than allowed to pass against the wrong state. */
+  /* Whether the close actually committed. If a rule change ever leaves the
+     close unable to evaluate, the head on the server is still open and every
+     case below would be quietly testing an OPEN day — a broken test, not a
+     red one. So the state is verified, and only planted out of band if the
+     rules themselves failed to produce it: the close is already recorded
+     above as whatever the rules actually did, and the refusals here are
+     judged against a real closed day. If even the admin-token seed cannot be
+     made, the cases are reported as NOT driven rather than allowed to pass
+     against the wrong state. */
   const closeLanded = failures.length === failsBeforeClose;
   let closedDayReady = closeLanded;
   if (!closedDayReady) {
@@ -736,6 +797,8 @@ async function run() {
     skip("refuse a sale against a closed day", why);
     skip("refuse editing a sale on a closed day", why);
     skip("refuse deleting a sale on a closed day", why);
+    skip("refuse attaching a photograph on a closed day", why);
+    skip("refuse deleting a photograph on a closed day", why);
     skip("refuse a reopen that keeps the closing stamp", why);
     skip("refuse a reopen that also moves the counters", why);
     skip("accept reopening a closed day", why);
@@ -744,6 +807,14 @@ async function run() {
     await expect("refuse a sale against a closed day", [txnWrite(baseTxn("t10", {})), dayWrite(CASH_5000)], false);
     await expect("refuse editing a sale on a closed day", [txnWrite(baseTxn("t10", {}))], false);
     await expect("refuse deleting a sale on a closed day", [delWrite("d1")], false);
+    /* The photo rides the sale's rules: a closed day takes no photographs,
+       neither a new one against a sale already on file nor the removal of
+       an existing one. Reading it stays allowed — closing a day locks the
+       money, it does not hide the record. */
+    await expect("refuse attaching a photograph on a closed day", [imageWrite("t9")], false);
+    await expect("refuse deleting a photograph on a closed day", [imageDel("tR1")], false);
+    await expectRead("a trusted browser can still read a photograph on a closed day",
+      `dayHeads/${DAY}/receiptImages/tR1`, true, UID);
 
     /* Reopening is how a mistake on a finished day gets fixed, so it has to
        be possible — but it is a state change, never a money change. The two

@@ -51,10 +51,38 @@ against an earlier day, and lets a day be closed (and reopened).
 - **Scanned receipts keep their own date.** The receipt scanner now fills the
   form in for the day printed on the receipt (when that day is in the past)
   instead of filing it under today and asking for a correction afterwards.
+- **The receipt photograph is kept, in Firestore.** The photo of a scanned
+  receipt is saved as its own small document at
+  `dayHeads/{dateKey}/receiptImages/{txnId}`, committed in the same batch as
+  the sale it belongs to, so it can neither arrive without the sale nor
+  outlive it. The sale carries only `hasReceipt: true`, and a **Receipt**
+  button on the row fetches the picture on demand — a day of listing sales
+  never downloads a photograph. Reading one works even on a closed day;
+  attaching or removing one does not.
+
+  Storage is **not** Cloud Storage: this project has none set up, and a
+  receipt is the shop's own paper, so it belongs under the same rules, the
+  same day and the same backup as the money it explains. The stored copy is
+  re-encoded smaller than the one sent for extraction (1000px, JPEG q0.72)
+  because base64 costs 4/3 on top of the JPEG and a Firestore document caps
+  at ~1 MiB; `RECEIPT_IMAGE_MAX_BYTES` (600 KB) is the decoded ceiling the
+  client and the rules both enforce. `storage.rules` and the `storage` block
+  in `firebase.json` are gone — with them, the "you do not have a Storage
+  bucket" deploy error.
 - **Deep links.** `ledger.html?date=YYYY-MM-DD` and
   `transactions.html?date=YYYY-MM-DD` open on one business day, and switching
   day or scope keeps the URL honest — including clearing it when the page
   goes back to all-time.
+
+> **v0.13.1** keeps scanned receipt photographs in a Firestore subcollection
+> and reads them on demand, replacing the unused Cloud Storage configuration.
+> It also fixes the optional `notes`/`hasReceipt` fields on a sale: reading a
+> field the document does not have raises in the rules engine instead of
+> answering, so `doc.notes is string || !('notes' in doc)` refused every sale
+> that had no notes with an evaluation error rather than a plain "no". The
+> `in` test has to come first. The eight `BADRQ` cases the rules harness had
+> been carrying as a known emulator ceiling were all this, and the harness is
+> now 136 cases with zero skipped.
 
 > **v0.13.0** adds `js/calendar.js` (pure grid logic, no Firebase import, so
 > the whole month is unit-tested), `calendar.html`, `css/calendar.css`, a
@@ -284,6 +312,7 @@ The money is in Firestore, and it is the only thing there:
 | `accessGrants/{uid}` | owner or admin | owner (self-service) or admin (full management) — the trusted-browser registry |
 | `dayHeads/{dateKey}` | trusted devices | created on a day's first sale; counters move **only** in the same atomic batch as a sale, edit or delete, and the rules re-check the delta. Absent document = day is **open**; a `closed` day is written once and never reopened |
 | `dayHeads/{dateKey}/transactions/{txnId}` | trusted devices | create: trusted, server-validated (`createdBy == uid`, money checks, head delta). update/delete: trusted **and the day is still open** |
+| `dayHeads/{dateKey}/receiptImages/{txnId}` | trusted devices, **even when the day is closed** | create: trusted, open day, JPEG data URL under the size ceiling, and a sale that exists in the same batch (`existsAfter`). **never updated** — re-scanning deletes and re-creates. delete: trusted, open day |
 
 ### Which database holds what
 
@@ -296,6 +325,11 @@ subcollection of that document:
   (`txnCount`, `grossPaise`, `cashPaise`, `upiPaise`, `cardPaise`,
   `duePaise`, `collectedPaise`).
 - `dayHeads/{dateKey}/transactions/{txnId}` — the sales recorded that day.
+- `dayHeads/{dateKey}/receiptImages/{txnId}` — the photograph of a scanned
+  receipt, for the sales that have one. It is deliberately **not** on the sale
+  document: base64 costs 4/3 on top of the JPEG, so a photo on the sale would
+  ride along with every listing of the day. Here it is fetched only when
+  someone presses **Receipt**.
 
 Two things follow from that, and both are deliberate:
 
@@ -425,6 +459,13 @@ panel degraded, with the reason in the browser console.
 Firebase **client configuration is not a secret** — it goes in the frontend
 by design. All real security lives in `firestore.rules`, `database.rules.json` and
 Authentication.
+
+> **Cloud Storage is not used, and does not need to exist.** The `storageBucket`
+> key is part of the config Firebase hands you and is harmless left in place,
+> but nothing in this app calls the Storage API and no deploy target includes
+> Storage — receipt photographs live in Firestore
+> (`dayHeads/{dateKey}/receiptImages/{txnId}`). That is why the project no
+> longer ships a `storage.rules` file or a `storage` block in `firebase.json`.
 Never paste service-account or admin private keys into frontend code.
 
 The app detects the placeholders and stays in a safe "setup needed" mode
@@ -569,8 +610,11 @@ sale, that the payment buckets must re-derive the total, that `total` must be
 `quantity x rate`, that a settled due sale moves no money, that closing a day
 pins the closing stamps, that a day with nothing on it cannot be closed, that
 editing or deleting a sale on a closed day is refused, and that a day may be
-reopened without its counters moving. It starts and stops the emulator itself,
-so it is not part of `npm test`.
+reopened without its counters moving. It also drives the receipt photographs:
+that a photo may only be written for a sale in the same batch, that it must be
+a JPEG data URL inside the size ceiling, that it can never be rewritten in
+place, and that it can be read on a closed day but not attached to one. It
+starts and stops the emulator itself, so it is not part of `npm test`.
 
 Two things to know when reading its output:
 
@@ -578,21 +622,23 @@ Two things to know when reading its output:
   `FieldValue.serverTimestamp()`, so the script substitutes a fixed literal
   for that one expression and leaves every clause carrying the day's
   arithmetic exactly as written.
-- **`BADRQ` and `SKIP` are not passes, and they say so.** The emulator
-  evaluates a whole rules file with a fixed expression budget, and this one is
-  over it: several scenarios are refused because the evaluation itself errors
-  rather than answering `false`. Those are reported as `BADRQ — the rules
-  failed to evaluate, not a verdict`, never as a green refusal, and where a
-  scenario depends on state that could not be established the harness reports
-  `SKIP` and names the case. Eight cases are in that state today, all of them
-  pre-existing money paths (`accept a sale that moves the head by exactly that
-  sale` and its siblings); they are honest gaps in the harness, not verdicts.
-- **The close is planted out of band so the reopen rules can be judged.**
-  Closing a day through the rules is one of the cases that trips the
-  expression ceiling, which would leave every reopen case testing an *open*
-  day. The harness therefore writes the closed head with the emulator's admin
-  token (`Bearer owner`, which bypasses rules the way the Admin SDK does) and
-  then makes every assertion as the shop user, with the real rules in force.
+- **`BADRQ` and `SKIP` are not passes, and they say so.** A scenario whose
+  rules raise an evaluation error instead of answering `false` is reported as
+  `BADRQ — the rules failed to evaluate, not a verdict`, never as a green
+  refusal, and where a scenario depends on state that could not be established
+  the harness reports `SKIP` and names the case. **Today there are none of
+  either: 136 cases, zero skipped.** There were eight for a while, and they
+  were all blamed on the emulator's expression ceiling, which was the wrong
+  answer — the real cause was in `firestore.rules` (see v0.13.1 above: an
+  unguarded read of an optional field). Worth remembering: an "unavoidable"
+  tooling limit is a claim to be tested, not accepted.
+- **The close is planted out of band as a fallback.** The harness closes the
+  day through the rules first and checks that it landed; only if that fails
+  does it write the closed head with the emulator's admin token (`Bearer
+  owner`, which bypasses rules the way the Admin SDK does), so the reopen cases
+  can never quietly test an *open* day. Every assertion is still made as the
+  shop user, with the real rules in force, and if the fallback cannot be made
+  either the affected cases are reported as `SKIP`.
   That is how `accept reopening a closed day` gets a genuine verdict — and how
   a bug in the harness itself was caught: the "reopen that also moves the
   counters" case was passing a fixed counter set that could coincide with what
@@ -770,5 +816,7 @@ hardening pass.
 10. Reports & service statistics
 11. Settings polish, security-rule tests, deployment hardening
     (v0.7.0 added the trusted-device registry; v0.12.0 replaced access
-    codes with Google Sign-In; per-IP brute-force rate
-    limiting remains a **Firebase App Check** recommendation for production).
+    codes with Google Sign-In; v0.13.1 kept scanned receipt photographs in
+    Firestore and closed the eight open rules-harness cases; per-IP
+    brute-force rate limiting remains a **Firebase App Check**
+    recommendation for production).

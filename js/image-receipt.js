@@ -22,7 +22,14 @@
      6. Match serviceName against catalog, pre-fill existing sale form
         → user reviews and saves.
 
-   Receipt images are NOT stored after processing.
+   WHERE THE PHOTO ENDS UP
+   A second, smaller encode of the same bitmap is handed to the sale form and
+   saved as its own Firestore document, `dayHeads/{dateKey}/receiptImages/
+   {txnId}`, in the same batch as the sale. Not Cloud Storage: the project
+   has none set up, and a receipt belongs beside the day and the rules that
+   already govern the money. Not on the sale document either — base64 is 4/3
+   the picture and would ride along with every listing of the day; this way
+   it is read only when someone opens it.
    ========================================================= */
 
 import { toast, setLoading, openModal, closeModal } from "./app.js";
@@ -31,6 +38,8 @@ import {
   isValidDateKey,
   escapeHtml,
   isPaymentMethod,
+  RECEIPT_IMAGE_MAX_BYTES,
+  isStorableReceiptImage,
 } from "./utils.js";
 import { fetchServices } from "./ledger.js";
 import { openSaleForm, prefillSaleForm } from "./sale-form.js";
@@ -60,6 +69,8 @@ const ICON_UPLOAD =
 let scanOverlay = null;
 let currentRawFile = null;
 let currentDataUrl = null;
+/** The smaller copy of the same photo the ledger stores beside the sale. */
+let currentLedgerImage = null;
 let currentServices = [];
 let analyzing = false;
 
@@ -125,7 +136,9 @@ async function prepareImageForAi(file) {
 
   const img = await loadImageFromBlob(blob);
   const prepared = await downscaleToJpeg(img);
-  return prepared;
+  /* The decoded bitmap is kept as well: the ledger's own, smaller copy is
+     rendered from this same image rather than decoding the file again. */
+  return { ...prepared, img };
 }
 
 function loadImageFromBlob(blob) {
@@ -144,8 +157,16 @@ function loadImageFromBlob(blob) {
   });
 }
 
-function downscaleToJpeg(img) {
-  const maxEdge = AI_CONFIG.downscaleLongEdge;
+/**
+ * Re-encode a decoded image as a JPEG at a given size and quality.
+ *
+ * One function for both jobs the app has, because they differ only in the
+ * numbers: the AI wants the biggest readable picture it can get, while the
+ * copy kept in the ledger has to fit inside a Firestore document. Encoding
+ * twice from the same decoded bitmap is cheaper and simpler than decoding
+ * the file twice.
+ */
+function renderJpeg(img, { maxEdge, quality, maxBytes }) {
   let w = img.naturalWidth;
   let h = img.naturalHeight;
   if (!w || !h) throw new Error("Could not read image dimensions.");
@@ -166,14 +187,9 @@ function downscaleToJpeg(img) {
     canvas.toBlob(
       (blob) => {
         if (!blob) return reject(new Error("Image encoding failed."));
-        const sizeMb = blob.size / (1024 * 1024);
-        if (sizeMb > AI_CONFIG.maxImageSizeMb * 1.2) {
-          return reject(
-            new Error(
-              "Image is too large after resize (" + sizeMb.toFixed(1) + " MB). Try a smaller photo."
-            )
-          );
-        }
+        /* Over the ceiling: resolve null instead of rejecting, so the caller
+           decides what an unsaveable picture means. */
+        if (maxBytes && blob.size > maxBytes) return resolve(null);
         const reader = new FileReader();
         reader.onerror = () => reject(new Error("Could not read image data."));
         reader.onload = () =>
@@ -181,8 +197,46 @@ function downscaleToJpeg(img) {
         reader.readAsDataURL(blob);
       },
       "image/jpeg",
-      AI_CONFIG.jpegQuality
+      quality
     );
+  });
+}
+
+/** The picture the AI reads: as much detail as the free tiers will take. */
+function downscaleToJpeg(img) {
+  return renderJpeg(img, {
+    maxEdge: AI_CONFIG.downscaleLongEdge,
+    quality: AI_CONFIG.jpegQuality,
+    maxBytes: null,
+  }).then((out) => {
+    const sizeMb = out.jpegBlob.size / (1024 * 1024);
+    if (sizeMb > AI_CONFIG.maxImageSizeMb * 1.2) {
+      throw new Error(
+        "Image is too large after resize (" + sizeMb.toFixed(1) + " MB). Try a smaller photo."
+      );
+    }
+    return out;
+  });
+}
+
+/**
+ * The copy of the receipt the LEDGER keeps, in its own Firestore document.
+ *
+ * Deliberately smaller than the AI copy: this one is stored, listed against
+ * every future read of the day, and has to live inside a 1 MiB document as
+ * base64. A bill only has to stay readable on a phone screen to do its job,
+ * so it is re-encoded at a shorter edge and a lower quality - which lands
+ * most receipts well inside the ceiling instead of straddling it.
+ *
+ * Returns null rather than throwing when it will not fit: the sale is still
+ * worth saving, and refusing the whole entry because a photo was large would
+ * be the wrong trade.
+ */
+function encodeReceiptForLedger(img) {
+  return renderJpeg(img, {
+    maxEdge: AI_CONFIG.storeLongEdge,
+    quality: AI_CONFIG.storeJpegQuality,
+    maxBytes: RECEIPT_IMAGE_MAX_BYTES,
   });
 }
 
@@ -750,6 +804,27 @@ async function handleFileChosen(file) {
   const prepared = await prepareImageForAi(file);
   currentDataUrl = prepared.dataUrl;
 
+  /* The ledger's own copy of the photograph, rendered here while the decoded
+     bitmap is to hand. It is smaller than the AI copy on purpose — this one
+     is stored in Firestore — and null when even that will not fit, in which
+     case the sale is simply saved without the photo. */
+  currentLedgerImage = null;
+  try {
+    const ledgerCopy = await encodeReceiptForLedger(prepared.img);
+    /* Checked again here, at the boundary, so a photo is only ever offered
+       to the form if it is one the rules would accept. */
+    currentLedgerImage =
+      ledgerCopy && isStorableReceiptImage(ledgerCopy.dataUrl) ? ledgerCopy.dataUrl : null;
+  } catch (err) {
+    console.warn("[trustx-ledger] receipt copy for the ledger:", err);
+  }
+  /* Said out loud rather than left to be discovered: a scan that is not
+     stored is not a failure of the sale, but the shopkeeper should know the
+     bill will not be there to look at later. */
+  if (!currentLedgerImage) {
+    toast("This photo is too large to keep with the sale — it will still be read, but not stored.", "info", 3500);
+  }
+
   const root = scanOverlay;
   const img = root.querySelector("#previewImg");
   img.src = currentDataUrl;
@@ -823,6 +898,10 @@ async function onAnalyze(root) {
       customerName: extracted.customerName,
       paymentMethod: extracted.paymentMethod,
       dateKey: receiptDay,
+      /* The photograph comes with the entry, stored beside it in Firestore
+         rather than in Cloud Storage: a receipt is the shop's own paper and
+         belongs under the same day and the same rules as the money. */
+      receiptImage: currentLedgerImage,
     });
 
     if (extracted.totalRupees === null) {

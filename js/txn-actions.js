@@ -40,6 +40,7 @@ import {
   updateTransaction,
   deleteTransaction,
   markTransactionPaid,
+  fetchReceiptImage,
   isNetworkError,
 } from "./ledger.js";
 import { reportError } from "./auth.js";
@@ -71,6 +72,9 @@ const ICON_CARD =
 const ICON_DUE =
   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
 
+const ICON_RECEIPT =
+  '<svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2h16v20l-2.5-1.5L15 22l-2.5-1.5L10 22l-2.5-1.5L5 22V4a2 2 0 0 1 2-2z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>';
+
 /* ---------------- State ---------------- */
 
 /* Names where a closed day can be re-opened, because "it is closed" on
@@ -99,6 +103,10 @@ function isDuePending(t) {
  * It is only a hint: the rules decide, and a click on a stale row is
  * still turned into a sentence the shop can act on (see CLOSED_DAY_MSG).
  *
+ * The receipt button is the exception to all of that: looking at the
+ * photograph of a sale is a read, and a closed day is still worth
+ * reading — closing a day locks the money, it does not hide it.
+ *
  * @param {object} t  a normalized transaction row
  * @param {object} [opts]
  * @param {boolean} [opts.closed]  the row's business day is closed
@@ -108,6 +116,10 @@ export function txnActionButtons(t, { closed = false } = {}) {
   const off = closed ? " disabled" : "";
 
   return (
+    (t.hasReceipt
+      ? '<button class="btn btn-secondary btn-sm" type="button" data-act="receipt" data-id="' +
+        id + '" title="View receipt photo" aria-label="View receipt photo">' + ICON_RECEIPT + "</button>"
+      : "") +
     (isDuePending(t)
       ? '<button class="btn btn-success btn-sm" type="button" data-act="paid" data-id="' +
         id + '" title="Mark this due as paid"' + off + ">Mark paid</button>"
@@ -144,6 +156,12 @@ export async function handleTxnAction(event, { rows = [], isClosed = null, onCha
 
   const action = btn.getAttribute("data-act");
   const closed = typeof isClosed === "function" ? isClosed(row) === true : false;
+
+  /* Reading the receipt changes nothing, so it does not go through the
+     write path below: no day check, no confirmation, no redraw. It still
+     reports true, because it was handled. */
+  if (action === "receipt") return viewReceipt(row);
+
   let ok = false;
 
   if (action === "edit") ok = await editRow(row, closed);
@@ -518,6 +536,99 @@ function applyEdit(row, patch) {
     row.serviceId = patch.service.serviceId;
     row.serviceName = patch.service.name;
   }
+}
+
+/* ---------------- Receipt viewer ---------------- */
+
+/**
+ * The photograph is not on the sale: it is its own document, read only
+ * when someone actually asks to see it. The cache inside fetchReceiptImage
+ * means a second look at the same bill costs nothing, and a day of listing
+ * sales never downloads a single photograph.
+ */
+let receiptOverlay = null;   // built on first use, like the edit dialog
+
+function buildReceiptOverlay() {
+  const el = document.createElement("div");
+  el.className = "modal-overlay";
+  el.id = "receiptModal";
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.setAttribute("aria-labelledby", "receiptTitle");
+  el.innerHTML =
+    '<div class="modal receipt-view" role="document">' +
+    '<div class="modal-header">' +
+    '<div class="modal-header-icon modal-header-icon-edit" aria-hidden="true">' + ICON_RECEIPT + "</div>" +
+    '<div class="modal-header-text">' +
+    '<h3 id="receiptTitle">Receipt photo</h3>' +
+    '<p class="modal-header-sub" id="receiptSub"></p>' +
+    "</div>" +
+    '<button class="modal-close" type="button" data-close aria-label="Close">' + ICON_CLOSE + "</button>" +
+    "</div>" +
+    '<div class="modal-body receipt-view-body">' +
+    '<p class="muted" id="receiptMsg">Loading the photo…</p>' +
+    '<img class="receipt-view-img is-hidden" id="receiptImg" alt="Photograph of the receipt for this sale" />' +
+    "</div>" +
+    '<div class="modal-footer">' +
+    '<a class="btn btn-secondary is-hidden" id="receiptSave" download="receipt.jpg">Save photo</a>' +
+    '<button class="btn btn-primary" type="button" data-close>Close</button>' +
+    "</div>" +
+    "</div>";
+  document.body.appendChild(el);
+  return el;
+}
+
+async function viewReceipt(row) {
+  if (!receiptOverlay) receiptOverlay = buildReceiptOverlay();
+
+  const msg = receiptOverlay.querySelector("#receiptMsg");
+  const img = receiptOverlay.querySelector("#receiptImg");
+  const save = receiptOverlay.querySelector("#receiptSave");
+  const sub = receiptOverlay.querySelector("#receiptSub");
+
+  sub.textContent =
+    row.serviceName + " · " + formatINR(row.totalPaise) + " · " + methodLabel(row.paymentMethod);
+  msg.classList.remove("is-hidden");
+  msg.textContent = "Loading the photo…";
+  img.classList.add("is-hidden");
+  img.removeAttribute("src");
+  save.classList.add("is-hidden");
+  save.removeAttribute("href");
+
+  /* Stamped before the await below, so a read that comes back late can
+     tell it is no longer answering the dialog on screen. */
+  receiptOverlay.setAttribute("data-receipt", row.txnId + "|" + row.dateKey);
+  openModal(receiptOverlay);
+
+  let dataUrl;
+  try {
+    dataUrl = await fetchReceiptImage(row.txnId, row.dateKey);
+  } catch (err) {
+    console.error("[trustx-ledger] receipt image:", err);
+    dataUrl = null;
+  }
+
+  /* The dialog may have been closed, or another receipt opened, while the
+     read was in flight — painting into a stale dialog would show the wrong
+     bill, so the row that is on screen is checked first. */
+  const wanted = row.txnId + "|" + row.dateKey;
+  if (receiptOverlay.getAttribute("data-receipt") !== wanted) return true;
+  if (!receiptOverlay.classList.contains("is-open")) return true;
+
+  if (!dataUrl) {
+    msg.textContent =
+      "The receipt photo for this sale is not available. It may have been removed, " +
+      "or this sale was recorded before photographs were kept.";
+    return true;
+  }
+
+  msg.classList.add("is-hidden");
+  img.src = dataUrl;
+  img.classList.remove("is-hidden");
+  save.href = dataUrl;
+  save.download = "receipt-" + row.dateKey + "-" + row.txnId + ".jpg";
+  save.classList.remove("is-hidden");
+  return true;
 }
 
 /* ---------------- Settle / delete ---------------- */

@@ -21,8 +21,11 @@
         hit-or-miss compared to Gemini. Works offline after the first
         time Tesseract's ~10 MB English model is cached.
 
-   Receipt images are processed only for extraction and then discarded
-   (never stored anywhere, per shop preference).
+   Receipt images are processed for extraction, and the photo itself is kept
+   with the sale in Firestore (dayHeads/{dateKey}/receiptImages/{txnId}) — not
+   in Cloud Storage, which this project does not use. The stored copy is
+   re-encoded smaller than the AI copy, because it has to fit inside a 1 MiB
+   Firestore document as base64.
    ========================================================= */
 
 export const AI_CONFIG = {
@@ -36,6 +39,13 @@ export const AI_CONFIG = {
   maxImageSizeMb: 3.5,
   downscaleLongEdge: 1400,
   jpegQuality: 0.82,
+
+  /* ---------------- The copy stored with the sale ----------------
+     Smaller than the AI copy on purpose. The stored photo lives in a
+     Firestore document (base64 costs 4/3 on top of the JPEG) and a bill only
+     has to stay readable on a phone screen. */
+  storeLongEdge: 1000,
+  storeJpegQuality: 0.72,
 };
 
 const PLACEHOLDER_TOKENS = ["YOUR_", "XXXXXXXX", "xxxx"];

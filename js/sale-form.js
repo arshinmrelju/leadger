@@ -23,6 +23,8 @@ import {
   todayKolkata,
   isValidDateKey,
   escapeHtml,
+  RECEIPT_IMAGE_MAX_BYTES,
+  receiptImageBytes,
 } from "./utils.js";
 import { dayHeading, daysBetweenDateKeys } from "./day-ledger.js";
 import {
@@ -82,6 +84,15 @@ let waitingSync = false;
  * page — does not depend on an input event having fired.
  */
 let targetDateKey = todayKolkata();
+/**
+ * The scanned receipt to save with this entry, as a JPEG data URL.
+ *
+ * Module-level for the same reason the business day is: what the thumbnail
+ * shows and what the write sends must be the same string, decided once.
+ * Cleared on every open, so a scan can never follow the shopkeeper into the
+ * next, unrelated sale.
+ */
+let pendingReceiptImage = null;
 const listeners = new Set();
 
 /** Subscribe to successful saves. Returns an unsubscribe function. */
@@ -166,6 +177,18 @@ function saleFormMarkup() {
     '<div class="field"><label for="customerInput">Customer <span class="small muted">(optional)</span></label>' +
     '<input class="input" id="customerInput" type="text" maxlength="120" autocomplete="off" placeholder="Customer name" /></div>' +
 
+    /* The scanned receipt, shown as a thumbnail the shopkeeper can see is
+       attached and can take back before saving. Hidden unless the scanner
+       handed one over, so a hand-typed sale carries no empty box. */
+    '<div class="field-receipt is-hidden" id="receiptAttach">' +
+    '<span class="field-receipt-label">Receipt photo</span>' +
+    '<div class="receipt-chip">' +
+    '<img class="receipt-chip-thumb" id="receiptThumb" alt="Scanned receipt" />' +
+    '<span class="receipt-chip-meta" id="receiptMeta"></span>' +
+    '<button type="button" class="receipt-chip-remove" id="receiptRemove" ' +
+    'aria-label="Do not attach this receipt photo">Remove</button>' +
+    "</div></div>" +
+
     '<div class="entry-total" aria-live="polite">' +
     '<span class="entry-total-label">Total</span>' +
     '<span class="entry-total-value" id="totalPreview">' +
@@ -248,6 +271,9 @@ export function openSaleForm({ serviceId = "", dateKey = "" } = {}) {
      entry, so closing the dialog without saving cannot leak the previous
      day's date into the next sale. */
   setTargetDate(dateKey);
+  /* Likewise the photo: a scan belongs to the sale it was scanned for, and
+     must not follow the shopkeeper into the next entry. */
+  setReceiptImage(null);
   resetForm();
   openModal(overlay);
   renderQuickGrid();
@@ -259,6 +285,53 @@ export function openSaleForm({ serviceId = "", dateKey = "" } = {}) {
       if (serviceId) pickService(serviceId);
     })
     .catch(() => { });
+}
+
+/* ---------------- The receipt photo ---------------- */
+
+/**
+ * Attach (or detach) the scanned receipt for this entry.
+ *
+ * Held in module state rather than read back off the thumbnail, because the
+ * data URL is what gets written and the element is only a picture of it. A
+ * photo that is too big is refused HERE, with the size in the sentence,
+ * rather than arriving at the rules as a bare denial after the form is
+ * filled in.
+ */
+function setReceiptImage(dataUrl) {
+  const box = overlay && overlay.querySelector("#receiptAttach");
+  const img = overlay && overlay.querySelector("#receiptThumb");
+  const meta = overlay && overlay.querySelector("#receiptMeta");
+
+  const image = String(dataUrl || "").trim();
+  if (!image) {
+    pendingReceiptImage = null;
+    if (box) box.classList.add("is-hidden");
+    if (img) img.removeAttribute("src");
+    if (meta) meta.textContent = "";
+    return true;
+  }
+
+  const bytes = receiptImageBytes(image);
+  if (bytes === null) {
+    showFormMsg("That receipt photo could not be read, so it was not attached.");
+    return false;
+  }
+  if (bytes > RECEIPT_IMAGE_MAX_BYTES) {
+    showFormMsg(
+      "That receipt photo is " + Math.round(bytes / 1024) + " KB, over the " +
+      Math.round(RECEIPT_IMAGE_MAX_BYTES / 1024) + " KB the ledger keeps. " +
+      "Re-scan it closer to the bill, or save the sale without it."
+    );
+    return false;
+  }
+
+  pendingReceiptImage = image;
+  if (img) img.src = image;
+  if (meta) meta.textContent = Math.round(bytes / 1024) + " KB, saved with this sale";
+  if (box) box.classList.remove("is-hidden");
+  hideFormMsg();
+  return true;
 }
 
 /* ---------------- The business day ---------------- */
@@ -346,6 +419,8 @@ function wire(root) {
   root.querySelector("#txnDate").addEventListener("change", (event) => {
     setTargetDate(event.target.value);
   });
+
+  root.querySelector("#receiptRemove").addEventListener("click", () => setReceiptImage(null));
 
   root.querySelectorAll("#methodRow .seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -676,6 +751,7 @@ predictable refusal into a sentence the shop can act on. */
       paymentMethod,
       customerName: customer,
       dateKey,
+      receiptImage: pendingReceiptImage,
     });
 
     /* Close the modal immediately on success */
@@ -1154,6 +1230,7 @@ export function prefillSaleForm({
   customerName = null,
   paymentMethod = null,
   dateKey = null,
+  receiptImage = null,
 } = {}) {
   if (!overlay) overlay = buildOverlay();
   const root = overlay;
@@ -1163,6 +1240,11 @@ export function prefillSaleForm({
   if (dateKey !== null && dateKey !== undefined && String(dateKey).trim()) {
     setTargetDate(dateKey);
   }
+
+  /* The photograph itself, when the scanner kept one for the ledger. It is
+     offered, not imposed: if it is too big to store, setReceiptImage says so
+     and the sale is still saved, just without the photo. */
+  if (receiptImage) setReceiptImage(receiptImage);
 
   // Service: try setValue by id first
   if (serviceId && picker && services.some((s) => s.serviceId === serviceId)) {

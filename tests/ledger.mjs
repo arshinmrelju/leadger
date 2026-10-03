@@ -28,6 +28,10 @@ import {
   isValidDateKey,
   MAX_QUANTITY,
   MAX_RATE_PAISE,
+  receiptImageBytes,
+  isStorableReceiptImage,
+  RECEIPT_IMAGE_MAX_BYTES,
+  RECEIPT_IMAGE_PREFIX,
 } from "../js/utils.js";
 
 import {
@@ -1517,5 +1521,113 @@ test("every place that builds a row passes the day it already knows", () => {
     singleDay.map((m) => m[0]),
     [],
     "every normalizeTxn call must be given the day it read from",
+  );
+});
+
+/* ---------------- The receipt photograph ---------------- */
+
+/* One real JPEG's worth of base64 is not needed to test a length: the decoder
+   only counts characters, and the rules only count characters. */
+const b64 = (n) => "A".repeat(n);
+
+test("a receipt's size is read from its base64 payload, not guessed", () => {
+  /* 4 base64 characters carry 3 bytes, padding included. */
+  assert.equal(receiptImageBytes(RECEIPT_IMAGE_PREFIX + b64(4)), 3);
+  assert.equal(receiptImageBytes(RECEIPT_IMAGE_PREFIX + b64(400)), 300);
+  /* Two padding characters mean the last group carried a single byte. */
+  assert.equal(receiptImageBytes(RECEIPT_IMAGE_PREFIX + b64(3) + "="), 2);
+  assert.equal(receiptImageBytes(RECEIPT_IMAGE_PREFIX + b64(3) + "=="), 1);
+});
+
+test("anything that is not a JPEG data URL has no size", () => {
+  /* A photo that cannot be counted cannot be checked against the ceiling, so
+     it is refused rather than stored and found out about later. That refusal
+     is null, not zero: zero is a real, storable size. */
+  assert.equal(receiptImageBytes(null), null);
+  assert.equal(receiptImageBytes(""), null);
+  assert.equal(receiptImageBytes("hello"), null);
+  assert.equal(receiptImageBytes("data:image/png;base64,AAAA"), null);
+  assert.equal(receiptImageBytes(RECEIPT_IMAGE_PREFIX), null);
+  /* Padding belongs at the very end and nowhere else. */
+  assert.equal(receiptImageBytes(RECEIPT_IMAGE_PREFIX + "A=AA"), null);
+  /* Characters outside the base64 alphabet are not a picture. */
+  assert.equal(receiptImageBytes(RECEIPT_IMAGE_PREFIX + "AA*A"), null);
+});
+
+test("a photo is storable only while it fits the Firestore document ceiling", () => {
+  /* base64 carries 3 bytes per 4 characters, so the payload length that
+     decodes to exactly the ceiling. */
+  const atCeiling = RECEIPT_IMAGE_PREFIX + b64(Math.ceil((RECEIPT_IMAGE_MAX_BYTES * 4) / 3));
+  assert.equal(receiptImageBytes(atCeiling), RECEIPT_IMAGE_MAX_BYTES);
+  assert.ok(
+    isStorableReceiptImage(atCeiling),
+    "a picture at the ceiling must be accepted, or the encoder and the rules disagree",
+  );
+
+  /* One byte over: a longer payload, because the count is of DECODED bytes.
+     Base64 grows by 4/3, so the encoded form is what has to stay inside a
+     1 MiB document - which is why the client counts decoded bytes and the
+     rules count the encoded string. */
+  const overBy = RECEIPT_IMAGE_PREFIX + b64(Math.ceil(((RECEIPT_IMAGE_MAX_BYTES + 1) * 4) / 3));
+  assert.equal(isStorableReceiptImage(overBy), false);
+
+  /* And the base64 of the ceiling itself has to leave room for the rest of
+     the document: 4/3 of 600 KB is ~800 KB, inside Firestore's 1 MiB. */
+  const encoded = RECEIPT_IMAGE_PREFIX.length + Math.ceil((RECEIPT_IMAGE_MAX_BYTES * 4) / 3);
+  assert.ok(encoded <= 900000, `a maximum-size receipt encodes to ${encoded} characters`);
+
+  assert.equal(isStorableReceiptImage(""), false);
+  assert.equal(isStorableReceiptImage(undefined), false);
+});
+
+test("a row says whether its sale has a photograph, so the day's read stays small", async () => {
+  const normalizeTxn = await loadNormalizeTxn();
+
+  /* The marker is the only thing a listing of the day ever reads; the picture
+     itself is fetched only when someone asks to see it. */
+  assert.equal(normalizeTxn("abc123", { ...STORED_SALE, hasReceipt: true }, "2026-10-01").hasReceipt, true);
+  assert.equal(normalizeTxn("abc123", { ...STORED_SALE, hasReceipt: false }, "2026-10-01").hasReceipt, false);
+  /* A sale recorded before photographs were kept has no marker at all, and
+     that must read as "none" rather than as undefined. */
+  assert.equal(normalizeTxn("abc123", { ...STORED_SALE }, "2026-10-01").hasReceipt, false);
+  assert.equal(
+    normalizeTxn("abc123", { ...STORED_SALE, hasReceipt: "yes" }, "2026-10-01").hasReceipt,
+    false,
+    "only a real boolean counts as having a receipt",
+  );
+});
+
+test("the sale is written before its photograph, because that is what the rules read", () => {
+  const src = fs.readFileSync(path.join(ROOT, "js", "ledger.js"), "utf8");
+  const block = src.slice(src.indexOf("export async function createTransaction"));
+
+  const saleAt = block.indexOf("batch.set(txnRef(");
+  const photoAt = block.indexOf("receiptImageRef(");
+  assert.ok(saleAt > -1 && photoAt > -1, "createTransaction writes both documents");
+  assert.ok(
+    saleAt < photoAt,
+    "the rules let a photo exist only for a sale that existsAfter, and a " +
+      "document in a batch is visible only to the writes after it",
+  );
+});
+
+test("a photo is fetched with the same (txnId, dateKey) order as every other sale call", () => {
+  const src = fs.readFileSync(path.join(ROOT, "js", "ledger.js"), "utf8");
+  const actions = fs.readFileSync(path.join(ROOT, "js", "txn-actions.js"), "utf8");
+
+  /* Every other sale-shaped call in this module takes the id first
+     (deleteTransaction, updateTransaction, markTransactionPaid), and this one
+     silently returns null instead of throwing if the two are swapped — which
+     is exactly the kind of mistake that survives a test suite. */
+  const fn = src.slice(src.indexOf("export async function fetchReceiptImage"));
+  assert.match(
+    fn.slice(0, fn.indexOf("{")),
+    /fetchReceiptImage\(txnId, dateKey\)/,
+    "fetchReceiptImage must take (txnId, dateKey)",
+  );
+  assert.match(
+    actions,
+    /fetchReceiptImage\(row\.txnId, row\.dateKey\)/,
+    "the receipt viewer must pass the sale id first",
   );
 });

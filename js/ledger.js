@@ -43,6 +43,9 @@ import {
   isPaymentMethod,
   statusForMethod,
   methodLabel,
+  RECEIPT_IMAGE_PREFIX,
+  RECEIPT_IMAGE_MAX_BYTES,
+  receiptImageBytes,
 } from "./utils.js";
 import { findMissingCatalogServices } from "./service-catalog.js";
 import { monthBounds, currentYearMonth } from "./calendar.js";
@@ -253,6 +256,18 @@ function txnRef(fs, db, dateKey, txnId) {
   return fs.doc(db, "dayHeads", dateKey, "transactions", txnId);
 }
 
+/**
+ * The receipt photo's own document, beside the sale it belongs to.
+ *
+ * Separate from the sale on purpose: a base64 JPEG is 4/3 the size of the
+ * image and can run to hundreds of KB, so keeping it on the sale would mean
+ * every listing of the day downloaded a photograph nobody asked for. Read
+ * only when someone opens it (fetchReceiptImage).
+ */
+function receiptImageRef(fs, db, dateKey, txnId) {
+  return fs.doc(db, "dayHeads", dateKey, "receiptImages", txnId);
+}
+
 /* ------------------------------------------------------------------
    Normalizers — one trusted shape for the UI.
    The single-method transaction model (Part 4) is primary; legacy
@@ -311,6 +326,10 @@ function normalizeTxn(id, raw, dateKey = "") {
     collectedPaise,
     duePaise,
     status,
+    /* Whether a receipt photo is on file for this sale. Read from the sale
+       document rather than probed: a boolean is free to list, while checking
+       would cost a read per row. */
+    hasReceipt: raw.hasReceipt === true,
     customerId: String(raw.customerId || ""),
     customerName: String(raw.customerName || raw.customer || ""),
     customerPhone: String(raw.customerPhone || ""),
@@ -994,6 +1013,7 @@ export async function createTransaction({
   paymentMethod,
   customerName = "",
   dateKey = todayKolkata(),
+  receiptImage = null,   // JPEG data URL from the scanner, or null
 }) {
   const b = await bridge();
   const fs = b.firestore;
@@ -1020,6 +1040,25 @@ export async function createTransaction({
   }
   if (!user || !user.uid) throw new Error("You need to be signed in to record a sale.");
 
+  /* The photo is checked here so an oversized scan is refused with a
+     sentence rather than by the rules' bare "denied", and so the sale never
+     lands marked as having a receipt that is not there. */
+  const image = receiptImage ? String(receiptImage) : "";
+  let imageBytes = 0;
+  if (image) {
+    if (!image.startsWith(RECEIPT_IMAGE_PREFIX)) {
+      throw new Error("That receipt photo is not a JPEG the ledger can store.");
+    }
+    imageBytes = receiptImageBytes(image);
+    if (imageBytes === null || imageBytes > RECEIPT_IMAGE_MAX_BYTES) {
+      throw new Error(
+        "That receipt photo is too large to keep (" +
+        Math.round((imageBytes || 0) / 1024) + " KB). " +
+        "Re-scan it closer, or save the sale without the photo."
+      );
+    }
+  }
+
   await ensureDayHead(dateKey, fs, b.db, user.uid);
 
   const txnId = uid("txn");
@@ -1043,6 +1082,7 @@ export async function createTransaction({
     updatedAt: now,
     createdBy: user.uid,
     updatedBy: user.uid,
+    hasReceipt: imageBytes > 0,
   };
 
   const ref = headRef(fs, b.db, dateKey);
@@ -1059,14 +1099,32 @@ export async function createTransaction({
     updatedAt: now,
     updatedBy: user.uid,
   });
+  /* The photo rides in the SAME batch as the sale, so a sale can never claim
+     a receipt that did not land, and the photo can never outlive its sale.
+
+     The ORDER inside the batch is not incidental: the rules let a photo exist
+     only for a sale that exists, judged with `existsAfter`, and a document is
+     visible to `existsAfter` only to the writes that come after it. So the
+     sale has to be written before its photograph — which is why this comes
+     after `batch.set` above and not before it. */
+  if (imageBytes > 0) {
+    batch.set(receiptImageRef(fs, b.db, dateKey, txnId), {
+      txnId,
+      image,
+      bytes: imageBytes,
+      capturedAt: now,
+      createdBy: user.uid,
+    });
+  }
   await guardQuota(() => batch.commit());
-  /* Two documents go out in this batch: the sale and the day head. */
-  noteWrites(2);
+  /* Two documents go out in this batch - the sale and the day head - or
+     three, when a receipt photo is attached. */
+  noteWrites(imageBytes > 0 ? 3 : 2);
   invalidateDayReads(dateKey);
 
   /* `dateKey` is echoed back so a page that is parked on another day can
      follow the sale to the day it landed on. */
-  return { txnId, totalPaise, status: doc.status, dateKey };
+  return { txnId, totalPaise, status: doc.status, dateKey, hasReceipt: imageBytes > 0 };
 }
 
 /**
@@ -1415,6 +1473,12 @@ export async function deleteTransaction(txnId, dateKey) {
 
   const batch = fs.writeBatch(b.db);
   batch.delete(ref);
+  /* The photo goes with the sale, in the same batch. Leaving it would keep
+     paying for a document nobody can reach: the rules only ever expose a
+     photo through its sale's day. */
+  if (d.hasReceipt === true) {
+    batch.delete(receiptImageRef(fs, b.db, dateKey, id));
+  }
   batch.update(headRef(fs, b.db, dateKey), {
     "counters.txnCount": fs.increment(-1),
     "counters.grossPaise": fs.increment(-amounts.gross),
@@ -1427,12 +1491,57 @@ export async function deleteTransaction(txnId, dateKey) {
     updatedBy: user.uid,
   });
   await guardQuota(() => batch.commit());
-  /* One delete and one head update: they have separate Spark allowances. */
+  /* One delete and one head update: they have separate Spark allowances.
+     A sale with a photo deletes two documents. */
   noteWrites();
-  noteDeletes();
+  noteDeletes(d.hasReceipt === true ? 2 : 1);
   invalidateDayReads(dateKey);
+  forgetReceiptImage(dateKey, id);
 
   return { txnId: id };
+}
+
+/* ------------------------------------------------------------------
+   Receipt photos, read on demand.
+   The day's rows carry only a boolean (`hasReceipt`), so the photo is
+   fetched when someone asks to see it and then kept in memory for the
+   rest of the session — opening the same receipt twice costs one read,
+   not two.
+   ------------------------------------------------------------------ */
+
+const receiptImageCache = new Map();
+
+const receiptCacheKey = (dateKey, txnId) => dateKey + "/" + txnId;
+
+/**
+ * The receipt photo for one sale, as a JPEG data URL.
+ *
+ * @param {string} txnId    the sale
+ * @param {string} dateKey  the business day the sale was filed under
+ * @returns {Promise<string|null>} null when the sale has no photo on file.
+ */
+export async function fetchReceiptImage(txnId, dateKey) {
+  const id = String(txnId || "").trim();
+  if (!id || !isValidDateKey(dateKey)) return null;
+
+  const key = receiptCacheKey(dateKey, id);
+  if (receiptImageCache.has(key)) return receiptImageCache.get(key);
+
+  const b = await bridge();
+  const snap = await chargedGetDoc(b.firestore, receiptImageRef(b.firestore, b.db, dateKey, id));
+  if (!snap.exists()) {
+    receiptImageCache.set(key, null);
+    return null;
+  }
+  const data = snap.data();
+  const image = typeof data.image === "string" && data.image ? data.image : null;
+  receiptImageCache.set(key, image);
+  return image;
+}
+
+/** Drop a cached photo — after the sale is deleted. */
+function forgetReceiptImage(dateKey, txnId) {
+  receiptImageCache.delete(receiptCacheKey(dateKey, String(txnId || "").trim()));
 }
 
 /**

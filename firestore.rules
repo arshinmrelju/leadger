@@ -381,6 +381,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/services/$(svcId);
     }
 
+    function txnPath(dk, txnId) {
+      return /databases/$(database)/documents/dayHeads/$(dk)/transactions/$(txnId);
+    }
+
     // Field ranges, mirroring the client guards in js/utils.js so a bad
     // write is caught before the network rather than after it.
     function validQuantity(q) {
@@ -620,7 +624,7 @@ service cloud.firestore {
               'rate', 'total', 'amounts', 'paymentMethod',
               'customerId', 'customerName', 'status', 'dateKey',
               'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
-              'receiptImageUrl', 'notes'
+              'hasReceipt', 'notes'
             ])
           && doc.txnId is string && doc.txnId.size() <= 120
           && doc.txnId == txnId
@@ -649,12 +653,15 @@ service cloud.firestore {
           && doc.updatedBy == request.auth.uid
           && doc.createdAt == request.time
           && doc.updatedAt == request.time
-          && (doc.receiptImageUrl is string || !('receiptImageUrl' in doc) || doc.receiptImageUrl == null)
-          && (!(doc.receiptImageUrl is string)
-              || (doc.receiptImageUrl.size() >= 1 && doc.receiptImageUrl.size() <= 1000
-                  && doc.receiptImageUrl.matches('^https://firebasestorage\\.googleapis\\.com/.*trustxplpy\\.firebasestorage\\.app.*$')))
-          && (doc.notes is string || !('notes' in doc) || doc.notes == null)
-          && (!(doc.notes is string) || doc.notes.size() <= 400);
+          // `!('field' in doc)` FIRST, and this is not a style preference: the
+          // rules engine evaluates `||` lazily, but a missing property read
+          // RAISES rather than answering false, so `doc.notes is string ||
+          // !('notes' in doc)` refuses to compile its way to a verdict — it
+          // refuses every sale that has no notes, with an evaluation error
+          // instead of a plain no. The `in` test comes first because it is
+          // the only one that is safe to evaluate when the field is absent.
+          && (!('hasReceipt' in doc) || doc.hasReceipt is bool)
+          && (!('notes' in doc) || (doc.notes is string && doc.notes.size() <= 400));
       }
 
       function validTransactionEdit(before, after) {
@@ -663,7 +670,7 @@ service cloud.firestore {
               'rate', 'total', 'amounts', 'paymentMethod',
               'customerId', 'customerName', 'status', 'dateKey',
               'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
-              'receiptImageUrl', 'notes'
+              'hasReceipt', 'notes'
             ])
           && after.txnId == before.txnId
           && after.serviceId == before.serviceId
@@ -690,12 +697,15 @@ service cloud.firestore {
               || (after.paymentMethod != 'due' && after.status == 'paid'))
           && after.updatedBy == request.auth.uid
           && after.updatedAt == request.time
-          && (after.receiptImageUrl is string || !('receiptImageUrl' in after) || after.receiptImageUrl == null)
-          && (!(after.receiptImageUrl is string)
-              || (after.receiptImageUrl.size() >= 1 && after.receiptImageUrl.size() <= 1000
-                  && after.receiptImageUrl.matches('^https://firebasestorage\\.googleapis\\.com/.*trustxplpy\\.firebasestorage\\.app.*$')))
-          && (after.notes is string || !('notes' in after) || after.notes == null)
-          && (!(after.notes is string) || after.notes.size() <= 400);
+          // The photograph is evidence for THIS sale and nothing else. Once a sale
+          // says it has one, the marker is pinned: an edit may neither attach
+          // nor drop one, so flipping it to false is how a sale would claim
+          // to have no photograph while its photograph is still on file. A
+          // sale recorded before photographs were kept carries no marker at
+          // all, so the comparison only runs when the old document actually
+          // has one — reading it otherwise would raise instead of answering.
+          && (!('hasReceipt' in before) || after.hasReceipt == before.hasReceipt)
+          && (!('notes' in after) || (after.notes is string && after.notes.size() <= 400));
       }
 
       // `read` also authorizes a collection-group query across every
@@ -740,6 +750,74 @@ service cloud.firestore {
              resource.data.amounts,
              -1
            );
+    }
+
+    // ---------------- Receipt photos, inside their day ----------------
+    // The scan's JPEG lives HERE, as its own document next to the sale,
+    // not on the sale itself and not in Cloud Storage.
+    //
+    // Why not on the sale: a base64 image is 4/3 the size of the JPEG and
+    // can run to hundreds of KB, so every listing of the day would download
+    // a photo nobody asked for - on a shop's phone, on a metered connection,
+    // that is the difference between a ledger that opens and one that
+    // crawls. One small document per receipt keeps the day's read cheap, and
+    // the photo is fetched only when someone actually asks to see it.
+    //
+    // Why not Storage: a receipt is a shop's own paper, it belongs to the
+    // same rules and the same day as the money it explains, and keeping it
+    // in Firestore means one backup, one set of rules and one place to look
+    // when the shop wants to check a bill.
+    match /dayHeads/{dateKey}/receiptImages/{txnId} {
+      // Firestore caps a document at ~1 MiB, so the base64 payload is held
+      // well under that (600 KB of JPEG is ~800 KB of base64) and the
+      // client's own encoder targets the same ceiling.
+      function receiptImageOk(doc) {
+        return doc.keys().hasOnly([
+              'txnId', 'image', 'bytes', 'capturedAt', 'createdBy'
+            ])
+          && doc.txnId is string && doc.txnId == txnId
+          && doc.image is string
+          && doc.image.size() >= 1 && doc.image.size() <= 820000
+          // `matches` rather than `startsWith`: Firestore rules have no
+          // startsWith (it is a Realtime Database thing), and `matches`
+          // anchors to the whole string, so this accepts a JPEG data URL
+          // and nothing else — no payload appended after the picture, and
+          // nothing that is not base64.
+          && doc.image.matches('data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}')
+          // `bytes` is the decoded JPEG size, which is what the ceiling is
+          // really about: base64 is just the wire form of the same picture.
+          && doc.bytes is int && doc.bytes >= 1 && doc.bytes <= 614400
+          && doc.createdBy == request.auth.uid
+          && doc.capturedAt == request.time
+          // A photo may only exist for a sale that exists: otherwise an
+          // image could be planted against a txnId that never had one.
+          //
+          // `existsAfter`, not `exists` and not `getAfter(..).exists`:
+          //  - `exists()` judges the world as it was BEFORE the commit, and
+          //    the sale is written in the same batch, so it is not in it yet;
+          //  - `getAfter(p).exists` does not survive this engine ("Property
+          //    exists is undefined on object"), while `existsAfter(p)` does.
+          //
+          // One consequence worth knowing, because it is a rule about the
+          // ORDER of writes: a document being written in a batch is visible
+          // to `existsAfter` only to writes AFTER it. js/ledger.js therefore
+          // commits the sale before its photograph. Written the other way
+          // round the photo is refused for the company of a sale that is
+          // arriving in the very same commit.
+          && existsAfter(txnPath(dateKey, txnId));
+      }
+
+      allow read: if trusted();
+
+      allow create: if trusted() && dayOpen(dateKey) && receiptImageOk(request.resource.data);
+
+      // A scan is a record of what the paper said. Letting it be rewritten
+      // in place would mean the photo attached to a sale could quietly
+      // become a different photo, so it is create-only: re-scanning deletes
+      // and re-creates.
+      allow update: if false;
+
+      allow delete: if trusted() && dayOpen(dateKey);
     }
 
     // ---------------- Services ----------------

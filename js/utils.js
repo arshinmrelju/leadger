@@ -174,6 +174,52 @@ export function isValidDateKey(key) {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
+/* ---------- Receipt images ---------- */
+
+/**
+ * The ceiling on a stored receipt photo, in DECODED bytes.
+ *
+ * Firestore caps a document at 1 MiB, and base64 costs 4/3 of the picture,
+ * so the encoded string has to fit well inside that. 600 KB of JPEG is about
+ * 800 KB of base64, which leaves room for the document's own fields. The
+ * same number is enforced in firestore.rules (`receiptImageOk`) - it is a
+ * property of Firestore, not a client preference, so it is written down on
+ * both sides rather than negotiated.
+ */
+export const RECEIPT_IMAGE_MAX_BYTES = 614400;
+
+/** The only image form stored. A JPEG data URL, nothing else. */
+export const RECEIPT_IMAGE_PREFIX = "data:image/jpeg;base64,";
+
+/**
+ * The decoded size of a JPEG data URL, in bytes.
+ *
+ * Returns null for anything that is not one — a data URL of another type, a
+ * truncated string, or a plain URL — so a caller can refuse rather than store
+ * something it cannot size.
+ */
+export function receiptImageBytes(dataUrl) {
+  const s = String(dataUrl ?? "");
+  if (!s.startsWith(RECEIPT_IMAGE_PREFIX)) return null;
+  const base64 = s.slice(RECEIPT_IMAGE_PREFIX.length);
+  if (!base64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return null;
+  /* Padding is not data: 4 base64 characters carry 3 bytes. */
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+/**
+ * Whether a data URL is a receipt photo this app is willing to store.
+ *
+ * Checked on the client so an oversized photo is refused with a sentence
+ * before it reaches the network; firestore.rules refuses it again on the
+ * server, because a client-side guard is a courtesy, not a rule.
+ */
+export function isStorableReceiptImage(dataUrl) {
+  const bytes = receiptImageBytes(dataUrl);
+  return bytes !== null && bytes >= 1 && bytes <= RECEIPT_IMAGE_MAX_BYTES;
+}
+
 /* ---------- Strings / misc ---------- */
 
 export function escapeHtml(value) {
