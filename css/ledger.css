@@ -96,6 +96,26 @@
 .ledger-table td.ledger-customer { color: var(--color-text-soft); }
 .ledger-table td.ledger-total { font-weight: 700; }
 
+/* Backfilled row marker (js/day-ledger.js isBackfilledRow)
+   Kept in the time column, beside the time it was actually entered, so
+   the two facts sit together: "9:40 PM, but typed up two days later". */
+.ledger-table .ledger-backfilled {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid #e6bd6c;
+  background: var(--color-accent-soft);
+  color: #92610a;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
 /* The row-action cell and the edit dialog are shared with the history
    page and live in css/transactions.css (.txn-actions-col,
    .txn-row-actions, .txn-edit). */

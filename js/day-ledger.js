@@ -12,7 +12,7 @@
    query.
    ========================================================= */
 
-import { isValidDateKey, formatKolkataLong } from "./utils.js";
+import { isValidDateKey, formatKolkataLong, kolkataDateKey } from "./utils.js";
 
 const MS_PER_DAY = 86400000;
 
@@ -43,6 +43,25 @@ export function shiftDateKey(key, days) {
   const n = Math.trunc(Number(days) || 0);
   const shifted = new Date(dateKeyToUTC(key).getTime() + n * MS_PER_DAY);
   return utcToDateKey(shifted);
+}
+
+/**
+ * Whole days from one business day to another.
+ *
+ * `daysBetweenDateKeys("2026-09-03", "2026-09-10")` is 7. Negative when
+ * the second day is the earlier one.
+ *
+ * It exists so "how long ago was that?" is asked in exactly one place.
+ * The UTC-noon anchors make the answer independent of the viewer's
+ * timezone, which matters because the same question is asked by the
+ * calendar (is this day in the past?) and by the sale form (is this day
+ * a backfill?).
+ *
+ * @returns {number|null} null when either key is not a real date
+ */
+export function daysBetweenDateKeys(fromKey, toKey) {
+  if (!isValidDateKey(fromKey) || !isValidDateKey(toKey)) return null;
+  return Math.round((dateKeyToUTC(toKey) - dateKeyToUTC(fromKey)) / MS_PER_DAY);
 }
 
 /**
@@ -81,6 +100,33 @@ export function formatEntryTime(value) {
     hour12: true,
     timeZone: "Asia/Kolkata",
   });
+}
+
+/**
+ * Was this row typed up on a later day than the one it is filed under?
+ *
+ * A backfilled sale keeps the `createdAt` of the moment it was entered,
+ * which is honest but unreadable: a row dated Wednesday, entered on
+ * Friday at 9pm, shows "9:00 PM" in the time column and looks like it
+ * happened at night. Marking those rows is the difference between a
+ * ledger the shopkeeper trusts and one they stop believing.
+ *
+ * Unreadable timestamps are never called backfilled: a row is only
+ * labelled when there is real evidence it was written later.
+ *
+ * @param {object} row         a transaction row
+ * @param {string} dateKey     the business day the row is filed under
+ * @returns {boolean}
+ */
+export function isBackfilledRow(row, dateKey) {
+  if (!row || !isValidDateKey(dateKey)) return false;
+  const stamp = row.createdAt;
+  let date = null;
+  if (stamp instanceof Date) date = stamp;
+  else if (stamp && typeof stamp.toDate === "function") date = stamp.toDate();
+  else if (stamp && typeof stamp.seconds === "number") date = new Date(stamp.seconds * 1000);
+  if (!date || Number.isNaN(date.getTime())) return false;
+  return kolkataDateKey(date) > dateKey;
 }
 
 function toInt(value) {

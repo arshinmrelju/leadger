@@ -64,6 +64,11 @@
           Daily Ledger
         </a>
 
+        <a class="nav-link" data-nav="calendar" href="calendar.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          Calendar
+        </a>
+
         <button class="nav-link" type="button" data-coming>
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Customers
@@ -88,7 +93,7 @@
       <div class="sidebar-footer">
         <div id="userChip"></div>
         <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
-          TrustX Ledger &middot; v0.10.0
+          TrustX Ledger &middot; v0.13.0
         </div>
       </div>
     </aside>
@@ -149,6 +154,7 @@
     import { initAppShell } from "./js/shell.js";
     import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
     import { txnActionButtons, handleTxnAction } from "./js/txn-actions.js";
+    import { dateKeyFromSearch, writeDateToSearch } from "./js/calendar.js";
 
     const mainContent = document.getElementById("mainContent");
 
@@ -162,12 +168,21 @@
     /* =========================================================
        Filter state
        ========================================================= */
-    let scope = "all";                 // "all" | "day"
-    let dateKey = todayKolkata();
+    /* `?date=` deep-links this page onto one day (the calendar uses it), and
+       an unusable value is ignored rather than obeyed. A day named in the
+       link also opens the page ON that day: arriving at an all-time list
+       because the URL asked for a date would quietly ignore it. */
+    const linkedDay = dateKeyFromSearch();
+    let scope = linkedDay ? "day" : "all"; // "all" | "day"
+    let dateKey = linkedDay || todayKolkata();
     let query = "";
     let method = "";
     let lastRows = [];                 // last server read, re-filtered on the client
     let closedDays = new Set();        // business days known to be closed (pinned day only)
+    /* What "today" was when this page last looked. A pinned day is only
+       dragged along by the midnight rollover while it IS today; a day the
+       shopkeeper went back to on purpose is left alone. */
+    let followedToday = todayKolkata();
 
     function statBlock(label, valueId, className) {
       return (
@@ -257,7 +272,7 @@
        Wiring
        ========================================================= */
     function wire() {
-      document.getElementById("newTxnBtn").addEventListener("click", () => openSaleForm());
+      document.getElementById("newTxnBtn").addEventListener("click", () => openSaleForm({ dateKey }));
 
       /* One delegated listener for every row's buttons. The action itself
          lives in js/txn-actions.js, shared with the daily ledger, so a
@@ -294,8 +309,9 @@
         if (isValidDateKey(value)) {
           dateKey = value;
           scope = "day";
-          syncScopeButtons();
-          reload();
+          writeDateToSearch(value);
+syncScopeButtons();
+        reload();
         } else {
           e.target.value = dateKey;
         }
@@ -312,12 +328,14 @@
         scope = "day";
         dateKey = todayKolkata();
         document.getElementById("histDate").value = dateKey;
+        writeDateToSearch(dateKey);
         syncScopeButtons();
         reload();
       });
 
       document.getElementById("histAllBtn").addEventListener("click", () => {
         scope = "all";
+        writeDateToSearch(null);
         syncScopeButtons();
         reload();
       });
@@ -328,6 +346,7 @@
         method = "";
         document.getElementById("histSearch").value = "";
         document.getElementById("histMethod").value = "";
+        writeDateToSearch(null);
         syncScopeButtons();
         reload();
       });
@@ -519,7 +538,12 @@
             : '<button type="button" class="btn btn-primary" id="histEmptyBtn">' + ICON_PLUS + "Record a sale</button>") +
           "</div></td></tr>";
         const emptyBtn = document.getElementById("histEmptyBtn");
-        if (emptyBtn) emptyBtn.addEventListener("click", () => openSaleForm());
+        /* Only meaningful when a single day is in view: "record a sale"
+           from the all-time list has no day to file it under. */
+        if (emptyBtn) {
+          emptyBtn.hidden = scope !== "day";
+          emptyBtn.addEventListener("click", () => openSaleForm({ dateKey }));
+        }
         footer.innerHTML = "&nbsp;";
         return;
       }
@@ -570,20 +594,27 @@
     initAppShell({
       onReady: renderPage,
       onDayChange: () => {
-        /* Keep a pinned day in sync with the rollover; "all time" needs no reload. */
-        if (scope === "day") {
-          dateKey = todayKolkata();
+/* Midnight Kolkata. A page that was following today follows it to
+           the new day; a day the shopkeeper deliberately went back to
+           stays put — being moved on at midnight would throw away the
+           very thing they opened the page to do. */
+        const nextToday = todayKolkata();
+        if (scope === "day" && dateKey === followedToday) {
+          dateKey = nextToday;
           const input = document.getElementById("histDate");
           if (input) input.value = dateKey;
+          writeDateToSearch(dateKey);
           reload();
         }
+        followedToday = nextToday;
       },
     });
 
-    /* A sale saved in the dialog lands in today's history immediately. */
+    /* A sale saved in the dialog has to be read back, not re-drawn: the
+       rows in memory are the ones from before the write, so re-rendering
+       them would leave the new sale missing until the next refresh. */
     onSaleRecorded(() => {
-      if (scope === "all") reload();
-      else renderHistory(lastRows);
+      reload();
     });
   </script>
 </body>

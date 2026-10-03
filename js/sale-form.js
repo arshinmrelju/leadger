@@ -21,8 +21,10 @@ import {
   isPaymentMethod,
   methodLabel,
   todayKolkata,
+  isValidDateKey,
   escapeHtml,
 } from "./utils.js";
+import { dayHeading, daysBetweenDateKeys } from "./day-ledger.js";
 import {
   fetchServices,
   createService,
@@ -65,6 +67,21 @@ let selectedService = null;
 let paymentMethod = "cash";
 let saving = false;
 let waitingSync = false;
+/**
+ * The business day this entry will be filed under.
+ *
+ * The shop writes its ledger in the evening, and it misses days: a sale
+ * from Tuesday gets typed up on Thursday, and the whole of one weekend
+ * can go unrecorded until the month is checked. So the day is a FIELD on
+ * the form rather than an implicit "today", and it defaults to today
+ * because that is right almost every time.
+ *
+ * Module-level (not read from the DOM on save) so the value the summary
+ * line describes and the value the write uses cannot disagree, and so
+ * opening the form for a specific day — from the calendar, or from a day
+ * page — does not depend on an input event having fired.
+ */
+let targetDateKey = todayKolkata();
 const listeners = new Set();
 
 /** Subscribe to successful saves. Returns an unsubscribe function. */
@@ -89,6 +106,16 @@ function saleFormMarkup() {
   return (
     '<form id="saleForm" novalidate>' +
     '<div class="alert alert-error is-hidden" id="formMsg" role="alert"><span data-form-msg></span></div>' +
+
+    /* The business day this entry belongs to. `max` is today: a sale
+       cannot be booked into a day the shop has not lived through yet, and
+       the native picker refuses the choice before it is made rather than
+       after the form is filled in. */
+    '<div class="field field-bizday">' +
+    '<label for="txnDate">Business day</label>' +
+    '<input class="input" id="txnDate" type="date" aria-describedby="bizDayHint" />' +
+    '<span class="field-hint" id="bizDayHint" aria-live="polite"></span>' +
+    "</div>" +
 
     '<div class="field">' +
     '<label for="servicePick">Service *</label>' +
@@ -208,12 +235,19 @@ function buildOverlay() {
  * Open the record-a-sale dialog.
  * @param {object} [opts]
  * @param {string} [opts.serviceId] preselect a service (e.g. from a quick tile)
+ * @param {string} [opts.dateKey]  business day to file the entry under;
+ *   defaults to today. The calendar passes the day whose cell was tapped,
+ *   so catching up a missed day never means re-picking the date by hand.
  */
-export function openSaleForm({ serviceId = "" } = {}) {
+export function openSaleForm({ serviceId = "", dateKey = "" } = {}) {
   if (!overlay) overlay = buildOverlay();
 
   hideFormMsg();
   closeAddServiceBox();
+  /* Set before resetForm(): the day belongs to the open, not to the last
+     entry, so closing the dialog without saving cannot leak the previous
+     day's date into the next sale. */
+  setTargetDate(dateKey);
   resetForm();
   openModal(overlay);
   renderQuickGrid();
@@ -225,6 +259,67 @@ export function openSaleForm({ serviceId = "" } = {}) {
       if (serviceId) pickService(serviceId);
     })
     .catch(() => { });
+}
+
+/* ---------------- The business day ---------------- */
+
+/**
+ * Point the form at a business day.
+ *
+ * Anything that is not a real, already-lived day falls back to today: a
+ * stale link or a bad value must not park an entry on a day that does not
+ * exist, and `onSave` re-checks the same way before it writes.
+ */
+function setTargetDate(dateKey) {
+  const today = todayKolkata();
+  const wanted = String(dateKey || "").trim();
+  const valid = wanted && isValidDateKey(wanted) && wanted <= today;
+  targetDateKey = valid ? wanted : today;
+  syncDateField();
+}
+
+/** Push the current business day into the input and its summary line. */
+function syncDateField() {
+  if (!overlay) return;
+  const input = overlay.querySelector("#txnDate");
+  if (input) {
+    /* `max` follows today: the app can be left open across the Kolkata
+       rollover, and a form opened at 11pm must not still allow tomorrow. */
+    input.max = todayKolkata();
+    if (input.value !== targetDateKey) input.value = targetDateKey;
+  }
+  const hint = overlay.querySelector("#bizDayHint");
+  if (hint) hint.textContent = businessDayHint(targetDateKey);
+  /* The field itself says so too. An amber panel is the one thing on the
+     form that survives a glance, and "which day?" is the question this
+     whole field exists to force. */
+  const field = overlay.querySelector(".field-bizday");
+  if (field) field.classList.toggle("is-backfill", isBackfillDate(targetDateKey));
+}
+
+/** True when the entry is being filed against a day that has already passed. */
+function isBackfillDate(dateKey) {
+  return isValidDateKey(dateKey) && dateKey < todayKolkata();
+}
+
+/**
+ * Say plainly which day this entry will land on.
+ *
+ * The dangerous mistake in an evening-entry ledger is filing a sale
+ * against the wrong day without noticing, so a backfill is named as one:
+ * which day, and how long ago. A day that has not happened yet is called
+ * out too — the native `max` stops the picker choosing one, but a value
+ * can still arrive from a link.
+ */
+function businessDayHint(dateKey) {
+  if (!isValidDateKey(dateKey)) return "Pick the business day this sale belongs to.";
+  const today = todayKolkata();
+  if (dateKey === today) return "Tonight's takings — " + dayHeading(today) + ".";
+  if (dateKey > today) return "That day has not happened yet. A sale cannot be booked into it.";
+
+  const back = daysBetweenDateKeys(dateKey, today);
+  const ago = back === 1 ? "yesterday" : back + " days ago";
+  return "Adding to " + dayHeading(dateKey) + " — " + ago + ".";
 }
 
 /** Ctrl+N anywhere in the app opens the same dialog. */
@@ -244,6 +339,13 @@ function wire(root) {
 
   root.querySelector("#qtyInput").addEventListener("input", updateTotal);
   root.querySelector("#rateInput").addEventListener("input", updateTotal);
+
+  /* Changing the business day moves this entry to another day, which is
+     exactly the thing the summary line exists to make visible, so the
+     hint refreshes on every change rather than on save. */
+  root.querySelector("#txnDate").addEventListener("change", (event) => {
+    setTargetDate(event.target.value);
+  });
 
   root.querySelectorAll("#methodRow .seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -517,7 +619,7 @@ async function onSave(event) {
   if (saving) return; // double-submit guard
   hideFormMsg();
 
-  const qty = sanitizeQuantity(overlay.querySelector("#qtyInput").value);
+const qty = sanitizeQuantity(overlay.querySelector("#qtyInput").value);
   const ratePaise = rateToPaise(overlay.querySelector("#rateInput").value);
   const total = computeTotalPaise(qty, ratePaise);
   const customer = overlay.querySelector("#customerInput").value.trim();
@@ -528,11 +630,24 @@ async function onSave(event) {
   if (total === null) return showFormMsg("The total is out of the allowed range.");
   if (!isPaymentMethod(paymentMethod)) return showFormMsg("Choose a payment method.");
 
+  /* The day is re-read from module state rather than from the input, so
+     the day that was described to the shop is provably the day that is
+     written — and a day that has not happened yet is refused here with a
+     sentence, instead of arriving at the rules as a denial. */
+  const today = todayKolkata();
+  if (!isValidDateKey(targetDateKey)) {
+    return showFormMsg("Pick the business day this sale belongs to.");
+  }
+  if (targetDateKey > today) {
+    return showFormMsg("That day has not happened yet, so a sale cannot be booked into it.");
+  }
+  const isBackfill = targetDateKey !== today;
+
   saving = true;
   const btn = overlay.querySelector("#saveBtn");
   setLoading(btn, true);
   try {
-    const dateKey = todayKolkata();
+    const dateKey = targetDateKey;
 
     /* The rules refuse a sale against a closed day (dayOpen in
        firestore.rules), and they answer only "denied" — never which
@@ -543,13 +658,13 @@ async function onSave(event) {
        sale and is told the rules are out of date, which is both wrong
        and unactionable.
 
-       fetchDayState fails OPEN (an unreadable day reads as open), so a
-       dropped connection can never stop the counter recording a sale —
-       the server stays the authority, this is only here to turn a
-       predictable refusal into a sentence the shop can act on. */
+predictable refusal into a sentence the shop can act on. */
     const day = await fetchDayState(dateKey);
     if (day.closed) {
-      showFormMsg("This business day is closed, so a sale cannot be recorded against it. Reopen the day in the Developer console, or record it against an open day.");
+      showFormMsg(
+        "The business day " + dayHeading(dateKey) + " is closed, so a sale cannot be added to it. " +
+        "Reopen that day from the Daily Ledger page, or record this sale against an open day."
+      );
       return;
     }
 
@@ -589,6 +704,15 @@ async function onSave(event) {
       if (!waitingSync) scheduleSyncConfirmation();
     }
 
+    /* A backfill is confirmed by naming the day it landed on. Without
+       this, a sale typed up on Thursday for Tuesday closes the dialog
+       with no visible sign that anything other than tonight was
+       touched — and the whole point of the day field is that the shop
+       can see which day they are writing up. */
+    if (isBackfill) {
+      toast("Added to " + dayHeading(dateKey) + " \u2014 " + formatINR(result.totalPaise) + ".", "success", 5200);
+    }
+
     emit(result);
     resetForm();
   } catch (err) {
@@ -625,10 +749,16 @@ function resetForm() {
   if (!overlay) return;
   /* The picker's own state is left alone: it and `selectedService` are only
      ever changed together through onSelect, and the services have not been
-     re-read yet at this point. */
+     re-read yet at this point.
+
+  The business day is reset too, but to the day this form was opened for
+     rather than to today: saving several sales against one missed
+     evening should not walk the day forward onto tonight after the
+     first one. */
   overlay.querySelector("#qtyInput").value = "1";
   overlay.querySelector("#rateInput").value = selectedService ? paiseToInput(selectedService.pricePaise) : "";
   overlay.querySelector("#customerInput").value = "";
+  syncDateField();
   updateTotal();
 }
 
@@ -1014,6 +1144,7 @@ function prefersReducedMotion() {
  * @param {number} [opts.rateRupees] rate in RUPEES (not paise)
  * @param {string} [opts.customerName]
  * @param {"cash"|"upi"|"card"|"due"} [opts.paymentMethod]
+ * @param {string} [opts.dateKey]  business day to file the entry under
  */
 export function prefillSaleForm({
   serviceId = "",
@@ -1022,9 +1153,16 @@ export function prefillSaleForm({
   rateRupees = null,
   customerName = null,
   paymentMethod = null,
+  dateKey = null,
 } = {}) {
   if (!overlay) overlay = buildOverlay();
   const root = overlay;
+
+  // Business day: an extracted receipt belongs to a specific day, so the
+  // scanner can name it and the entry lands there instead of on tonight.
+  if (dateKey !== null && dateKey !== undefined && String(dateKey).trim()) {
+    setTargetDate(dateKey);
+  }
 
   // Service: try setValue by id first
   if (serviceId && picker && services.some((s) => s.serviceId === serviceId)) {

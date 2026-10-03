@@ -1,0 +1,426 @@
+/* =========================================================
+   TrustX Ledger — Calendar
+   ------------------------------------------------------------
+   The month view exists to answer one question ("which days are
+   still to fill in?") and to make the answer actionable without
+   leaving the page. So the styling is built around two states that
+   must never be confused:
+
+     .is-empty   a past day with nothing recorded against it
+     .is-filled  a day with sales on it
+
+   A missing day is drawn as an outline, never as ₹0 — "nothing was
+   entered here" and "nothing was sold here" are different facts, and
+   a ledger that blurs them is a ledger you cannot trust at month end.
+   ========================================================= */
+
+/* ---------- Page head ---------- */
+.cal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.cal-head h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.cal-sub {
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  margin-right: auto;
+}
+
+/* ---------- Month navigation ---------- */
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cal-month-label {
+  min-width: 10.5rem;
+  text-align: center;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.cal-nav .icon { width: 17px; height: 17px; }
+
+/* ---------- Legend ---------- */
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+.cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cal-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 4px;
+  border: 1.5px solid var(--color-border-strong);
+  background: var(--color-surface);
+  flex: none;
+}
+
+.cal-dot.is-filled { background: var(--color-success-soft); border-color: var(--color-success); }
+.cal-dot.is-closed { background: #ece5d6; border-color: var(--color-muted); }
+.cal-dot.is-empty { background: transparent; border-style: dashed; }
+.cal-dot.is-future { background: var(--color-bg); border-color: var(--color-border); opacity: 0.6; }
+
+/* ---------- Grid frame ---------- */
+.cal-card {
+  padding: 0.9rem;
+}
+
+.cal-weekdays,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.cal-weekdays {
+  margin-bottom: 0.5rem;
+}
+
+.cal-weekday {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.cal-placeholder {
+  grid-column: 1 / -1;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+/* ---------- A day ---------- */
+.cal-cell {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  min-height: 84px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.cal-cell:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.cal-cell-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  height: 100%;
+  padding: 0.5rem 0.55rem 0.55rem;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.cal-cell-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.cal-cell-day {
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-cell-lock {
+  display: inline-flex;
+  color: var(--color-muted);
+}
+
+.cal-cell-lock .icon { width: 13px; height: 13px; }
+
+.cal-cell-amount {
+  margin-top: auto;
+  font-size: 0.84rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.cal-cell-amount.is-none {
+  color: var(--color-faint);
+  font-weight: 600;
+}
+
+.cal-cell-foot {
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The closed marker is drawn in the corner of the cell; the foot line
+   only has to carry the word, so any icon that arrives with it stays
+   out of the way rather than doubling up on the corner badge. */
+.cal-cell-foot .icon { display: none; }
+
+/* ---------- Statuses ---------- */
+/* Recorded: the day is accounted for. */
+.cal-cell.is-filled {
+  background: linear-gradient(160deg, #f4fbf6 0%, var(--color-success-soft) 100%);
+  border-color: #b6ddc5;
+}
+
+.cal-cell.is-filled .cal-cell-foot { color: #2f7a4c; }
+
+/* Closed: done and locked. Muted on purpose — it is finished work, not
+   an achievement that needs to shout over today's cell. */
+.cal-cell.is-closed {
+  background: linear-gradient(160deg, #f7f3ea 0%, #ece5d6 100%);
+  border-color: #d8cdb4;
+}
+
+.cal-cell.is-closed .cal-cell-day,
+.cal-cell.is-closed .cal-cell-amount { color: var(--color-text-soft); }
+
+/* Nothing entered: the day the shop still owes. Outlined rather than
+   filled so the gaps are visible as gaps across the whole month. */
+.cal-cell.is-empty {
+  background: var(--color-bg);
+  border-style: dashed;
+  border-color: var(--color-border-strong);
+}
+
+.cal-cell.is-empty .cal-cell-day { color: var(--color-text-soft); }
+.cal-cell.is-empty .cal-cell-foot { color: var(--color-muted); }
+
+/* Not yet: no border, no amount — nothing can be entered here. */
+.cal-cell.is-future {
+  background: transparent;
+  border-color: var(--color-border);
+}
+
+.cal-cell.is-future .cal-cell-day { color: var(--color-faint); font-weight: 700; }
+.cal-cell.is-future .cal-cell-foot { color: var(--color-faint); }
+
+.cal-cell.is-outside {
+  opacity: 0.5;
+  background: transparent;
+  border-style: dotted;
+}
+
+.cal-cell.is-outside .cal-cell-link { pointer-events: none; }
+
+.cal-cell.is-today {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(75, 139, 191, 0.28);
+}
+
+/* ---------- Quick entry ---------- */
+.cal-cell-add {
+  position: absolute;
+  right: 0.3rem;
+  bottom: 0.3rem;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-primary-darker);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.cal-cell-add .icon { width: 15px; height: 15px; }
+
+.cal-cell-add:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+}
+
+/* Kept visible whenever it cannot be hovered: touch screens have no
+   hover, and a keyboard user must be able to see where focus is. */
+.cal-cell:hover .cal-cell-add,
+.cal-cell:focus-within .cal-cell-add,
+.cal-cell.is-empty .cal-cell-add {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .cal-cell-add { opacity: 1; }
+}
+
+/* ---------- Month summary ---------- */
+.cal-summary { margin-top: 1rem; }
+
+.cal-summary-card {
+  padding: 1rem 1.15rem;
+}
+
+.cal-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.85rem;
+}
+
+.cal-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.cal-stat-label {
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.cal-stat-value {
+  font-size: 1.22rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.cal-stat.is-primary .cal-stat-value { color: var(--color-primary-darker); }
+.cal-stat.is-due .cal-stat-value { color: var(--color-danger); }
+.cal-stat.is-warn .cal-stat-value { color: var(--color-warning); }
+.cal-stat.is-good .cal-stat-value { color: #2f7a4c; }
+
+.cal-summary-note {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--color-border);
+  font-size: 0.85rem;
+  color: var(--color-text-soft);
+}
+
+/* ---------- Catch-up panel ---------- */
+.cal-missed { margin-top: 1rem; }
+
+.cal-missed-card {
+  padding: 1rem 1.15rem;
+  border-color: #f0d9a8;
+  background-image: linear-gradient(160deg, #fffdf7 0%, var(--color-warning-soft) 100%);
+}
+
+.cal-missed-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.cal-missed-head h3 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.cal-missed-head .muted { font-size: 0.82rem; }
+
+.cal-missed-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.cal-missed-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.cal-missed-day .icon { width: 14px; height: 14px; opacity: 0.65; }
+
+.cal-missed-day:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+}
+
+.cal-missed-day:hover .icon { opacity: 1; }
+
+.cal-missed-more {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
+/* ---------- Narrow screens ---------- */
+@media (max-width: 720px) {
+  .cal-head { align-items: flex-start; }
+  .cal-sub { flex: 1 1 100%; margin-right: 0; }
+  .cal-nav { width: 100%; }
+  .cal-month-label { flex: 1 1 auto; min-width: 0; }
+  .cal-card { padding: 0.6rem; }
+  .cal-weekdays,
+  .cal-grid { gap: 0.3rem; }
+  .cal-cell { min-height: 64px; }
+  .cal-cell-link { padding: 0.35rem 0.4rem 0.4rem; }
+  .cal-cell-day { font-size: 0.92rem; }
+  .cal-cell-amount { font-size: 0.74rem; }
+  /* The foot line is the first thing to go: on a phone the amount and
+     the day number already say what the cell holds. */
+  .cal-cell-foot { display: none; }
+  .cal-cell-add { width: 22px; height: 22px; opacity: 1; }
+  .cal-cell-add .icon { width: 13px; height: 13px; }
+  .cal-stat-value { font-size: 1.05rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cal-cell,
+  .cal-cell-add,
+  .cal-missed-day { transition: none; }
+}

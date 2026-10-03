@@ -16,6 +16,51 @@ websites he already uses in other tabs.
 
 ## Current status
 
+**Evening entry, backfill and day closing (v0.13.0).** The shop fills its
+ledger at the end of the day, so a sale can belong to a business day that is
+not today, and a day that was never written up has to be visible rather than
+quietly missing. This build adds a month calendar, lets a sale be filed
+against an earlier day, and lets a day be closed (and reopened).
+
+- **Calendar (`calendar.html`).** A Monday-first month grid showing every day
+  as *recorded*, *closed*, *nothing entered* or *not yet*. A day with no sales
+  is drawn as an outline, never as ₹0 — "nothing was entered here" and
+  "nothing was sold here" are different facts, and only one of them is a gap
+  in the books.
+- **The `+` on a day opens the sale form for that day** without leaving the
+  calendar, so catching up a missed week is a sequence of short taps. The
+  "Still to fill in" panel names the first few missed days and counts the
+  rest.
+- **One read per month.** The grid is built from `dayHeads` alone — a single
+  ranged query (`orderBy dateKey`, `startAt`/`endAt` on the month's two
+  bounds) costing at most 31 document reads however many sales each day
+  holds. The result is cached for 60 s fresh / 10 min stale.
+- **Business day on every sale.** The sale dialog opens with a **Business
+  day** field defaulted to today. Choosing an earlier day files the sale
+  against that day — the day's own counters move with it, in the same atomic
+  batch, and the form names the day out loud so a backfill is never mistaken
+  for tonight's takings. Future days are refused by the UI and by the rules.
+- **Backfilled rows are marked.** A sale typed up later keeps the `createdAt`
+  of the moment it was entered, so its time column alone would read like an
+  evening sale. Those rows carry a `Backfilled` badge beside the time.
+- **Close and reopen a day.** Closing writes `state`, `closedAt` and
+  `closedBy` onto the day head without touching its counters; reopening
+  removes the closing stamps and leaves the money exactly where it was. While
+  a day is closed, every sale write, edit and delete is refused by
+  `firestore.rules` no matter what the UI allows.
+- **Scanned receipts keep their own date.** The receipt scanner now fills the
+  form in for the day printed on the receipt (when that day is in the past)
+  instead of filing it under today and asking for a correction afterwards.
+- **Deep links.** `ledger.html?date=YYYY-MM-DD` and
+  `transactions.html?date=YYYY-MM-DD` open on one business day, and switching
+  day or scope keeps the URL honest — including clearing it when the page
+  goes back to all-time.
+
+> **v0.13.0** adds `js/calendar.js` (pure grid logic, no Firebase import, so
+> the whole month is unit-tested), `calendar.html`, `css/calendar.css`, a
+> `Business day` field in the sale dialog, and an open ↔ closed transition in
+> `firestore.rules`.
+
 **Google Sign-In with server-enforced allowlist (v0.12.0).** The shop no
 longer uses access codes. Instead, users sign in with Google, and a
 Firestore allowlist (`allowedUsers/{email}`) controls who may access the
@@ -164,21 +209,24 @@ received and are excluded).
 ├── index.html            Entry point (trusted-device gate / auth routing)
 ├── login.html            Shop-code sign in (enrolls this browser as trusted)
 ├── dashboard.html        App shell, today's figures, quick services
+├── calendar.html         Month grid: which days are recorded, which are missing
 ├── ledger.html           Daily ledger (one business day, editable, day totals)
 ├── transactions.html     Transaction history (all time or a single day)
 ├── admin.html            Developer console (admin code; not in the nav)
 ├── css/
 │   ├── style.css         Design tokens + core components
-│   ├── forms.css         Inputs, selects, chips, auth page
+│   ├── forms.css         Inputs, selects, chips, auth page, business-day field
 │   ├── dashboard.css     Stat cards, quick grids, entry panel
 │   ├── transactions.css  Sale modal, history browser, totals
 │   ├── ledger.css        Ledger toolbar, table, mobile card transform
+│   ├── calendar.css      Month grid, day statuses, catch-up panel
 │   ├── admin.css         Developer console rows/actions
 │   └── responsive.css    Desktop-first, mobile fallback
 ├── js/
 │   ├── firebase.js       Firebase config, lazy SDK load, offline persistence
 │   ├── auth.js           Code sign-in, trusted-device enrollment/check, shop bootstrap
 │   ├── ledger.js         Firestore day heads + sales, RTDB services/expenses
+│   ├── calendar.js       Pure month-grid logic (bounds, statuses, totals) — no Firebase
 │   ├── day-heads.js      Pure day-head counters + per-method split — no Firebase
 │   ├── day-ledger.js     Pure day-view logic (date shift, filter, totals) — no Firebase
 │   ├── service-catalog.js  Default service seed list (pure data) — no Firebase
@@ -189,6 +237,7 @@ received and are excluded).
 │   └── utils.js          Money (paise), dates (Asia/Kolkata), validation
 ├── tests/
 │   ├── ledger.mjs        Node test suite for money/validation/day-view/catalog/day-head helpers
+│   ├── calendar.mjs      Month grid, totals, missed days, backfilled-row marking
 │   └── module-graph.mjs  Every named import must resolve to a real export
 ├── package.json          Scripts (npm test), no runtime deps
 ├── assets/
@@ -470,7 +519,7 @@ installs needed:
 ```bash
 npm test
 # or
-node --test tests/ledger.mjs
+node --test tests/ledger.mjs tests/calendar.mjs
 ```
 
 `day-ledger.js` is deliberately kept free of any Firebase import so the
@@ -478,6 +527,15 @@ daily-ledger behaviour is testable in Node: date shifting across month,
 year and leap-day boundaries, the search/payment/status narrowing, the
 per-method day totals, cursor-page merging, and the Asia/Kolkata entry
 time.
+
+`tests/calendar.mjs` does the same for `js/calendar.js`, and for the reason
+that matters most here: a calendar that is a day out, or that calls a day
+with no sales "recorded", is a wrong thing to show a shopkeeper. It pins
+the 42-cell Monday-first grid, month bounds across leap years, the
+"nothing entered is not a zero-sales day" distinction, future days never
+counting as missing, a head whose counters do not add up refusing to
+produce a rupee figure, and the `Backfilled` marking of a row entered on a
+later day than the one it belongs to.
 
 `tests/module-graph.mjs` guards the wiring instead, because there is no
 bundler to catch it: it walks the real import graph (HTML entry scripts
@@ -508,14 +566,37 @@ npm run test:rules
 test-only copy of `firestore.rules`, and drives the day-head scenarios through
 it — that a sale cannot land unless the day's counters move by exactly that
 sale, that the payment buckets must re-derive the total, that `total` must be
-`quantity x rate`, that a settled due sale moves no money, that a day closes
-once and never reopens, and that nothing outside `dayHeads` is writable. It
-starts and stops the emulator itself, so it is not part of `npm test`.
+`quantity x rate`, that a settled due sale moves no money, that closing a day
+pins the closing stamps, that a day with nothing on it cannot be closed, that
+editing or deleting a sale on a closed day is refused, and that a day may be
+reopened without its counters moving. It starts and stops the emulator itself,
+so it is not part of `npm test`.
 
-It deliberately does not run the real `request.time` pins: the public REST
-API cannot express `FieldValue.serverTimestamp()`, so the script substitutes a
-fixed literal for that one expression and leaves every clause carrying the
-day's arithmetic exactly as written.
+Two things to know when reading its output:
+
+- **It substitutes `request.time`.** The public REST API cannot express
+  `FieldValue.serverTimestamp()`, so the script substitutes a fixed literal
+  for that one expression and leaves every clause carrying the day's
+  arithmetic exactly as written.
+- **`BADRQ` and `SKIP` are not passes, and they say so.** The emulator
+  evaluates a whole rules file with a fixed expression budget, and this one is
+  over it: several scenarios are refused because the evaluation itself errors
+  rather than answering `false`. Those are reported as `BADRQ — the rules
+  failed to evaluate, not a verdict`, never as a green refusal, and where a
+  scenario depends on state that could not be established the harness reports
+  `SKIP` and names the case. Eight cases are in that state today, all of them
+  pre-existing money paths (`accept a sale that moves the head by exactly that
+  sale` and its siblings); they are honest gaps in the harness, not verdicts.
+- **The close is planted out of band so the reopen rules can be judged.**
+  Closing a day through the rules is one of the cases that trips the
+  expression ceiling, which would leave every reopen case testing an *open*
+  day. The harness therefore writes the closed head with the emulator's admin
+  token (`Bearer owner`, which bypasses rules the way the Admin SDK does) and
+  then makes every assertion as the shop user, with the real rules in force.
+  That is how `accept reopening a closed day` gets a genuine verdict — and how
+  a bug in the harness itself was caught: the "reopen that also moves the
+  counters" case was passing a fixed counter set that could coincide with what
+  the day already held, so the reopen it called a counter move was not one.
 
 A Firestore emulator rules suite (signed-in-only access with per-document
 validation, money integrity, day-close enforcement) is planned for a later
@@ -681,8 +762,11 @@ hardening pass.
    device management.
 7. Customers
 8. Expenses
-9. Daily closing — *the `dayHeads/{dateKey}` register and the day-open rules
-   already shipped in v0.9.0; the close action itself is still to come.*
+9. ✅ **Daily closing + backfill (v0.13.0):** `calendar.html` — a month grid
+   that shows which days are recorded and which are still missing, read from
+   `dayHeads` in one ranged query per month. Every sale can be filed against
+   an earlier business day, days can be closed and reopened, and the close is
+   enforced by `firestore.rules` rather than by the buttons being hidden.
 10. Reports & service statistics
 11. Settings polish, security-rule tests, deployment hardening
     (v0.7.0 added the trusted-device registry; v0.12.0 replaced access

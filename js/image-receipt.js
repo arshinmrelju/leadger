@@ -802,7 +802,19 @@ async function onAnalyze(root) {
       rateRupees = extracted.totalRupees / (extracted.quantity || 1);
     }
 
-    openSaleForm();
+    /* The receipt carries its own date, and for an evening shop that date is
+       the useful one: a sale from Tuesday scanned on Thursday belongs to
+       Tuesday. It used to be filed under today and left to the shopkeeper
+       to correct afterwards, which is exactly the mistake the business-day
+       field exists to remove. A date that is not in the past (a misread,
+       or a receipt dated ahead) is never followed: the form refuses future
+       days, so following one would only bounce. */
+    const today = todayKolkata();
+    const receiptDay = extracted.dateKey && extracted.dateKey < today
+      ? extracted.dateKey
+      : null;
+
+    openSaleForm(receiptDay ? { dateKey: receiptDay } : {});
     prefillSaleForm({
       serviceId: match ? match.serviceId : "",
       serviceNameFallback: extracted.serviceName || "",
@@ -810,6 +822,7 @@ async function onAnalyze(root) {
       rateRupees,
       customerName: extracted.customerName,
       paymentMethod: extracted.paymentMethod,
+      dateKey: receiptDay,
     });
 
     if (extracted.totalRupees === null) {
@@ -824,9 +837,15 @@ async function onAnalyze(root) {
       toast("Receipt read. Pick a matching service (or add one), then save.", "info", 4500);
     }
 
-    if (extracted.dateKey && extracted.dateKey !== todayKolkata()) {
+    if (receiptDay) {
       toast(
-        `Receipt dated ${extracted.dateKey} — saved against today (${todayKolkata()}) by default. Edit in the daily ledger afterward if needed.`,
+        `Receipt dated ${receiptDay} — the form is open on that business day. Change the date if the receipt is wrong.`,
+        "info",
+        6500
+      );
+    } else if (extracted.dateKey) {
+      toast(
+        `Receipt dated ${extracted.dateKey} is not a past day — the form is open on today (${today}). Change the business day if the receipt is right.`,
         "info",
         6500
       );

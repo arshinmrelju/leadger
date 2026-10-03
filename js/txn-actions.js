@@ -73,8 +73,11 @@ const ICON_DUE =
 
 /* ---------------- State ---------------- */
 
+/* Names where a closed day can be re-opened, because "it is closed" on
+   its own is a dead end: the shop's next move is to reopen the day from
+   the Daily Ledger page, and it should not have to go looking for how. */
 const CLOSED_DAY_MSG =
-  "This business day is closed, so its sales can no longer be changed.";
+  "This business day is closed, so its sales can no longer be changed. Reopen it from the Daily Ledger page to make a correction.";
 
 let overlay = null;    // the edit dialog, built on first use
 let services = null;   // catalog for the picker; null until the first read

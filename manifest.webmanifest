@@ -54,6 +54,12 @@
       "url": "/transactions.html"
     },
     {
+      "name": "Calendar",
+      "short_name": "Calendar",
+      "description": "Month at a glance, and the days still to fill in",
+      "url": "/calendar.html"
+    },
+    {
       "name": "Day ledger",
       "short_name": "Ledger",
       "description": "One business day in full",

@@ -71,10 +71,11 @@ rules_version = '2';
 //   not follow.
 //   The head's OWN update rule cannot see the sale, so it only permits
 //   a no-op merge, a single-sale-sized delta inside the money cap, and
-//   the one-way open -> closed transition. A caller who writes the head
-//   alone can therefore skew the DISPLAY counters by at most one sale
-//   per write — and the daily ledger always recomputes its totals from
-//   the rows, so the pages that matter never trust the counters.
+//   the open <-> closed transitions (neither of which may move a
+//   counter). A caller who writes the head alone can therefore skew the
+//   DISPLAY counters by at most one sale per write — and the daily
+//   ledger always recomputes its totals from the rows, so the pages that
+//   matter never trust the counters.
 //
 // SERVICE CATALOG
 //   The service catalog lives in Cloud Firestore under /services/{serviceId},
@@ -581,16 +582,30 @@ service cloud.firestore {
               && boundedCounterStep(resource.data.counters, request.resource.data.counters)
               && openHeadShape(request.resource.data)
             )
-            // Close the day: one way only, counters untouched.
+            // Close the day: counters untouched, a fresh closing stamp.
             || (
               resource.data.state == 'open'
               && request.resource.data.counters == resource.data.counters
               && closedHeadShape(request.resource.data)
             )
+            // Reopen the day: the mirror of the close, and the way a
+            // mistake on a finished day is fixed instead of worked
+            // around. Counters untouched again, and openHeadShape
+            // REQUIRES the closing stamp to be gone - it forbids
+            // closedAt/closedBy on an open head, so the stamp has to be
+            // deleted rather than blanked or left stale. openedAt/openedBy
+            // survive, so the day keeps the history of when it opened.
+            || (
+              resource.data.state == 'closed'
+              && request.resource.data.state == 'open'
+              && request.resource.data.counters == resource.data.counters
+              && openHeadShape(request.resource.data)
+            )
           );
 
-      // A closed day is permanent, and so is a head that is on disk:
-      // nothing may re-open a day, re-date a head, or delete the register.
+      // Nothing may re-date a head or delete the register. A day can go
+      // from open to closed and back, but its identity - the dateKey in
+      // its own path - is fixed from the moment it is created.
       allow delete: if false;
     }
 

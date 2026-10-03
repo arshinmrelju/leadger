@@ -45,6 +45,7 @@ import {
   methodLabel,
 } from "./utils.js";
 import { findMissingCatalogServices } from "./service-catalog.js";
+import { monthBounds, currentYearMonth } from "./calendar.js";
 import {
   DAY_STATE,
   emptyCounters,
@@ -182,6 +183,23 @@ const expensesCache = createReadCache({
   staleTtlMs: 5 * 60_000,
   onError: readCacheError,
   persist: "expenses",
+});
+
+/**
+ * One month of day heads — the calendar.
+ *
+ * Persisted, because a month is the second-most expensive thing to read
+ * after the all-time walk and it is looked at repeatedly: the shop opens
+ * it to check whether tonight is written up, then again to catch up the
+ * days it missed. What is stored is a plain dateKey -> counters map, so
+ * it is exactly what the server returned and never a part-filled local
+ * Firestore cache.
+ */
+const monthCache = createReadCache({
+  freshTtlMs: 60_000,
+  staleTtlMs: 10 * 60_000,
+  onError: readCacheError,
+  persist: "month",
 });
 
 /* A catalog edit in one tab has to reach the others. The Developer console
@@ -635,6 +653,7 @@ function invalidateDayReads(dateKey) {
     headCache.drop();
     rowsCache.drop();
     historyCache.drop();
+    monthCache.drop();
     return;
   }
   headCache.dropPrefix(`head:${dateKey}`);
@@ -642,6 +661,10 @@ function invalidateDayReads(dateKey) {
   historyCache.dropPrefix(`txns:${dateKey}:`);
   /* The all-time walk holds rows from every day, including this one. */
   historyCache.dropPrefix("txns:all:");
+  /* A month is one read keyed by the month, so a sale filed against a
+     past day would otherwise leave the calendar showing the day as
+     still missing until its cache window expired. */
+  monthCache.drop();
 }
 
 /**
@@ -878,6 +901,71 @@ export async function fetchDayState(dateKey) {
     }
     return { dateKey, closed: false };
   }
+}
+
+/* ------------------------------------------------------------------
+   Month calendar (many business days at once)
+
+   The shop fills its ledger in the evening, so the calendar is how it
+   finds out which days of the month are still missing. One ranged query
+   over the day heads answers the whole month: no per-day reads, no
+   composite index (a single `dateKey` order is automatic), and a hard
+   ceiling of 31 documents behind the rules' own grant lookups.
+   ------------------------------------------------------------------ */
+
+/**
+ * Every day head in one month, keyed by `dateKey`.
+ *
+ * Reads the HEADS, not the sales: a head already carries the day's sale
+ * count and money totals, which is all a calendar cell draws, so this
+ * stays a month-sized read no matter how busy each day was. A day with
+ * no head is absent from the map, which is the honest reading — nothing
+ * was ever recorded on it — and js/calendar.js draws that as an empty
+ * day rather than a zero-sales day.
+ *
+ * @param {object} opts
+ * @param {string} [opts.yearMonth]  `YYYY-MM`; defaults to this month in India
+ * @returns {Promise<object>} dateKey -> { dateKey, state, counters },
+ *   carrying `yearMonth` / `monthStart` / `monthEnd` as properties
+ */
+export async function fetchMonthHeads({ yearMonth = "" } = {}) {
+  const bounds = monthBounds(String(yearMonth || "").trim() || currentYearMonth());
+  if (!bounds) throw new Error("Pick a valid month to view.");
+
+  const b = await bridge();
+  const fs = b.firestore;
+
+  return monthCache.read(`month:${bounds.yearMonth}`, async () => {
+    /* The rules pin every head's `dateKey` to its own document id, so
+       ordering by that field is the same range as ordering by the id —
+       and a head written by an older build with a mismatched field can
+       never fall outside the month it belongs to. */
+    const snap = await chargedGetDocs(
+      fs,
+      fs.query(
+        fs.collection(b.db, "dayHeads"),
+        fs.orderBy("dateKey"),
+        fs.startAt(bounds.firstKey),
+        fs.endAt(bounds.lastKey)
+      )
+    );
+
+    const heads = {};
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      const dateKey = isValidDateKey(data.dateKey) ? data.dateKey : doc.id;
+      /* Out-of-month or unreadable keys are skipped rather than shown:
+         a cell is either a day of the month being asked for or it is
+         not drawn at all. */
+      if (!isValidDateKey(dateKey)) continue;
+      if (dateKey < bounds.firstKey || dateKey > bounds.lastKey) continue;
+      heads[dateKey] = { dateKey, state: data.state, counters: data.counters };
+    }
+    heads.yearMonth = bounds.yearMonth;
+    heads.monthStart = bounds.firstKey;
+    heads.monthEnd = bounds.lastKey;
+    return heads;
+  });
 }
 
 /* ------------------------------------------------------------------
@@ -1345,6 +1433,101 @@ export async function deleteTransaction(txnId, dateKey) {
   invalidateDayReads(dateKey);
 
   return { txnId: id };
+}
+
+/**
+ * Close a business day: the end-of-evening "lock up the till" step.
+ *
+ * A closed day is one the ledger has finished with. The rules refuse
+ * every sale write against it (`dayOpen`), so this is what turns "the
+ * shopkeeper has gone home" into something the data actually enforces
+ * rather than a promise in someone's head.
+ *
+ * Counters are deliberately NOT touched: firestore.rules compares them
+ * to the pre-write state and allows a close only when they are
+ * unchanged, so closing can never quietly move a day's totals. Only the
+ * state and the closing stamp go out.
+ *
+ * Closing a day that has no head is refused rather than creating an
+ * empty one — a day with nothing on it was never opened, and a head
+ * whose counters are all zero would be indistinguishable on the
+ * calendar from a real day that sold nothing.
+ *
+ * @param {string} dateKey
+ * @returns {Promise<{dateKey: string, closed: boolean}>}
+ */
+export async function closeDay(dateKey) {
+  return setDayState(dateKey, DAY_STATE.CLOSED);
+}
+
+/**
+ * Re-open a closed day so a correction can be filed against it.
+ *
+ * The exact mirror of closeDay: same counters, and the closing stamp is
+ * DELETED rather than blanked. firestore.rules' `openHeadShape` refuses
+ * an open head that still carries closedAt/closedBy, so a stale stamp
+ * left behind would make every later write to that day fail.
+ *
+ * Re-opening is how the ledger stays honest about a mistake: a sale
+ * typed against the wrong day, or a rate entered twice, is fixed on the
+ * day it belongs to instead of being worked around in the next one.
+ *
+ * @param {string} dateKey
+ * @returns {Promise<{dateKey: string, closed: boolean}>}
+ */
+export async function reopenDay(dateKey) {
+  return setDayState(dateKey, DAY_STATE.OPEN);
+}
+
+/**
+ * Move a day between open and closed. Shared by closeDay/reopenDay so
+ * the two cannot drift apart on anything that matters.
+ *
+ * The head is re-read fresh (never through the cache) immediately before
+ * the write, because the answer to "is this day already closed?" decides
+ * what gets written and a cached head would write the wrong one.
+ */
+async function setDayState(dateKey, state) {
+  if (!isValidDateKey(dateKey)) throw new Error("That business day is not valid.");
+
+  const b = await bridge();
+  const fs = b.firestore;
+  const user = b.auth.currentUser;
+  if (!user || !user.uid) throw new Error("You need to be signed in to change a business day.");
+
+  const closing = state === DAY_STATE.CLOSED;
+  const ref = headRef(fs, b.db, dateKey);
+
+  /* Never cached: this read decides what the write says. */
+  const snap = await chargedGetDoc(fs, ref);
+  if (!snap.exists()) {
+    throw new Error(
+      closing
+        ? "There is nothing recorded on this day yet, so there is no day to close."
+        : "This day was never closed — there is nothing recorded on it."
+    );
+  }
+  if (snap.data().state === state) {
+    return { dateKey, closed: closing };
+  }
+
+  const now = fs.serverTimestamp();
+  const change = { state, updatedAt: now, updatedBy: user.uid };
+  if (closing) {
+    change.closedAt = now;
+    change.closedBy = user.uid;
+  } else {
+    /* Removed, not emptied: an empty string would still be a field, and
+       the rules' openHeadShape rejects any field it does not name. */
+    change.closedAt = fs.deleteField();
+    change.closedBy = fs.deleteField();
+  }
+
+  await guardQuota(() => fs.updateDoc(ref, change));
+  noteWrites();
+  invalidateDayReads(dateKey);
+
+  return { dateKey, closed: closing };
 }
 
 /**

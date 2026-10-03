@@ -1,11 +1,11 @@
 ﻿{
   "name": "trustx-ledger",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.13.0",
   "description": "TrustX Ledger — digital service shop ledger (static Firebase app)",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/ledger.mjs tests/module-graph.mjs",
+    "test": "node --test tests/ledger.mjs tests/calendar.mjs tests/module-graph.mjs",
     "test:rules": "node tools/rules-check.mjs"
   }
 }

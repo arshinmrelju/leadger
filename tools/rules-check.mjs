@@ -68,7 +68,9 @@ const ACCOUNTS = {
 let pass = 0;
 let fail = 0;
 let traceCount = 0;
+let skipCount = 0;
 const failures = [];
+const skipped = [];
 
 const COUNTER_KEYS = ["txnCount", "grossPaise", "cashPaise", "upiPaise", "cardPaise", "duePaise", "collectedPaise"];
 
@@ -119,7 +121,28 @@ const rows = new Map();
 
 /* --- document builders -------------------------------------------- */
 
-const headWrite = ({ day = head.dateKey, state = head.state, counters = head.counters, openedBy = head.openedBy, closedBy = head.closedBy, updatedBy = UID } = {}) => {
+/**
+ * A day-head write.
+ *
+ * Every write here resends the whole document (see the note at the top of
+ * this file: the emulator's REST bridge refuses a mask), and a resend is
+ * how a reopen deletes its closing stamp — the field is simply left out.
+ * That is exactly what the client does with a field delete, and it is why
+ * the rules' openHeadShape, which forbids closedAt/closedBy on an open
+ * head, is testable here at all.
+ *
+ * `keepClosingStamp` builds the wrong version of a reopen (state open,
+ * stamp still present) so the rules can be shown to refuse it.
+ */
+const headWrite = ({
+  day = head.dateKey,
+  state = head.state,
+  counters = head.counters,
+  openedBy = head.openedBy,
+  closedBy = head.closedBy,
+  updatedBy = UID,
+  keepClosingStamp = false,
+} = {}) => {
   const fields = {
     dateKey: str(day),
     state: str(state),
@@ -129,7 +152,7 @@ const headWrite = ({ day = head.dateKey, state = head.state, counters = head.cou
     updatedAt: ts(),
     updatedBy: str(updatedBy),
   };
-  if (state === "closed") {
+  if (state === "closed" || (keepClosingStamp && head.state === "closed")) {
     fields.closedAt = ts();
     fields.closedBy = str(closedBy || UID);
   }
@@ -175,6 +198,45 @@ const txnFields = (row) => ({
 });
 
 /* --- runner -------------------------------------------------------- */
+
+/**
+ * A case this harness cannot drive, reported instead of quietly passed.
+ *
+ * Used where a precondition could not be established (a write the
+ * emulator refused to evaluate), so a green run never claims to have
+ * checked something it did not.
+ */
+function skip(name, reason) {
+  skipCount++;
+  skipped.push(name);
+  console.log(`  SKIP ${name} -> ${reason}`);
+}
+
+/**
+ * Put the emulator into a state the rules cannot be driven into here.
+ *
+ * `Bearer owner` is the Firestore emulator's documented admin credential: it
+ * bypasses security rules the way the Admin SDK does. The harness uses it for
+ * ONE thing — planting a genuinely closed day head, because closing a day
+ * through the rules trips this emulator's 1000-expression ceiling (the
+ * pre-existing BADRQ cases above). Without that, every reopen case would be
+ * testing an OPEN day and would prove nothing.
+ *
+ * It is deliberately not used to make an assertion pass: the seed only writes
+ * the state the rules are then judged against, and every assertion below it
+ * still runs as the shop user with real rules in force.
+ */
+async function seedAsAdmin(writes) {
+  const res = await fetch(COMMIT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer owner" },
+    body: JSON.stringify({ writes }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`rules-bypassing seed failed (${res.status}): ${body.slice(0, 300)}`);
+  }
+}
 
 async function expect(name, writes, shouldPass, uid = UID) {
   const headers = { "Content-Type": "application/json" };
@@ -645,10 +707,64 @@ async function run() {
   commitDay(dropT1);
 
   console.log("\nclosing the day:");
+  const failsBeforeClose = failures.length;
   await expect("accept closing an open day", [headWrite({ state: "closed" })], true);
-  head.state = "closed";
-  await expect("refuse a sale against a closed day", [txnWrite(baseTxn("t10", {})), dayWrite(CASH_5000)], false);
-  await expect("refuse reopening a closed day", [headWrite({ state: "open" })], false);
+  /* Whether the close actually committed. On this emulator a head update
+     trips the 1000-expression ceiling (see the pre-existing BADRQ cases
+     above), so the close can fail to evaluate — which means the head on
+     the server is still open, and every case below would then be quietly
+     testing an OPEN day. That is a broken test, not a red test, so the
+     closed state is planted out of band: the close itself is already
+     recorded above as whatever the rules actually did with it, and the
+     refusals here are judged against a real closed day. If even the
+     admin-token seed cannot be made, the cases are reported as NOT driven
+     rather than allowed to pass against the wrong state. */
+  const closeLanded = failures.length === failsBeforeClose;
+  let closedDayReady = closeLanded;
+  if (!closedDayReady) {
+    try {
+      await seedAsAdmin([headWrite({ state: "closed" })]);
+      closedDayReady = true;
+      console.log("  note: the closed day was planted with the emulator's admin token");
+    } catch (err) {
+      console.log(`  note: could not plant a closed day -> ${err.message}`);
+    }
+  }
+
+  if (!closedDayReady) {
+    const why = "no closed day could be established on this emulator";
+    skip("refuse a sale against a closed day", why);
+    skip("refuse editing a sale on a closed day", why);
+    skip("refuse deleting a sale on a closed day", why);
+    skip("refuse a reopen that keeps the closing stamp", why);
+    skip("refuse a reopen that also moves the counters", why);
+    skip("accept reopening a closed day", why);
+  } else {
+    head.state = "closed";
+    await expect("refuse a sale against a closed day", [txnWrite(baseTxn("t10", {})), dayWrite(CASH_5000)], false);
+    await expect("refuse editing a sale on a closed day", [txnWrite(baseTxn("t10", {}))], false);
+    await expect("refuse deleting a sale on a closed day", [delWrite("d1")], false);
+
+    /* Reopening is how a mistake on a finished day gets fixed, so it has to
+       be possible — but it is a state change, never a money change. The two
+       refusals are the whole of what makes it safe: the counters may not
+       move, and the closing stamp may not be left behind (openHeadShape
+       forbids it, so a lingering stamp would break every later write to
+       that day). */
+    /* The moved counters are derived from the day as it stands rather than
+       hard-coded: a fixed set could coincide with what the day already
+       holds, and then the "move" would be no move at all and the reopen
+       would be correct to allow it. That is a bug this harness actually had,
+       and it only showed up once the closed day was real. */
+    const countersMoved = { ...head.counters, grossPaise: head.counters.grossPaise + 1 };
+    await expect("refuse a reopen that keeps the closing stamp", [headWrite({ state: "open", keepClosingStamp: true })], false);
+    await expect("refuse a reopen that also moves the counters", [headWrite({ state: "open", counters: countersMoved })], false);
+    await expect("accept reopening a closed day", [headWrite({ state: "open" })], true);
+    head.state = "open";
+    /* A reopened day is writable again, because every sale rule reads the
+       day's state from the head through dayOpen() — the same read the
+       "refuse a sale against a closed day" case above turns on. */
+  }
 
   console.log("\neverything outside the day head:");
   await expect("refuse a write to the old flat transactions collection", [{ update: { name: `${DOCS}/transactions/t9`, fields: { total: num(1) } } }], false);
@@ -705,6 +821,10 @@ try {
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (failures.length) console.log("failing: " + failures.join(" | "));
+  if (skipCount) {
+    console.log(`\n${skipCount} case(s) could not be driven and were NOT checked:`);
+    console.log("  " + skipped.join(" | "));
+  }
   if (traceCount) {
     console.log(`\n${traceCount} of those refusals came from a rule that raised an evaluation`);
     console.log("error instead of answering false. Each still denies, so none is a way in,");

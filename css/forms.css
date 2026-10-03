@@ -579,3 +579,52 @@ input.input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none
   color: #8c785f;
   font-weight: 600;
 }
+
+/* Business-day field (js/sale-form.js)
+   ------------------------------------------------------------------
+   The one field in the sale dialog that says which day the money
+   belongs to rather than how much it was. It sits at the top of the
+   form, reads as a heading rather than an input, and its hint line is
+   the only place the dialog admits that today is not the only option —
+   so when a backfill day is chosen the whole field changes colour
+   instead of relying on the shopkeeper reading the date. */
+.field-bizday {
+  padding: 0.75rem 0.85rem 0.6rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(160deg, #fffdf7 0%, var(--color-bg) 100%);
+}
+
+.field-bizday > label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+/* The native date control is compact by default and its calendar icon
+   is the only affordance on a phone, so the field is given room and a
+   pointer cursor rather than being left to render at its smallest. */
+.field-bizday .input[type="date"] {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.field-bizday .field-hint {
+  font-size: 0.79rem;
+  line-height: 1.35;
+}
+
+.field-bizday.is-backfill {
+  border-color: #e6bd6c;
+  background-image: linear-gradient(160deg, #fffdf7 0%, var(--color-accent-soft) 100%);
+}
+
+.field-bizday.is-backfill .field-hint {
+  color: #92610a;
+  font-weight: 700;
+}

@@ -341,6 +341,7 @@ const PAGES = [
   "login.html",
   "dashboard.html",
   "transactions.html",
+  "calendar.html",
   "ledger.html",
   "admin.html",
 ];

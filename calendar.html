@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calendar &middot; TrustX Ledger</title>
+  <meta name="description" content="Month at a glance for TrustX Ledger: which days are recorded and which are still missing" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#132b1e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="TrustX Ledger" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Nunito font — preconnect first, then load non-blocking -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" /></noscript>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/forms.css" />
+  <link rel="stylesheet" href="css/dashboard.css" />
+  <link rel="stylesheet" href="css/transactions.css" />
+  <link rel="stylesheet" href="css/ledger.css" />
+  <link rel="stylesheet" href="css/calendar.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js",
+      "firebase/auth": "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js",
+      "firebase/firestore": "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js",
+      "firebase/database": "https://www.gstatic.com/firebasejs/12.18.0/firebase-database.js"
+    }
+  }
+  </script>
+</head>
+<body data-page="calendar">
+  <div class="app">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img class="brand-logo" src="assets/logo.svg" alt="" width="38" height="38" />
+        <div class="brand-text">
+          <div class="brand-name">TrustX Ledger</div>
+          <div class="brand-sub">Shop ledger</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        <div class="nav-section-title">Workspace</div>
+
+        <a class="nav-link" data-nav="dashboard" href="dashboard.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          Dashboard
+        </a>
+
+        <a class="nav-link" data-nav="transactions" href="transactions.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17h10"/><path d="M4 5h16v14H4z"/><path d="M4 5l2-2h12l2 2"/></svg>
+          Transactions
+        </a>
+
+        <a class="nav-link" data-nav="calendar" href="calendar.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          Calendar
+        </a>
+
+        <a class="nav-link" data-nav="ledger" href="ledger.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
+          Daily Ledger
+        </a>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 1-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Customers
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Expenses
+          <span class="nav-badge">Soon</span>
+        </button>
+
+        <button class="nav-link" type="button" data-coming>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg>
+          Reports
+          <span class="nav-badge">Soon</span>
+        </button>
+
+
+      </nav>
+
+      <div class="sidebar-footer">
+        <div id="userChip"></div>
+        <div class="sidebar-footer-meta" style="margin-top:0.5rem;font-size:0.72rem;opacity:0.8;">
+          TrustX Ledger &middot; v0.13.0
+        </div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- ===================== Main ===================== -->
+    <div class="main">
+      <header class="topbar">
+        <button class="topbar-hamburger" type="button" data-sidebar-toggle aria-label="Toggle navigation">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+        <div class="topbar-title">Calendar</div>
+        <span class="pill pill-neutral" id="topbarShop" style="display:none;"></span>
+        <span class="pill pill-neutral" id="topbarDate" aria-live="off"></span>
+      </header>
+
+      <main class="content" id="mainContent">
+        <!-- Rendered by the calendar module below. -->
+        <div class="ledger-loading-screen" aria-label="Loading calendar">
+          <div class="ledger-loading-card">
+            <div class="ledger-loading-emblem">
+              <div class="emblem-spinner"></div>
+            </div>
+            <p class="ledger-loading-sub">Shop Day Book &amp; Reconciliations</p>
+            <div class="ledger-loading-pill">
+              <span class="loading-pulse-dot"></span>
+              <span>Reading the month<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>
+            </div>
+            <div class="ledger-loading-progress">
+              <div class="ledger-loading-bar"></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    import { setLoading, toast } from "./js/app.js";
+    import {
+      formatINR,
+      formatKolkataLong,
+      escapeHtml,
+      todayKolkata,
+    } from "./js/utils.js";
+    import { fetchMonthHeads, isNetworkError } from "./js/ledger.js";
+    import { dayHeading } from "./js/day-ledger.js";
+    import { reportError } from "./js/auth.js";
+    import { initAppShell } from "./js/shell.js";
+    import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
+    import {
+      DAY_STATUS,
+      WEEKDAY_LABELS,
+      buildGrid,
+      monthBounds,
+      monthLabel,
+      currentYearMonth,
+      shiftMonth,
+      monthTotals,
+      missedDays,
+      dayCellLabel,
+    } from "./js/calendar.js";
+
+    const mainContent = document.getElementById("mainContent");
+
+    /* Missed days listed in the catch-up panel. A wall of thirty dates is
+       not an answer to "which days did I miss?", so the first few are named
+       and the rest are counted. */
+    const MISSED_LIST_LIMIT = 8;
+
+    /* =========================================================
+       State
+       ========================================================= */
+    let yearMonth = currentYearMonth();
+    let cells = [];
+    let loadError = null;
+    /* Newest read wins; an older read that lands late is discarded. */
+    let loadToken = 0;
+
+    /* =========================================================
+       Markup
+       ========================================================= */
+
+    const ICON_CHEVRON_L =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+    const ICON_CHEVRON_R =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>';
+    const ICON_REFRESH =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>';
+    const ICON_PLUS =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+    const ICON_LOCK =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+    function pageMarkup() {
+      return (
+        '<div class="cal-head">' +
+          "<h1>Calendar</h1>" +
+          '<span class="cal-sub">Every business day of the month, and the ones still to fill in</span>' +
+          '<div class="cal-nav">' +
+            '<button class="btn btn-secondary btn-icon" type="button" id="calPrev" aria-label="Previous month" title="Previous month">' + ICON_CHEVRON_L + "</button>" +
+            '<span class="cal-month-label" id="calMonthLabel" aria-live="polite"></span>' +
+            '<button class="btn btn-secondary btn-icon" type="button" id="calNext" aria-label="Next month" title="Next month">' + ICON_CHEVRON_R + "</button>" +
+            '<button class="btn btn-secondary" type="button" id="calThisMonth">This month</button>' +
+            '<button class="btn btn-secondary btn-icon" type="button" id="calRefresh" aria-label="Refresh this month" title="Refresh this month">' + ICON_REFRESH + "</button>" +
+          "</div>" +
+        "</div>" +
+
+        '<div class="cal-legend">' +
+          '<span class="cal-legend-item"><i class="cal-dot is-filled"></i>Recorded</span>' +
+          '<span class="cal-legend-item"><i class="cal-dot is-closed"></i>Closed</span>' +
+          '<span class="cal-legend-item"><i class="cal-dot is-empty"></i>Nothing entered</span>' +
+          '<span class="cal-legend-item"><i class="cal-dot is-future"></i>Not yet</span>' +
+        "</div>" +
+
+        '<div class="card cal-card">' +
+          '<div class="cal-weekdays" aria-hidden="true">' +
+            WEEKDAY_LABELS.map((d) => '<span class="cal-weekday">' + d + "</span>").join("") +
+          "</div>" +
+          '<div class="cal-grid" id="calGrid" role="grid" aria-label="Month at a glance"></div>' +
+        "</div>" +
+
+        '<div class="cal-summary" id="calSummary"></div>' +
+        '<div class="cal-missed is-hidden" id="calMissed"></div>'
+      );
+    }
+
+    /* =========================================================
+       Cells
+       ========================================================= */
+
+    /**
+     * One day, as a cell.
+     *
+     * The whole cell is a link to that day's ledger — the shop's next move
+     * on any day is to look at it — and the `+` inside it opens the sale
+     * form for that day without leaving the calendar, which is what makes
+     * catching up a missed week a sequence of short taps rather than a
+     * walk back and forth between pages.
+     *
+     * A day with nothing on it is styled as "nothing entered" rather than
+     * as a zero: those are different facts, and the shopkeeper needs to be
+     * able to tell them apart at a glance.
+     */
+    function cellMarkup(cell) {
+      const classes = ["cal-cell", "is-" + cell.status];
+      if (!cell.inMonth) classes.push("is-outside");
+      if (cell.isToday) classes.push("is-today");
+
+      const dayNumber = Number(cell.dateKey.slice(8, 10));
+      const classesAttr = classes.join(" ");
+
+      const statusWord =
+        cell.status === DAY_STATUS.CLOSED ? "Closed" :
+        cell.status === DAY_STATUS.FUTURE ? "Not yet" :
+        cell.status === DAY_STATUS.EMPTY ? "Nothing entered" :
+        cell.txnCount === 1 ? "1 sale" : cell.txnCount + " sales";
+
+      const heading = cell.inMonth
+        ? dayHeading(cell.dateKey)
+        : cell.dateKey;
+
+      const money =
+        cell.status === DAY_STATUS.FILLED || cell.status === DAY_STATUS.CLOSED
+          ? '<span class="cal-cell-amount">' + formatINR(cell.grossPaise) + "</span>"
+          : '<span class="cal-cell-amount is-none">—</span>';
+
+      const foot = '<span class="cal-cell-foot">' + statusWord + "</span>";
+
+      /* A future day cannot take an entry, and a closed one will refuse
+         one, so the button is only offered where it can work. */
+      const addBtn =
+        cell.inMonth && !cell.isFuture && cell.status !== DAY_STATUS.CLOSED
+          ? '<button class="cal-cell-add" type="button" data-add-day="' + escapeHtml(cell.dateKey) + '" ' +
+            'aria-label="Record a sale on ' + escapeHtml(heading) + '" title="Record a sale on this day">' + ICON_PLUS + "</button>"
+          : "";
+
+      return (
+        '<div class="' + classesAttr + '" role="gridcell" data-day="' + escapeHtml(cell.dateKey) + '">' +
+          '<a class="cal-cell-link" href="ledger.html?date=' + escapeHtml(cell.dateKey) + '" ' +
+            'title="Open the ledger for ' + escapeHtml(heading) + '">' +
+            '<span class="cal-cell-top">' +
+              '<span class="cal-cell-day">' + dayNumber + "</span>" +
+              (cell.closed ? '<span class="cal-cell-lock" aria-hidden="true">' + ICON_LOCK + "</span>" : "") +
+            "</span>" +
+            money +
+            foot +
+          "</a>" +
+          addBtn +
+        "</div>"
+      );
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById("calGrid");
+      if (!grid) return;
+      if (!cells.length) {
+        grid.innerHTML = '<div class="cal-placeholder">Pick a month to see its days.</div>';
+        return;
+      }
+      grid.innerHTML = cells.map(cellMarkup).join("");
+    }
+
+    /* =========================================================
+       Month summary + catch-up panel
+       ========================================================= */
+
+    function statCell(label, value, cls) {
+      return (
+        '<div class="cal-stat ' + (cls || "") + '">' +
+          '<span class="cal-stat-label">' + label + "</span>" +
+          '<span class="cal-stat-value">' + value + "</span>" +
+        "</div>"
+      );
+    }
+
+    function renderSummary() {
+      const box = document.getElementById("calSummary");
+      const missedBox = document.getElementById("calMissed");
+      if (!box || !missedBox) return;
+
+      if (loadError) {
+        box.innerHTML =
+          '<div class="state is-error">' +
+            "<h3>Could not read this month</h3>" +
+            "<p>" + escapeHtml(isNetworkError(loadError)
+              ? "You appear to be offline. The month will fill in when the connection returns."
+              : reportError(loadError)) + "</p>" +
+          "</div>";
+        missedBox.classList.add("is-hidden");
+        return;
+      }
+
+      const t = monthTotals(cells);
+      box.innerHTML =
+        '<div class="card cal-summary-card">' +
+          '<div class="cal-stats">' +
+            statCell("Sales booked", formatINR(t.grossPaise), "is-primary") +
+            statCell("Collected", formatINR(t.collectedPaise)) +
+            statCell("Still due", formatINR(t.duePaise), t.duePaise ? "is-due" : "") +
+            statCell("Transactions", String(t.txnCount)) +
+            statCell(
+              "Days recorded",
+              t.daysRecorded + " of " + t.daysInMonth,
+              t.daysMissed ? "is-warn" : "is-good"
+            ) +
+          "</div>" +
+          '<div class="cal-summary-note">' + summaryNote(t) + "</div>" +
+        "</div>";
+
+      renderMissed(missedBox, t);
+    }
+
+    /**
+     * One sentence saying whether the month is done.
+     *
+     * A day the shop was shut is also a day with nothing on it, and the
+     * calendar cannot tell the two apart — so the wording asks about the
+     * entries rather than claiming the books are complete.
+     */
+    function summaryNote(t) {
+      if (!t.daysInMonth) return "";
+      if (t.daysMissed === 0) {
+        return t.daysClosed
+          ? "Every day so far has something recorded against it."
+          : "Every day so far has something recorded against it. Close the day from the Daily ledger when the evening's work is done.";
+      }
+      if (t.daysRecorded === 0) {
+        return "Nothing has been recorded in " + monthLabel(yearMonth) + " yet.";
+      }
+      return t.daysMissed + (t.daysMissed === 1 ? " day has" : " days have") +
+        " nothing entered. Tap a day below to add what was sold on it.";
+    }
+
+    function renderMissed(box, totals) {
+      if (!totals.daysMissed) {
+        box.classList.add("is-hidden");
+        box.innerHTML = "";
+        return;
+      }
+      const list = missedDays(cells, MISSED_LIST_LIMIT);
+      const more = totals.daysMissed - list.length;
+      box.classList.remove("is-hidden");
+      box.innerHTML =
+        '<div class="card cal-missed-card">' +
+          '<div class="cal-missed-head">' +
+            "<h3>Still to fill in</h3>" +
+            '<span class="muted">' + totals.daysMissed + (totals.daysMissed === 1 ? " day" : " days") + " with nothing entered</span>" +
+          "</div>" +
+          '<div class="cal-missed-list">' +
+            list.map((key) =>
+              '<button class="cal-missed-day" type="button" data-add-day="' + escapeHtml(key) + '" ' +
+                'title="Record a sale on ' + escapeHtml(dayHeading(key)) + '">' +
+                '<span class="cal-missed-date">' + escapeHtml(dayCellLabel(key)) + "</span>" +
+                ICON_PLUS +
+              "</button>"
+            ).join("") +
+            (more > 0 ? '<span class="cal-missed-more">+' + more + " more</span>" : "") +
+          "</div>" +
+        "</div>";
+    }
+
+    /* =========================================================
+       Data
+       ========================================================= */
+
+/**
+     * Read the month and draw it.
+     *
+     * One ranged query over the day heads (see js/ledger.js
+     * fetchMonthHeads), so the whole month costs one read of at most 31
+     * documents no matter how many sales each day holds.
+     *
+     * Reads are allowed to overlap rather than queued: tapping "next month"
+     * twice on a slow connection must end up on the second month, not on a
+     * skeleton that never resolves. Each call takes a token, and a read that
+     * is no longer the newest — or that no longer matches the month on
+     * screen — throws its result away instead of painting the wrong month.
+     */
+    async function loadMonth() {
+      const token = ++loadToken;
+      loadError = null;
+      const requested = yearMonth;
+      renderSkeleton();
+
+      try {
+        const heads = await fetchMonthHeads({ yearMonth: requested });
+        if (!isCurrent(token, requested)) return;
+        cells = buildGrid({ yearMonth: requested, heads, todayKey: todayKolkata() });
+      } catch (err) {
+        if (!isCurrent(token, requested)) return;
+        console.error("[trustx-ledger] calendar load:", err);
+        loadError = err;
+        /* The grid is still drawn from an empty head set so the month
+           reads as "nothing entered" rather than as a blank page — an
+           offline shop must still see which days it owes. */
+        cells = buildGrid({ yearMonth: requested, heads: {}, todayKey: todayKolkata() });
+        if (isNetworkError(err)) toast(reportError(err), "error");
+      }
+
+      render();
+    }
+
+    function isCurrent(token, requested) {
+      return token === loadToken && requested === yearMonth;
+    }
+
+    function renderSkeleton() {
+      const grid = document.getElementById("calGrid");
+      renderMonthLabel();
+      if (!grid) return;
+      grid.innerHTML = '<div class="cal-placeholder">Reading the month<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></div>';
+    }
+
+    function renderMonthLabel() {
+      const label = document.getElementById("calMonthLabel");
+      if (label) label.textContent = monthLabel(yearMonth);
+      /* The next-month button stops at the current month: there is nothing
+         to record in a month that has not started, and an empty grid that
+         looks broken is worse than a button that says so. Updated while the
+         read is in flight too, so the button cannot be double-tapped past
+         the end. */
+      const nextBtn = document.getElementById("calNext");
+      if (nextBtn) nextBtn.disabled = yearMonth >= currentYearMonth();
+    }
+
+    function render() {
+      renderMonthLabel();
+      renderGrid();
+      renderSummary();
+    }
+
+    /* =========================================================
+       Boot
+       ========================================================= */
+
+    async function renderPage() {
+      document.getElementById("topbarDate").textContent = formatKolkataLong(new Date());
+      mainContent.innerHTML = pageMarkup();
+
+      document.getElementById("calPrev").addEventListener("click", () => goToMonth(shiftMonth(yearMonth, -1)));
+      document.getElementById("calNext").addEventListener("click", () => goToMonth(shiftMonth(yearMonth, 1)));
+      document.getElementById("calThisMonth").addEventListener("click", () => goToMonth(currentYearMonth()));
+      document.getElementById("calRefresh").addEventListener("click", () => {
+        const btn = document.getElementById("calRefresh");
+        setLoading(btn, true);
+        loadMonth().finally(() => setLoading(btn, false));
+      });
+
+      await loadMonth();
+    }
+
+    /* One handler for both entry points into a day: the `+` on a cell and a
+       day in the catch-up list. Both open the sale form on that day and stay
+       here, so a missed week is filled in without losing the month in view.
+       Delegated from the document and bound once, so redrawing the grid
+       cannot end up with two listeners opening two dialogs. */
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-add-day]");
+      if (!btn) return;
+      event.preventDefault();
+      openSaleForm({ dateKey: btn.dataset.addDay });
+    });
+
+    function goToMonth(next) {
+      if (!monthBounds(next) || next === yearMonth) return;
+      yearMonth = next;
+      cells = [];
+      loadMonth();
+    }
+
+    initAppShell({
+      onReady: renderPage,
+      onDayChange: () => {
+        /* Midnight Kolkata: a cell that was "future" becomes today, and
+           today becomes yesterday. Only the month in view can be affected
+           by that, so the current month is re-read and older ones are left
+           exactly as they were. */
+        if (yearMonth >= currentYearMonth()) loadMonth();
+      },
+    });
+
+    /* A sale recorded from here — tonight's or a backfill — changes this
+       month, so the grid is re-read rather than patched by hand: the day's
+       counters, and therefore its cell, come from the server. */
+    onSaleRecorded(({ dateKey: saleDate } = {}) => {
+      if (!saleDate) return;
+      if (saleDate.slice(0, 7) === yearMonth) loadMonth();
+    });
+  </script>
+</body>
+</html>
