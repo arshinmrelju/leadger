@@ -880,12 +880,25 @@ hardening pass.
   contribution, in its own direction, so a drifted head refuses every delete,
   edit and settle on that day while still accepting new sales. Open the
   Developer console → **Day integrity**, pick the day and press **Check day**:
-  it adds up the day's sales and shows which field is out. It reads only —
-  nothing is changed.
+  it adds up the day's sales and shows which field is out. Checking reads only
+  — nothing is changed.
   - The usual cause is a sale deleted straight from the Firestore console: no
     counters move with it, so the head keeps its money. The head stays a
     *valid* counter set while it is wrong, which is why nothing on screen
     ever looked broken.
+  - **One phantom sale is repaired from that same screen.** `boundedCounterStep`
+    already lets a head move by up to one sale and up to `HEAD_MONEY_STEP`
+    (100000000000 paise) per money field, with an after-set that still adds up
+    — so the day's real totals can be written back as a plain head write. No
+    sale is touched and no rule is changed: `repairDayHead()` re-reads the head
+    and re-checks the bound before spending the write, so a plan built from a
+    stale read fails with a sentence instead of a permission error.
+    `counterStepAllowed()` mirrors that bound in the client, and
+    `tests/ledger.mjs` reads `firestore.rules` and asserts the two still agree.
+  - A **closed** day's counters are frozen on purpose — the close and reopen
+    rules both pin them unchanged — so reopen, repair, then close again.
+  - A drift wider than one sale is reported as needing a person, not forced
+    through. The rules bound is not widened to make a button work.
   - The same check names a sale the rules cannot read at all — a document
     written before the per-method split has no `amounts` map, and
     `firestore.rules` reads `resource.data.amounts.gross` when deleting one,

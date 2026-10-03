@@ -180,3 +180,56 @@ export function stepCounters(counters, amounts, step = 1) {
     collectedPaise: toCounterInt(counters.collectedPaise) + amounts.collected * step,
   };
 }
+
+/* ------------------------------------------------------------------
+   The bound the rules put on a day head's OWN write
+   ------------------------------------------------------------------
+   A head cannot see the sale that moved it, so firestore.rules
+   never asks "did this head move by exactly this sale?" — that is
+   `headSteppedBy`, and it is checked on the SALE. The head's own
+   update rule (`boundedCounterStep`) only asks whether the change is
+   small enough to be a sale-sized move at all: a sale count that
+   shifts by no more than one, money that moves by no more than
+   HEAD_MONEY_STEP per field, and an after-set that still satisfies
+   the invariant.
+
+   Mirrored here rather than hard-coded at each call site, because
+   the app has to be able to answer "will the rules accept this
+   write?" BEFORE spending it — a refusal is otherwise
+   indistinguishable from a drifted day. tests/ledger.mjs reads
+   firestore.rules and asserts these two constants still match
+   `boundedCounterStep`, so the two cannot drift apart silently.
+   ------------------------------------------------------------------ */
+
+/** Most a head's sale count may move in one accepted write. */
+export const HEAD_COUNT_STEP = 1;
+
+/** Most any one money counter may move, in paise, in one write. */
+export const HEAD_MONEY_STEP = 100000000000;
+
+/**
+ * Would firestore.rules accept a head update from `before` to
+ * `after`? The exact mirror of `boundedCounterStep`, deliberately
+ * including what it does NOT check: nothing is said about `before`.
+ * That is the whole reason a wrong head can be put right — the rule
+ * judges the destination, not the journey.
+ *
+ * @param {object} before  the counters as stored
+ * @param {object} after   the counters the write would leave behind
+ * @returns {boolean}
+ */
+export function counterStepAllowed(before, after) {
+  if (!isCounterSetValid(after)) return false;
+  if (!before || typeof before !== "object") return false;
+
+  const countDelta = toCounterInt(after.txnCount) - toCounterInt(before.txnCount);
+  if (countDelta > HEAD_COUNT_STEP || countDelta < -HEAD_COUNT_STEP) return false;
+
+  for (const field of COUNTER_FIELDS) {
+    if (field === "txnCount") continue;
+    const moved = toCounterInt(after[field]) - toCounterInt(before[field]);
+    if (moved > HEAD_MONEY_STEP || moved < -HEAD_MONEY_STEP) return false;
+  }
+
+  return true;
+}

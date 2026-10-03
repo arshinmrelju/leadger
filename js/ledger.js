@@ -55,6 +55,7 @@ import {
   splitAmounts,
   amountsFromDoc,
   isCounterSetValid,
+  counterStepAllowed,
 } from "./day-heads.js";
 import { createReadCache } from "./read-cache.js";
 import {
@@ -1499,6 +1500,83 @@ export async function deleteTransaction(txnId, dateKey) {
   forgetReceiptImage(dateKey, id);
 
   return { txnId: id };
+}
+
+/**
+ * Put a day's head back in step with that day's sales.
+ *
+ * This is the one write in the app that is NOT the mirror of a sale,
+ * and it is deliberately as narrow as the rules allow. It writes
+ * counters and nothing else: no sale is created, edited or deleted,
+ * so none of the sale rules is involved and there is no amount here
+ * that a caller could use to move a day's money. What the rules check
+ * on the head — a sale-sized move, and an after-set that still adds
+ * up — is re-checked here against the head as it stands RIGHT NOW, so
+ * a plan built from a stale read fails with a sentence instead of a
+ * permission-denied.
+ *
+ * The counters are written as literal values, not increments. An
+ * increment would be one more thing that can be out of step; this way
+ * the write says what the day is worth, and running it twice lands on
+ * the same numbers.
+ *
+ * @param {string} dateKey  Asia/Kolkata `YYYY-MM-DD`
+ * @param {object} target   the counters to leave on the head
+ * @returns {Promise<{dateKey: string, counters: object}>}
+ * @throws {Error} with a sentence the shopkeeper can act on
+ */
+export async function repairDayHead(dateKey, target) {
+  if (!isValidDateKey(dateKey)) throw new Error("That business day is not valid.");
+
+  const b = await bridge();
+  const fs = b.firestore;
+  const user = b.auth.currentUser;
+  if (!user || !user.uid) {
+    throw new Error("You need to be signed in to repair a day.");
+  }
+
+  /* Read the head as it is NOW, not as the check saw it. Somebody may
+     have sold something in between, and a correction computed against
+     an older total would put the day out of step all over again. */
+  const ref = headRef(fs, b.db, dateKey);
+  const snap = await chargedGetDoc(fs, ref);
+  if (!snap.exists()) {
+    throw new Error("That day has no head, so there is nothing to repair.");
+  }
+  const head = snap.data() || {};
+
+  if (head.state === DAY_STATE.CLOSED) {
+    throw new Error("That day is closed. Reopen it, repair it, then close it again.");
+  }
+
+  /* The same bound firestore.rules applies, checked here so a refusal
+     arrives as an explanation rather than as "permission-denied". */
+  if (!counterStepAllowed(head.counters, target)) {
+    throw new Error(
+      "That day is out by more than the rules allow a head to move in one write. This needs a person to go " +
+        "through the day's sales."
+    );
+  }
+
+  await guardQuota(() =>
+    fs.updateDoc(ref, {
+      "counters.txnCount": target.txnCount,
+      "counters.grossPaise": target.grossPaise,
+      "counters.cashPaise": target.cashPaise,
+      "counters.upiPaise": target.upiPaise,
+      "counters.cardPaise": target.cardPaise,
+      "counters.duePaise": target.duePaise,
+      "counters.collectedPaise": target.collectedPaise,
+      updatedAt: fs.serverTimestamp(),
+      updatedBy: user.uid,
+    })
+  );
+  noteWrites();
+  /* The calendar and the ledger both draw their money from this head's
+     cached reads, so both have to be told. */
+  invalidateDayReads(dateKey);
+
+  return { dateKey, counters: target };
 }
 
 /* ------------------------------------------------------------------

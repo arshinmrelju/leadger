@@ -23,6 +23,7 @@
 import {
   COUNTER_FIELDS,
   amountsFromDoc,
+  counterStepAllowed,
   emptyCounters,
   isCounterSetValid,
   stepCounters,
@@ -256,4 +257,154 @@ export function describeAudit(audit) {
           "the head is put back in step.",
       };
   }
+}
+
+/* =========================================================
+   The repair
+   ------------------------------------------------------------
+   firestore.rules' head rule already accepts a bounded move on
+   its own: a sale count that shifts by no more than one, money
+   that moves by no more than HEAD_MONEY_STEP per field, and an
+   after-set that still adds up (boundedCounterStep, mirrored by
+   counterStepAllowed).
+
+   That is enough to undo the commonest drift — a head still
+   carrying one phantom sale, left behind by a console delete —
+   WITHOUT a rule change and WITHOUT widening what a write may
+   do. The correction is a plain head write; no sale is touched,
+   so no sale rule is involved and nothing can be forged through
+   it. Anything the bound would not accept is reported as needing
+   more than this screen can do, rather than being forced through.
+   ========================================================= */
+
+/**
+ * What can be done about a report. Ordered so the first test that
+ * matches is the one that explains itself to the shopkeeper.
+ */
+export const REPAIR_STATUS = Object.freeze({
+  /** The head is in step. Nothing to repair. */
+  NOT_NEEDED: "not-needed",
+  /** A correction exists and the rules will accept it. */
+  READY: "ready",
+  /** Drift is real but larger than a single sale-sized move. */
+  TOO_LARGE: "too-large",
+  /** The day is closed, and a closed head's counters are frozen. */
+  CLOSED: "closed",
+  /** There is no head, so there is nothing to correct against. */
+  NO_HEAD: "no-head",
+  /** No trustworthy number to write — an unreadable or partial day. */
+  UNUSABLE: "unusable",
+});
+
+/**
+ * Decide whether a report can be acted on, and produce the exact
+ * counters the repair would write.
+ *
+ * The report is the only input on purpose: the numbers a repair
+ * writes must be the very numbers the check printed, and deriving
+ * them a second time here is how the two would ever disagree.
+ *
+ * A BAD_HEAD is not rejected on sight. boundedCounterStep judges
+ * the destination rather than the starting point, so a head whose
+ * counters are nonsense can still be written back to a valid set
+ * provided the move is sale-sized — which is precisely the case
+ * worth rescuing. The bound decides, not the label.
+ *
+ * @param {object} audit  a report from auditDayCounters()
+ * @returns {{status: string, repairable: boolean, target: object|null,
+ *            steps: object[], reason: string}}
+ */
+export function planDayRepair(audit) {
+  const a = audit && typeof audit === "object" ? audit : auditDayCounters();
+  const day = a.dateKey || "this day";
+  const sales = a.saleCount === 1 ? "1 sale" : a.saleCount + " sales";
+
+  const before = {};
+  const target = {};
+  for (const field of COUNTER_FIELDS) {
+    before[field] = asInt(a.headCounters ? a.headCounters[field] : 0);
+    target[field] = asInt(a.actualCounters ? a.actualCounters[field] : 0);
+  }
+
+  const steps = AUDIT_FIELDS.filter((f) => before[f.field] !== target[f.field]).map((f) => ({
+    field: f.field,
+    label: f.label,
+    money: f.money,
+    before: before[f.field],
+    after: target[f.field],
+    delta: target[f.field] - before[f.field],
+  }));
+
+  const plan = (status, reason) => ({
+    status,
+    repairable: status === REPAIR_STATUS.READY,
+    target: status === REPAIR_STATUS.READY ? target : null,
+    steps,
+    reason,
+  });
+
+  if (!a.headCounters) {
+    return plan(
+      REPAIR_STATUS.NO_HEAD,
+      day + " has " + sales + " but no day head at all. There is nothing to correct — the head has to be " +
+        "opened, and no write to this day is allowed until it is."
+    );
+  }
+
+  if (a.unreadable.length) {
+    return plan(
+      REPAIR_STATUS.UNUSABLE,
+      a.unreadable.length === 1
+        ? "One sale on " + day + " carries no per-method amounts map, so its contribution cannot be added up. " +
+          "Writing a total that leaves it out would make the day wrong in a new way."
+        : a.unreadable.length + " sales on " + day + " carry no per-method amounts map, so their " +
+          "contributions cannot be added up. Writing a total that leaves them out would make the day wrong " +
+          "in a new way."
+    );
+  }
+
+  if (a.truncated) {
+    return plan(
+      REPAIR_STATUS.UNUSABLE,
+      "Not every sale on " + day + " could be read, so the sum is partial. Repairing to a partial sum would " +
+        "be worse than leaving the head alone."
+    );
+  }
+
+  if (a.ok) {
+    return plan(REPAIR_STATUS.NOT_NEEDED, day + " is already in step. There is nothing to repair.");
+  }
+
+  /* Every branch that permits a closed head to change its counters
+     requires them UNCHANGED (the close and reopen rules both pin
+     `request.resource.data.counters == resource.data.counters`).
+     A frozen head is not a rule bug, it is the point of closing a
+     day, so this is reported rather than worked around. */
+  if (a.state === "closed") {
+    return plan(
+      REPAIR_STATUS.CLOSED,
+      day + " is closed. A closed day's counters are frozen by the rules on purpose — reopen the day, repair " +
+        "it, then close it again."
+    );
+  }
+
+  if (!counterStepAllowed(before, target)) {
+    return plan(
+      REPAIR_STATUS.TOO_LARGE,
+      "The head for " + day + " is out by more than one sale" +
+        (Math.abs(target.txnCount - before.txnCount) !== 1
+          ? " (" + Math.abs(target.txnCount - before.txnCount) + " sales)"
+          : "") +
+        ". The rules only let a head move by one sale at a time, so this needs a person to look at the day's " +
+        "sales rather than a button."
+    );
+  }
+
+  return plan(
+    REPAIR_STATUS.READY,
+    "The head for " + day + " is out by " +
+      (Math.abs(target.txnCount - before.txnCount) === 1 ? "one phantom sale" : "a corrupt counter") +
+      ". Writing the day's real totals back is a move of the size the rules already allow, and it touches no " +
+      "sale."
+  );
 }

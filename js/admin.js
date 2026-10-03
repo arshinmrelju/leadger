@@ -28,8 +28,14 @@ import {
   fetchTransactions,
   fetchExpenses,
   fetchMonthHeads,
+  repairDayHead,
 } from "./ledger.js";
-import { auditDayCounters, describeAudit, AUDIT_STATUS } from "./day-audit.js";
+import {
+  auditDayCounters,
+  describeAudit,
+  planDayRepair,
+  AUDIT_STATUS,
+} from "./day-audit.js";
 import { findMissingCatalogServices, SERVICE_CATALOG } from "./service-catalog.js";
 import {
   reportError,
@@ -295,7 +301,7 @@ export async function renderAdminPage(ctx) {
     '<button type="button" class="btn btn-sm btn-secondary" id="auditMonthBtn">Check month</button>' +
     "</div></div>" +
     '<div class="card-body">' +
-    '<p class="small muted" style="margin:0 0 .75rem;">Read-only. Adds up a day&rsquo;s sales and compares the total with the counters on that day&rsquo;s head. A head that has drifted out of step with its sales refuses every edit, settle and delete on that day, and the shop can only be told &ldquo;not allowed&rdquo;. Nothing here is changed or repaired.</p>' +
+    '<p class="small muted" style="margin:0 0 .75rem;">Adds up a day&rsquo;s sales and compares the total with the counters on that day&rsquo;s head. Checking costs reads and changes nothing. A head that has drifted out of step with its sales refuses every edit, settle and delete on that day, and the shop can only be told &ldquo;not allowed&rdquo; &mdash; so when the difference is one sale wide, this page offers to put the counters back.</p>' +
     '<div id="auditResult">' + auditPlaceholderMarkup() + "</div>" +
     "</div></section>";
 
@@ -752,6 +758,12 @@ function wireDayAudit() {
   const dateInput = document.getElementById("auditDate");
   document.getElementById("auditDayBtn").addEventListener("click", runDayAudit);
   document.getElementById("auditMonthBtn").addEventListener("click", runMonthAudit);
+  /* Delegated, because the repair button is part of a report that is
+     thrown away and rebuilt on every check. */
+  document.getElementById("auditResult").addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-audit-repair]");
+    if (btn && !btn.disabled) runDayRepair(btn.getAttribute("data-date"), btn);
+  });
   dateInput.addEventListener("change", () => {
     /* Cleared rather than re-run: every check spends reads, and a stale
        answer sitting under a freshly picked date is worse than none. */
@@ -844,6 +856,104 @@ function auditPillMarkup(audit) {
   return '<span class="pill ' + pill + '">' + label + "</span>";
 }
 
+/**
+ * What can be done about the report, and the button that does it.
+ *
+ * Shown for every verdict that is not "in step", because the most
+ * common follow-up question is not "what is wrong" but "so what do
+ * I do" — and when the answer is "a person has to look at this",
+ * saying so plainly is more use than another table.
+ */
+function auditRepairMarkup(audit) {
+  const plan = planDayRepair(audit);
+  if (!plan || plan.status === "not-needed") return "";
+
+  if (!plan.repairable) {
+    return (
+      '<p class="small muted" style="margin:.75rem 0 0;">' + escapeHtml(plan.reason) + "</p>"
+    );
+  }
+
+  const lines = plan.steps
+    .map(
+      (s) =>
+        "<li>" + escapeHtml(s.label) + ": " +
+        escapeHtml(auditAmount(s, s.before)) + " &rarr; " +
+        escapeHtml(auditAmount(s, s.after)) + "</li>"
+    )
+    .join("");
+
+  return (
+    '<div class="alert alert-warning" style="margin-top:.75rem;"><div>' +
+    "<strong>This day can be put back in step.</strong>" +
+    '<p class="small" style="margin:.25rem 0 0;">' + escapeHtml(plan.reason) + "</p>" +
+    '<ul class="small" style="margin:.5rem 0 .75rem;padding-left:1.25rem;">' + lines + "</ul>" +
+    '<button type="button" class="btn btn-sm btn-primary" data-audit-repair="1" data-date="' +
+    escapeHtml(audit.dateKey) + '">Repair ' + escapeHtml(audit.dateKey) + "</button>" +
+    "</div></div>"
+  );
+}
+
+async function runDayRepair(dateKey, btn) {
+  if (!isValidDateKey(dateKey)) {
+    toast("Pick a valid date to repair.", "error");
+    return;
+  }
+
+  /* Re-checked here, not reused from the report on screen: the day may
+     have taken a sale since, and the counters to write are computed from
+     the sales. It costs nothing when the cache is warm. */
+  setLoading(btn, true);
+  let plan;
+  try {
+    plan = planDayRepair(await readDayForAudit(dateKey));
+  } catch (err) {
+    setLoading(btn, false);
+    console.error("[trustx-ledger] repair pre-check:", err);
+    toast(reportError(err), "error");
+    return;
+  }
+
+  if (!plan.repairable) {
+    setLoading(btn, false);
+    toast(plan.reason, "error");
+    return;
+  }
+
+  const ok = await confirm({
+    title: "Put " + dateKey + " back in step?",
+    message:
+      "The day's head will be set to what its " +
+      (plan.target.txnCount === 1 ? "1 sale adds up to" : plan.target.txnCount + " sales add up to") +
+      ". No sale is created, changed or deleted, and the day stays open.",
+    confirmText: "Repair the day",
+    cancelText: "Cancel",
+  });
+  if (!ok) {
+    setLoading(btn, false);
+    return;
+  }
+
+  try {
+    await repairDayHead(dateKey, plan.target);
+    toast(dateKey + " is back in step. Its sales can be edited, settled and deleted again.", "success");
+  } catch (err) {
+    console.error("[trustx-ledger] repair day head:", err);
+    toast(reportError(err), "error");
+  }
+
+  /* Shown either way: after a repair the report proves it worked, and
+     after a refusal the reason is on screen instead of in a toast. */
+  try {
+    document.getElementById("auditResult").innerHTML = auditReportMarkup(await readDayForAudit(dateKey));
+  } catch (err) {
+    document.getElementById("auditResult").innerHTML = auditPlaceholderMarkup(
+      "Could not re-check " + dateKey,
+      reportError(err)
+    );
+  }
+}
+
 function auditReportMarkup(audit) {
   const { tone, headline, detail } = describeAudit(audit);
   const alert = tone === "ok" ? "success" : tone === "warning" ? "warning" : "error";
@@ -859,7 +969,8 @@ function auditReportMarkup(audit) {
     (audit.state ? '<span class="pill pill-neutral">' + (audit.state === "closed" ? "Day closed" : "Day open") + "</span>" : "") +
     '<span class="small muted">Read-only: nothing was changed.</span>' +
     "</div>" +
-    auditDriftMarkup(audit)
+    auditDriftMarkup(audit) +
+    auditRepairMarkup(audit)
   );
 }
 

@@ -64,13 +64,18 @@ import {
   amountsFromDoc,
   isCounterSetValid,
   stepCounters,
+  counterStepAllowed,
+  HEAD_COUNT_STEP,
+  HEAD_MONEY_STEP,
 } from "../js/day-heads.js";
 
 import {
   AUDIT_FIELDS,
   AUDIT_STATUS,
+  REPAIR_STATUS,
   auditDayCounters,
   describeAudit,
+  planDayRepair,
   sumDayCounters,
 } from "../js/day-audit.js";
 
@@ -1166,6 +1171,222 @@ test("auditDayCounters survives rubbish, because a diagnostic that crashes is us
   assert.equal(audit.saleCount, 1, "holes in the list are skipped, and the real sale still counts");
   assert.deepEqual(audit.unreadable, [], "a hole is not a malformed sale, so it is not named as one");
   assert.equal(typeof describeAudit(audit).detail, "string");
+});
+
+/* =========================================================
+   Putting a stranded day back in step
+   -----------------------------------------------------------------
+   firestore.rules' head rule (boundedCounterStep) already accepts
+   a bounded move on its own: a sale count that shifts by no more
+   than one, money within HEAD_MONEY_STEP per field, and an
+   after-set that still adds up. One phantom sale is exactly that
+   size, so the commonest drift can be undone WITHOUT a rule
+   change and without touching a sale.
+
+   These tests hold that line in two places: the bound must keep
+   matching the rules file, and the plan must refuse everything the
+   bound would not accept, rather than forcing a correction through.
+   ========================================================= */
+
+/** The head of a day one phantom cash sale taller than its real sales. */
+function strandedHead(sales, phantom) {
+  return { state: DAY_STATE.OPEN, counters: stepCounters(headFor(sales), amountsFromDoc(phantom), 1) };
+}
+
+test("the client's copy of the rules' head bound still matches firestore.rules", () => {
+  const rules = fs.readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
+  const bound = rules.match(/function boundedCounterStep[\s\S]*?\n      \}/);
+  assert.ok(bound, "boundedCounterStep must still exist in firestore.rules");
+
+  /* The money limit is written out in full in every comparison — two per
+     money field, one for each direction. If the rules' ceiling is ever
+     raised, this fails and the client is corrected with it — rather than
+     the app quietly offering repairs the rules will refuse. */
+  const steps = (bound[0].match(/100000000000/g) || []).length;
+  assert.equal(steps, 12, "all six money fields are still bounded in both directions, by one ceiling");
+  assert.equal(HEAD_MONEY_STEP, 100000000000, "the client's ceiling must be the rules' ceiling");
+  assert.equal(HEAD_COUNT_STEP, 1, "the rules still allow a head to move by one sale, not two");
+  assert.match(bound[0], /after\.txnCount == before\.txnCount - 1/, "a head may still lose one sale");
+  assert.match(bound[0], /countersOk\(after\)/, "the rules judge the destination, not the journey");
+});
+
+test("counterStepAllowed mirrors the rules: one sale, a valid destination", () => {
+  const before = headFor([storedSale("t1", 10000, "cash"), storedSale("t2", 25000, "upi")]);
+
+  assert.ok(counterStepAllowed(before, headFor([storedSale("t1", 10000, "cash")])), "one sale out");
+  assert.ok(
+    counterStepAllowed(before, stepCounters(before, amountsFromDoc(storedSale("t3", 1, "card")), 1)),
+    "one sale in",
+  );
+  assert.ok(counterStepAllowed(before, before), "no change at all");
+
+  /* Losing the last sale leaves an empty day, which is a legitimate
+     destination — losing two is not a move the rules recognise. */
+  const oneSale = headFor([storedSale("t1", 10000, "cash")]);
+  assert.ok(counterStepAllowed(oneSale, emptyCounters()), "an empty day is a legitimate destination");
+  assert.equal(counterStepAllowed(before, emptyCounters()), false, "but not two sales in one write");
+
+  /* Two phantom sales is one move too many, and that refusal is the
+     whole reason the app stops here instead of correcting the day. */
+  const twoOut = emptyCounters();
+  assert.equal(counterStepAllowed(before, twoOut), false, "two sales out is refused");
+  assert.equal(
+    counterStepAllowed(before, { ...before, txnCount: before.txnCount + 2 }),
+    false,
+    "a count two higher is refused",
+  );
+  assert.equal(
+    counterStepAllowed(before, { ...before, grossPaise: before.grossPaise + HEAD_MONEY_STEP + 1 }),
+    false,
+    "money past the ceiling is refused",
+  );
+  assert.equal(
+    counterStepAllowed(before, { ...before, grossPaise: before.grossPaise + 100, cashPaise: 0 }),
+    false,
+    "a destination whose buckets no longer add up is refused",
+  );
+  assert.equal(counterStepAllowed(before, null), false);
+});
+
+test("planDayRepair offers a repair for a head one phantom sale too tall", () => {
+  const sales = [storedSale("t1", 10000, "cash"), storedSale("t2", 25000, "upi")];
+  const phantom = storedSale("gone", 5000, "cash");
+  const audit = auditDayCounters({ dateKey: "2026-10-02", head: strandedHead(sales, phantom), rows: sales });
+
+  assert.equal(audit.status, AUDIT_STATUS.DRIFTED, "the day is the case this exists for");
+  const plan = planDayRepair(audit);
+  assert.equal(plan.status, REPAIR_STATUS.READY);
+  assert.equal(plan.repairable, true);
+
+  /* The counters to write are the report's own numbers, not a second
+     derivation of them: two sums could disagree, and then the screen
+     would promise one thing and write another. */
+  assert.deepEqual(plan.target, audit.actualCounters);
+  assert.deepEqual(plan.target, headFor(sales));
+  assert.equal(plan.steps.length > 0, true);
+  assert.match(plan.reason, /one phantom sale/);
+});
+
+test("a repaired head is one the rules would accept from the head it has", () => {
+  const sales = [storedSale("t1", 10000, "cash"), storedSale("t2", 40000, "due")];
+  const head = strandedHead(sales, storedSale("gone", 7000, "card"));
+  const plan = planDayRepair(auditDayCounters({ dateKey: "2026-10-02", head, rows: sales }));
+
+  assert.equal(plan.repairable, true);
+  assert.ok(
+    counterStepAllowed(head.counters, plan.target),
+    "the repair must fit boundedCounterStep, or the write is refused and the shop is told nothing",
+  );
+});
+
+test("planDayRepair refuses everything it cannot do, and says which", () => {
+  const sales = [storedSale("t1", 10000, "cash"), storedSale("t2", 25000, "upi")];
+
+  const inStep = planDayRepair(
+    auditDayCounters({ dateKey: "2026-10-02", head: { state: DAY_STATE.OPEN, counters: headFor(sales) }, rows: sales })
+  );
+  assert.equal(inStep.status, REPAIR_STATUS.NOT_NEEDED);
+  assert.equal(inStep.repairable, false, "a healthy day is never offered a repair");
+
+  /* Two phantom sales: real, and beyond what one bounded write may do. */
+  const twoGone = stepCounters(
+    headFor(sales),
+    amountsFromDoc(storedSale("g1", 1000, "cash")),
+    1
+  );
+  twoGone.txnCount += 1;
+  twoGone.grossPaise += 1000;
+  twoGone.cashPaise += 1000;
+  twoGone.collectedPaise += 1000;
+  const wide = planDayRepair(
+    auditDayCounters({
+      dateKey: "2026-10-02",
+      head: { state: DAY_STATE.OPEN, counters: twoGone },
+      rows: sales,
+    })
+  );
+  assert.equal(wide.status, REPAIR_STATUS.TOO_LARGE);
+  assert.equal(wide.repairable, false, "the app must not widen the rules to finish the job");
+  assert.match(wide.reason, /person to look/);
+
+  /* A closed head's counters are frozen by the close and reopen rules
+     both, which pin them unchanged. Reported, not worked around. */
+  const closed = planDayRepair(
+    auditDayCounters({
+      dateKey: "2026-10-02",
+      head: { state: DAY_STATE.CLOSED, counters: strandedHead(sales, storedSale("gone", 5000, "cash")).counters },
+      rows: sales,
+    })
+  );
+  assert.equal(closed.status, REPAIR_STATUS.CLOSED);
+  assert.match(closed.reason, /reopen the day/i);
+
+  const noHead = planDayRepair(
+    auditDayCounters({ dateKey: "2026-10-02", head: null, rows: sales })
+  );
+  assert.equal(noHead.status, REPAIR_STATUS.NO_HEAD);
+
+  /* Writing a total that leaves out a sale the rules cannot read
+     would be a new kind of wrong, so there is nothing to write. */
+  const unreadable = planDayRepair(
+    auditDayCounters({
+      dateKey: "2026-10-02",
+      head: { state: DAY_STATE.OPEN, counters: headFor(sales) },
+      rows: [storedSale("t1", 10000, "cash"), { txnId: "old", total: 25000, paymentMethod: "upi" }],
+    })
+  );
+  assert.equal(unreadable.status, REPAIR_STATUS.UNUSABLE);
+  assert.equal(unreadable.repairable, false);
+
+  const partial = planDayRepair(
+    auditDayCounters({
+      dateKey: "2026-10-02",
+      head: { state: DAY_STATE.OPEN, counters: strandedHead(sales, storedSale("gone", 5000, "cash")) },
+      rows: sales,
+      truncated: true,
+    })
+  );
+  assert.equal(partial.status, REPAIR_STATUS.UNUSABLE);
+  assert.equal(partial.repairable, false, "a partial sum is not a total to write");
+
+  for (const plan of [inStep, wide, closed, noHead, unreadable, partial]) {
+    assert.equal(plan.target, null, "nothing refused may hand back counters to write");
+    assert.equal(typeof plan.reason, "string");
+    assert.ok(plan.reason.length > 0, "a refusal has to explain itself");
+  }
+});
+
+test("a corrupt head is judged by the bound, not by its label", () => {
+  /* boundedCounterStep never inspects where the counters came from, so
+     a head that is not even a valid counter set can still be written
+     back to one that is — provided the move is sale-sized. Labelling
+     it "bad head" and stopping there would leave the day frozen. */
+  const sales = [storedSale("t1", 10000, "cash"), storedSale("t2", 25000, "upi")];
+  const broken = { txnCount: 4, grossPaise: 99999, cashPaise: 1, upiPaise: 0, cardPaise: 0, duePaise: 0, collectedPaise: 0 };
+  const audit = auditDayCounters({ dateKey: "2026-10-02", head: { state: DAY_STATE.OPEN, counters: broken }, rows: sales });
+  assert.equal(audit.status, AUDIT_STATUS.BAD_HEAD);
+
+  const nearEnough = { ...broken, txnCount: 3 };
+  const plan = planDayRepair(
+    auditDayCounters({ dateKey: "2026-10-02", head: { state: DAY_STATE.OPEN, counters: nearEnough }, rows: sales })
+  );
+  assert.equal(plan.status, REPAIR_STATUS.READY);
+  assert.deepEqual(plan.target, headFor(sales));
+  assert.ok(counterStepAllowed(nearEnough, plan.target));
+
+  const farOff = planDayRepair(
+    auditDayCounters({ dateKey: "2026-10-02", head: { state: DAY_STATE.OPEN, counters: broken }, rows: sales })
+  );
+  assert.equal(farOff.repairable, false, "a count that cannot be walked back one sale at a time is not ours to fix");
+});
+
+test("planDayRepair survives rubbish and a missing report", () => {
+  for (const bad of [null, undefined, {}, 0, "nope"]) {
+    const plan = planDayRepair(bad);
+    assert.equal(typeof plan.reason, "string");
+    assert.equal(plan.repairable, false, "an unreadable report must never authorise a write");
+  }
+  assert.ok(Object.isFrozen(REPAIR_STATUS));
 });
 
 /* =========================================================
