@@ -62,6 +62,10 @@ export const DEFAULT_SERVICE_PRICE_RUPEES = 0;
  * shop already has keep the sortOrder they were seeded with - so the array
  * would order one shop's catalog differently from another's. Appending gives
  * a fresh shop and an upgraded one the same order.
+ *
+ * The government band is FULL at ten (300-390). The next job that belongs
+ * there has to open a band at 900, not take slot 400 - that would list it
+ * under "Online application / digital services" with no error anywhere.
  */
 const GROUPS = [
   {
@@ -102,6 +106,7 @@ const GROUPS = [
       ["Legal Document Work", "LG"],
       ["PVC Card", "PV"],
       ["Passport Application", "PP"],
+      ["Legal Letter", "LL"],
     ],
   },
   {
@@ -115,6 +120,7 @@ const GROUPS = [
       ["Document Uploading", "DU"],
       ["Print Application Copy", "AP"],
       ["Download / Print Certificate", "DC"],
+      ["Family Membership", "FM"],
     ],
   },
   {
@@ -143,6 +149,17 @@ const GROUPS = [
     services: [
       ["Encumbrance Certificate", "EN"],
       ["Land Tax", "LT"],
+      ["Non-Attachment Certificate", "NA"],
+    ],
+  },
+  {
+    id: "certificates",
+    label: "Certificates & vital records",
+    base: 800,
+    services: [
+      ["Birth Certificate", "BC"],
+      ["Birth Correction", "BR"],
+      ["Caste Certificate", "CC"],
     ],
   },
 ];

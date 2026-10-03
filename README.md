@@ -393,11 +393,13 @@ keeps an **Add default services** button for the same job, as a repair tool.
   keys with `hasOnly([...])`, so a `category` field would be rejected without
   a rules change. Instead each group owns a `sortOrder` band (100s = printing,
   200s = computer/DTP, 300s = government/certificates, 400s = online, 500s =
-  photo, 600s = bill payment/utility, 700s = property/land records), which
+  photo, 600s = bill payment/utility, 700s = property/land records,
+  800s = certificates/vital records), which
   `fetchServices()` already sorts by — so the counter's groups appear in order
   in every picker, dropdown and grid. A band is 100 wide and entries step by
   10, so a group tops out at 10 services; an 11th would land under the next
-  heading, and the fix is a new band 100 above the last one.
+  heading, and the fix is a new band 100 above the last one. The 300s
+  (government/certificates) band is full at ten.
 - **`code` is the tile.** The two-letter code is the badge on the quick grids
   (the UI truncates it to two characters), so it is a display shortcut, not an
   inventory code.
