@@ -408,3 +408,38 @@ export function planDayRepair(audit) {
       "sale."
   );
 }
+
+/**
+ * The sentence a refused write earns, with the cause named.
+ *
+ * Lives here rather than beside the toast so it can be tested: what the
+ * shop is told after a refusal is the one thing in this path nobody
+ * could check by reading the rules, and each verdict has to lead
+ * somewhere different. "In step" is the interesting one — it says the
+ * usual explanation does not apply, rather than repeating it.
+ *
+ * @param {object} audit  a report from auditDayCounters()
+ * @param {object} [plan] a plan from planDayRepair(); computed if absent
+ * @returns {string}
+ */
+export function describeRefusal(audit, plan) {
+  const a = audit && typeof audit === "object" ? audit : auditDayCounters();
+  const p = plan && typeof plan === "object" ? plan : planDayRepair(a);
+  const day = a.dateKey || "this day";
+  const said = describeAudit(a);
+
+  if (a.ok) {
+    return (
+      "The ledger was not allowed to change that sale. " + day + " was checked as it stands and its totals do " +
+      "add up, so this is not a day being out of step — the browser console has the details."
+    );
+  }
+
+  const remedy = p.repairable
+    ? "The Developer console's Day integrity card can put it back in one step."
+    : "The Developer console's Day integrity card will show the difference in full.";
+
+  return (
+    said.headline + " Nothing on " + day + " can be changed until that is put right. " + remedy
+  );
+}

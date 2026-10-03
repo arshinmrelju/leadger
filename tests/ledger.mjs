@@ -75,6 +75,7 @@ import {
   REPAIR_STATUS,
   auditDayCounters,
   describeAudit,
+  describeRefusal,
   planDayRepair,
   sumDayCounters,
 } from "../js/day-audit.js";
@@ -1387,6 +1388,97 @@ test("planDayRepair survives rubbish and a missing report", () => {
     assert.equal(plan.repairable, false, "an unreadable report must never authorise a write");
   }
   assert.ok(Object.isFrozen(REPAIR_STATUS));
+});
+
+test("a refused write is told its cause, and each cause leads somewhere else", () => {
+  const sales = [storedSale("t1", 10000, "cash"), storedSale("t2", 25000, "upi")];
+  const oneGone = auditDayCounters({
+    dateKey: "2026-10-02",
+    head: strandedHead(sales, storedSale("gone", 5000, "cash")),
+    rows: sales,
+  });
+
+  const repairable = describeRefusal(oneGone);
+  assert.match(repairable, /2026-10-02/, "the day is named, so the shop knows which day is stuck");
+  assert.match(repairable, /put it back in one step/i, "and is told the ledger can fix this one itself");
+
+  const manyGone = auditDayCounters({
+    dateKey: "2026-10-03",
+    head: { state: DAY_STATE.OPEN, counters: { ...headFor(sales), txnCount: 9, grossPaise: 90000, cashPaise: 90000, collectedPaise: 90000 } },
+    rows: sales,
+  });
+  const notRepairable = describeRefusal(manyGone);
+  assert.match(notRepairable, /2026-10-03/);
+  assert.match(
+    notRepairable,
+    /show the difference in full/i,
+    "a gap too wide to fix must not be described as fixable",
+  );
+
+  /* The most valuable sentence of the lot: the usual explanation does
+     not apply, so the shop stops looking for a closed day. */
+  const healthy = auditDayCounters({
+    dateKey: "2026-10-04",
+    head: { state: DAY_STATE.OPEN, counters: headFor(sales) },
+    rows: sales,
+  });
+  const inStep = describeRefusal(healthy);
+  assert.match(inStep, /do\s+add up/i);
+  assert.ok(
+    !/Day integrity card/.test(inStep),
+    "there is nothing to repair on a healthy day, so it must not send anyone to the repair",
+  );
+
+  /* A sale the rules cannot read is named, and no head repair is offered
+     as a way out of it — the head is not what is wrong. */
+  const unreadable = describeRefusal(
+    auditDayCounters({
+      dateKey: "2026-10-05",
+      head: { state: DAY_STATE.OPEN, counters: headFor(sales) },
+      rows: [{ txnId: "old-1", total: 25000, paymentMethod: "upi" }],
+    })
+  );
+  assert.match(unreadable, /2026-10-05/);
+  assert.ok(!/put it back in one step/i.test(unreadable), "a backfill is not a head repair");
+
+  const noHead = describeRefusal(
+    auditDayCounters({ dateKey: "2026-10-06", head: null, rows: sales })
+  );
+  assert.match(noHead, /No day head/i);
+
+  for (const said of [repairable, notRepairable, inStep, unreadable, noHead]) {
+    assert.ok(said.length > 40, "a refusal has to say enough to act on: " + said);
+    assert.match(said, /2026-10-0[2-6]/, "every one of these names the day it is about");
+  }
+
+  /* A plan is derived when not handed over, so the two cannot be quoted
+     out of step with each other. */
+  assert.equal(describeRefusal(oneGone), describeRefusal(oneGone, planDayRepair(oneGone)));
+});
+
+test("every refused change in txn-actions.js is told its cause, not just reported", () => {
+  const src = fs.readFileSync(path.join(ROOT, "js", "txn-actions.js"), "utf8");
+
+  /* Edit, settle and delete all refuse writes the same way. A bare
+     describeWriteError() left in any of them would hand the shop the
+     old "not allowed" with no day and no difference — the one sentence
+     that has already failed this shop twice. */
+  for (const stale of ["toast(describeWriteError(", "showEditError(describeWriteError("]) {
+    assert.equal(src.includes(stale), false, "no refusal may bypass the diagnosis: " + stale);
+  }
+  const uses = src.match(/await describeRefusedWrite\(/g) || [];
+  assert.equal(uses.length, 3, "edit, settle and delete each diagnose: found " + uses.length);
+
+  /* The diagnosis reads the whole day. Adding up the rows the table
+     happens to be showing would name a difference that is only a
+     pagination artefact. */
+  assert.match(src, /fetchTransactions\(\{ dateKey, limit: DIAGNOSIS_ROW_LIMIT \}\)/);
+  assert.match(src, /rows\.length >= DIAGNOSIS_ROW_LIMIT/);
+
+  /* A diagnosis that throws must never replace the error the shop was
+     actually shown. */
+  assert.match(src, /console\.error\("\[trustx-ledger\] refusal diagnosis:"[\s\S]*?return null;/);
+  assert.match(src, /if \(!found\) return plain;/);
 });
 
 /* =========================================================

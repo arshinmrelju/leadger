@@ -899,6 +899,15 @@ hardening pass.
     rules both pin them unchanged — so reopen, repair, then close again.
   - A drift wider than one sale is reported as needing a person, not forced
     through. The rules bound is not widened to make a button work.
+  - **The refusal now names its own cause.** `describeRefusedWrite()` in
+    `js/txn-actions.js` reads the day when a write comes back
+    permission-denied and puts the verdict in the toast — the day, the field,
+    and whether the ledger can repair it. `fetchTransactions` caches, so this
+    normally costs nothing after the list has been drawn, and the day's sales
+    are read whole rather than off the table on screen (which may be one page
+    of several). Any failure of the diagnosis is swallowed: it can only make
+    the message more specific, never different. The wording is
+    `describeRefusal()` in `js/day-audit.js`, where every verdict is tested.
   - The same check names a sale the rules cannot read at all — a document
     written before the per-method split has no `amounts` map, and
     `firestore.rules` reads `resource.data.amounts.gross` when deleting one,

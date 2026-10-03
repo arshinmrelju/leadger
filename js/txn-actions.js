@@ -37,12 +37,15 @@ import { formatEntryTime } from "./day-ledger.js";
 import {
   fetchServices,
   fetchDayState,
+  fetchMonthHeads,
+  fetchTransactions,
   updateTransaction,
   deleteTransaction,
   markTransactionPaid,
   fetchReceiptImage,
   isNetworkError,
 } from "./ledger.js";
+import { auditDayCounters, describeRefusal, planDayRepair } from "./day-audit.js";
 import { reportError } from "./auth.js";
 import { isQuotaExhausted, quotaResetTime } from "./quota.js";
 
@@ -209,6 +212,80 @@ function describeWriteError(err, closed) {
         "Day integrity check will name the day and the difference.";
   }
   return reportError(err);
+}
+
+/** Rows a refusal diagnosis reads. A day is read whole. */
+const DIAGNOSIS_ROW_LIMIT = 1000;
+
+/**
+ * When the rules refuse a change, work out which number is wrong
+ * instead of passing the refusal on.
+ *
+ * A bare "not allowed" is the one error in this app the shop cannot act
+ * on, because the cause is a comparison the client never sees: the day's
+ * head has to equal the exact sum of that day's sales. Everything needed
+ * to check it is already in the database, so it is checked here and the
+ * answer goes in the toast — the day, the field, and whether the ledger
+ * can put it right on its own.
+ *
+ * The day's sales are read rather than taken from the table on screen:
+ * the table may be showing one page of several, and adding up half a day
+ * would name a difference that is not there. `fetchTransactions` caches,
+ * so this normally costs nothing after the list has been drawn.
+ *
+ * Any failure of its own is swallowed. A diagnosis that throws must not
+ * replace the write error the shop was actually shown.
+ *
+ * @param {object} row  the sale whose change was refused
+ * @returns {Promise<{audit: object, plan: object}|null>} null if it could
+ *   not be worked out
+ */
+async function diagnoseRefusedDay(row) {
+  const dateKey = String((row && row.dateKey) || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
+
+  try {
+    const [heads, rows] = await Promise.all([
+      fetchMonthHeads({ yearMonth: dateKey.slice(0, 7) }),
+      fetchTransactions({ dateKey, limit: DIAGNOSIS_ROW_LIMIT }),
+    ]);
+    const head = heads[dateKey] || null;
+    const audit = auditDayCounters({
+      dateKey,
+      head: head ? { state: head.state, counters: head.counters } : null,
+      rows,
+      truncated: rows.length >= DIAGNOSIS_ROW_LIMIT,
+    });
+    /* Planned from this report and no other sum, so the toast and the
+       repair can never quote different numbers. */
+    return { audit, plan: planDayRepair(audit) };
+  } catch (err) {
+    console.error("[trustx-ledger] refusal diagnosis:", err);
+    return null;
+  }
+}
+
+/**
+ * The sentence a refusal earns, with the cause named when it can be
+ * found. Falls back to the plain explanation whenever the day cannot be
+ * checked, so this can only ever be more specific, never wrong.
+ *
+ * @param {Error} err
+ * @param {boolean} closed  the page's own knowledge of the day
+ * @param {object} [row]    the sale the change was about
+ * @returns {Promise<string>}
+ */
+async function describeRefusedWrite(err, closed, row) {
+  const plain = describeWriteError(err, closed);
+  if (closed || !row) return plain;
+
+  const msg = String((err && err.message) || "").toLowerCase();
+  if (!msg.includes("permission") && !msg.includes("insufficient")) return plain;
+
+  const found = await diagnoseRefusedDay(row);
+  if (!found) return plain;
+
+  return describeRefusal(found.audit, found.plan);
 }
 
 /**
@@ -517,7 +594,7 @@ async function saveEdit(event) {
   } catch (err) {
     console.error("[trustx-ledger] edit:", err);
     setLoading(saveBtn, false);
-    showEditError(describeWriteError(err, false));
+    showEditError(await describeRefusedWrite(err, false, row));
     return false;
   } finally {
     saving = false;
@@ -658,8 +735,8 @@ async function settleRow(row, closed) {
     toast("Marked as paid.", "success");
     return true;
   } catch (err) {
-    console.error("[trustx-ledger] settle:", err);
-    toast(describeWriteError(err, closed), "error");
+    console.error("[trustx-ledger] settle:", err, row.dateKey, row.txnId);
+    toast(await describeRefusedWrite(err, closed, row), "error");
     return false;
   }
 }
@@ -680,8 +757,8 @@ async function deleteRow(row, closed) {
     toast("Sale deleted.", "success");
     return true;
   } catch (err) {
-    console.error("[trustx-ledger] delete:", err);
-    toast(describeWriteError(err, closed), "error");
+    console.error("[trustx-ledger] delete:", err, row.dateKey, row.txnId);
+    toast(await describeRefusedWrite(err, closed, row), "error");
     return false;
   }
 }
