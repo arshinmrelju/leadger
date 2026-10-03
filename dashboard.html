@@ -494,18 +494,18 @@
       const refreshBtn = document.getElementById("refreshBtn");
       if (refreshBtn) refreshBtn.addEventListener("click", () => {
         setLoading(refreshBtn, true);
-        loadDashboardData().finally(() => setLoading(refreshBtn, false));
+        loadDashboardData({ force: true }).finally(() => setLoading(refreshBtn, false));
       });
     }
 
     /* ---------- Dashboard data + rendering ---------- */
 
-    async function loadDashboardData() {
+    async function loadDashboardData({ force = false } = {}) {
       const body = document.getElementById("recentBody");
       const footer = document.getElementById("recentFooter");
       const sub = document.getElementById("summarySub");
       try {
-        const summary = await fetchTodaySummary(todayKolkata());
+        const summary = await fetchTodaySummary(todayKolkata(), { force });
         renderStats(summary);
         renderRecent(summary);
         if (sub) sub.textContent = formatKolkataLong(new Date()) + " \u00B7 Asia/Kolkata";

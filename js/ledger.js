@@ -460,15 +460,18 @@ export async function fetchServices({ includeInactive = false, force = false } =
  * offline blip, so the shop believes its expenses are simply empty rather
  * than that the app has hit a wall.
  */
-async function readExpensesForDay(dateKey) {
+async function readExpensesForDay(dateKey, { force = false } = {}) {
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
-  return expensesCache.read(`day:${dateKey}`, () =>
-    guardQuota(async () => {
-      const snap = await rt.get(rt.ref(b.rtdb, "expenses", dateKey));
-      const raw = snap.val() || {};
-      return Object.keys(raw).map((id) => normalizeExpense(dateKey, id, raw[id]));
-    })
+  return expensesCache.read(
+    `day:${dateKey}`,
+    () =>
+      guardQuota(async () => {
+        const snap = await rt.get(rt.ref(b.rtdb, "expenses", dateKey));
+        const raw = snap.val() || {};
+        return Object.keys(raw).map((id) => normalizeExpense(dateKey, id, raw[id]));
+      }),
+    { force }
   );
 }
 
@@ -522,8 +525,8 @@ export async function fetchExpenses({ dateKey = null, limit = 200, days = 30 } =
 }
 
 /** Total recorded against one day, for the summary fallback. */
-async function expensesTotalForDay(dateKey) {
-  const rows = await readExpensesForDay(dateKey);
+async function expensesTotalForDay(dateKey, { force = false } = {}) {
+  const rows = await readExpensesForDay(dateKey, { force });
   return rows.reduce((sum, e) => sum + e.amountPaise, 0);
 }
 
@@ -561,8 +564,15 @@ const SUMMARY_RECENT_LIMIT = 12;
  *
  * NET = today's collections (cash + UPI + card) − today's expenses.
  * Dues are money not yet received and are excluded from NET.
+ *
+ * @param {string} [dateKey]  the business day to summarise
+ * @param {object} [opts]
+ * @param {boolean} [opts.force]  re-read the head, the rows and the expenses
+ *   from the server instead of answering from the read caches. For the
+ *   dashboard's Refresh button: a button whose whole promise is "read it
+ *   again" must not be allowed to paint the value it already had.
  */
-export async function fetchTodaySummary(dateKey = todayKolkata()) {
+export async function fetchTodaySummary(dateKey = todayKolkata(), { force = false } = {}) {
   const b = await bridge();
   const fs = b.firestore;
 
@@ -574,7 +584,7 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
      Database problem should not also cost us the day's totals. */
   let expensesPaise = 0;
   try {
-    expensesPaise = await expensesTotalForDay(dateKey);
+    expensesPaise = await expensesTotalForDay(dateKey, { force });
   } catch (err) {
     /* A spent quota is not "this day had no expenses". Swallowing it here
        would put a confidently wrong NET in front of the shopkeeper — the
@@ -594,8 +604,10 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
        The write path never reads through here.
        The key is shared with countDayTransactions() — they are the same
        document, and two keys for one doc would mean paying twice for it. */
-    head = await headCache.read(`head:${dateKey}`, () =>
-      chargedGetDoc(fs, headRef(fs, b.db, dateKey))
+    head = await headCache.read(
+      `head:${dateKey}`,
+      () => chargedGetDoc(fs, headRef(fs, b.db, dateKey)),
+      { force }
     );
   } catch (err) {
     /* A spent daily quota is not a missing head. Folding the rows here
@@ -624,7 +636,11 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
          non-zero count, and the dashboard's recent table would claim the
          shop had sold nothing all day. */
       try {
-        const recent = await fetchDayPage({ dateKey, pageSize: SUMMARY_RECENT_LIMIT });
+        const recent = await fetchDayPage({
+          dateKey,
+          pageSize: SUMMARY_RECENT_LIMIT,
+          force,
+        });
         summary.transactions = recent.rows;
         summary.hasMore = recent.hasMore;
       } catch (err) {
@@ -655,7 +671,7 @@ export async function fetchTodaySummary(dateKey = todayKolkata()) {
   /* Folding the rows is a genuine fallback here, but it is the expensive
      path by definition, so it must not run when the reason we could not
      read the head is that the day's read budget is already spent. */
-  const rows = await fetchTransactions({ dateKey, limit: MAX_DAY_LIMIT });
+  const rows = await fetchTransactions({ dateKey, limit: MAX_DAY_LIMIT, force });
   return summaryFromRows(rows, expensesPaise);
 }
 
@@ -741,6 +757,10 @@ function invalidateDayReads(dateKey) {
  * page failed with permission-denied no matter how trusted the user
  * was. Day-by-day reads are single-collection, which the rules allow,
  * and they need no composite index either.
+ *
+ * `force` re-reads instead of answering from the cache. Nothing on the
+ * write path asks for it; it exists so a summary that had to fall back to
+ * folding rows still honours an explicit "read it again".
  */
 
 /** Days walked by one all-time read. The walk stops early as soon as it
@@ -749,7 +769,7 @@ function invalidateDayReads(dateKey) {
  *  says so in its footer rather than passing the list off as "all time". */
 const HISTORY_DAY_CAP = 120;
 
-export async function fetchTransactions({ dateKey = null, limit = 200 } = {}) {
+export async function fetchTransactions({ dateKey = null, limit = 200, force = false } = {}) {
   const b = await bridge();
   const fs = b.firestore;
 
@@ -803,7 +823,7 @@ export async function fetchTransactions({ dateKey = null, limit = 200 } = {}) {
     rows.dayCapped = dayCapped;
     rows.dayCap = HISTORY_DAY_CAP;
     return rows;
-  });
+  }, { force });
 }
 
 /* ------------------------------------------------------------------
@@ -833,9 +853,11 @@ const MAX_DAY_LIMIT = 1000;
  * @param {string} opts.dateKey      Asia/Kolkata `YYYY-MM-DD`.
  * @param {number} [opts.pageSize]   Rows to return (1..1000).
  * @param {*}      [opts.cursor]     Opaque cursor from a previous page.
+ * @param {boolean} [opts.force]     Re-read the first page instead of taking
+ *   it from the rows cache.
  * @returns {Promise<{rows: object[], cursor: object|null, hasMore: boolean}>}
  */
-export async function fetchDayPage({ dateKey, pageSize = 100, cursor = null } = {}) {
+export async function fetchDayPage({ dateKey, pageSize = 100, cursor = null, force = false } = {}) {
   if (!isValidDateKey(dateKey)) {
     throw new Error("Pick a valid date to view the ledger.");
   }
@@ -870,7 +892,7 @@ export async function fetchDayPage({ dateKey, pageSize = 100, cursor = null } = 
   };
 
   if (cursor) return loadPage();
-  return rowsCache.read(`day:${dateKey}:${size}`, loadPage);
+  return rowsCache.read(`day:${dateKey}:${size}`, loadPage, { force });
 }
 
 /**
@@ -984,12 +1006,18 @@ export async function fetchDayState(dateKey) {
  * was ever recorded on it — and js/calendar.js draws that as an empty
  * day rather than a zero-sales day.
  *
+ * `force` bypasses the month cache. It exists for the Refresh button: a
+ * day closed on another device is not in this tab's cached month, and a
+ * button whose entire promise is "read it again" cannot be allowed to
+ * answer from a cached month without saying so.
+ *
  * @param {object} opts
  * @param {string} [opts.yearMonth]  `YYYY-MM`; defaults to this month in India
- * @returns {Promise<object>} dateKey -> { dateKey, state, counters },
+ * @param {boolean} [opts.force]     re-read the month from the server
+ * @returns {Promise<object>} dateKey -> { dateKey, state, closedAt, counters },
  *   carrying `yearMonth` / `monthStart` / `monthEnd` as properties
  */
-export async function fetchMonthHeads({ yearMonth = "" } = {}) {
+export async function fetchMonthHeads({ yearMonth = "", force = false } = {}) {
   const bounds = monthBounds(String(yearMonth || "").trim() || currentYearMonth());
   if (!bounds) throw new Error("Pick a valid month to view.");
 
@@ -1020,13 +1048,18 @@ export async function fetchMonthHeads({ yearMonth = "" } = {}) {
          not drawn at all. */
       if (!isValidDateKey(dateKey)) continue;
       if (dateKey < bounds.firstKey || dateKey > bounds.lastKey) continue;
-      heads[dateKey] = { dateKey, state: data.state, counters: data.counters };
+      /* `closedAt` rides along for free — it is on the document already being
+         read — and it is the second, independent witness that a day is
+         closed. js/calendar.js needs one, because a head whose `state` did
+         not come through would otherwise draw a closed day with no lock on
+         it. */
+      heads[dateKey] = { dateKey, state: data.state, closedAt: data.closedAt, counters: data.counters };
     }
     heads.yearMonth = bounds.yearMonth;
     heads.monthStart = bounds.firstKey;
     heads.monthEnd = bounds.lastKey;
     return heads;
-  });
+  }, { force });
 }
 
 /* ------------------------------------------------------------------

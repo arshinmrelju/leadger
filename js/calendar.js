@@ -171,9 +171,12 @@ export function dayCellLabel(dateKey) {
  *
  * @param {object} opts
  * @param {string} opts.yearMonth   `YYYY-MM` to draw
- * @param {object} [opts.heads]     dateKey -> { txnCount, grossPaise, collectedPaise, duePaise, closed }
+ * @param {object} [opts.heads]     dateKey -> { txnCount, grossPaise, collectedPaise,
+ *                                           duePaise, state, closedAt }
  * @param {string} [opts.todayKey]  today's dateKey, Asia/Kolkata
- * @returns {Array<object>} 42 cells, in reading order
+ * @returns {Array<object>} 42 cells, in reading order. A cell carries
+ *   `figuresUnreadable` when the day is closed but its counters do not
+ *   add up: the lock and the Closed label are real, the money is not.
  */
 export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
   const bounds = monthBounds(yearMonth);
@@ -198,10 +201,26 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
       continue;
     }
 
-    const head = inMonth ? readHead(table[dateKey]) : null;
+    const raw = inMonth ? table[dateKey] : null;
+    const head = raw ? readHead(raw) : null;
 
     if (!head) {
-      cells.push(blankCell(dateKey, inMonth, false, isToday));
+      /* No head, or one whose counters do not add up. Those are different
+         days and are not allowed to look the same: a day the shop has
+         CLOSED keeps its lock and its Closed label either way, because
+         that is a fact about the day, not a figure this app can add up.
+         Only the money stays blank — a closed day whose totals cannot be
+         read must not be drawn as a confident ₹0, and must not be listed
+         among the missed days either, or the shopkeeper would be invited
+         to type sales into a day that refuses them. */
+      const closed = isClosedHead(raw);
+      const cell = blankCell(dateKey, inMonth, false, isToday);
+      if (closed) {
+        cell.status = DAY_STATUS.CLOSED;
+        cell.closed = true;
+        cell.figuresUnreadable = true;
+      }
+      cells.push(cell);
       continue;
     }
     cells.push({
@@ -249,7 +268,27 @@ function blankCell(dateKey, inMonth, isFuture, isToday) {
     collectedPaise: 0,
     duePaise: 0,
     closed: false,
+    figuresUnreadable: false,
   };
+}
+
+/**
+ * Is this stored head a day the shop has closed?
+ *
+ * Read from the head itself rather than from whatever readHead() made of
+ * it, because whether a day is closed and whether its counters add up are
+ * two separate questions. Closing writes the state flag and the stamp
+ * together and re-opening DELETES the stamp, so a head still carrying
+ * `closedAt` was closed whatever its state field says — that is the half
+ * of the evidence a head whose `state` did not come through can still
+ * offer.
+ *
+ * @param {object} head  a stored head document (or an already-flat row)
+ * @returns {boolean}
+ */
+function isClosedHead(head) {
+  if (!head || typeof head !== "object") return false;
+  return head.state === "closed" || head.closed === true || !!head.closedAt;
 }
 
 /**
@@ -279,12 +318,16 @@ function readHead(head) {
      collected is the gross minus what is still outstanding. */
   if (collectedPaise !== grossPaise - duePaise) return null;
 
+  /* A day is closed if EITHER witness says so, so the state field and the
+     closing stamp are both consulted — see isClosedHead. */
+  const closed = isClosedHead(head);
+
   return {
     txnCount,
     grossPaise,
     collectedPaise,
     duePaise,
-    closed: head.state === "closed" || head.closed === true,
+    closed,
   };
 }
 

@@ -164,6 +164,65 @@ test("buildGrid: a day with sales is FILLED, and a closed one is CLOSED", () => 
   assert.equal(byKey["2026-09-04"].grossPaise, 25000);
 });
 
+test("buildGrid: the closing stamp alone still reads as a closed day", () => {
+  /* Closing writes the state flag and the stamp together, and re-opening
+     DELETES the stamp — so a head still carrying one was closed, whatever
+     its state field says. This is the case that used to draw a closed day
+     with its amounts right and no lock on it, which reads as "not closed"
+     rather than as "we could not tell". */
+  const stamped = head({ txnCount: 2, grossPaise: 30000, collectedPaise: 30000, duePaise: 0 }, "open");
+  stamped.closedAt = { seconds: 1, nanoseconds: 0 };
+
+  const cells = buildGrid({
+    yearMonth: "2026-09",
+    todayKey: "2026-09-15",
+    heads: { "2026-09-05": stamped },
+  });
+  const day = cells.find((c) => c.dateKey === "2026-09-05");
+
+  assert.equal(day.closed, true);
+  assert.equal(day.status, DAY_STATUS.CLOSED);
+
+  /* And the other direction matters just as much: a re-opened day has the
+     stamp deleted, so it must not be drawn as closed. */
+  const reopened = buildGrid({
+    yearMonth: "2026-09",
+    todayKey: "2026-09-15",
+    heads: {
+      "2026-09-05": head({ txnCount: 2, grossPaise: 30000, collectedPaise: 30000, duePaise: 0 }, "open"),
+    },
+  });
+
+  assert.equal(reopened.find((c) => c.dateKey === "2026-09-05").closed, false);
+});
+
+test("buildGrid: a CLOSED day keeps its lock even when its counters do not add up", () => {
+  /* Whether a day is closed and whether its counters add up are two
+     separate questions, and only one of them is about money. This head is
+     closed and its counters are broken: the lock and the Closed label are
+     real and stay, the money does not — and the day must not be listed as
+     missed either, or the shopkeeper would be invited to type sales into a
+     day that refuses them. */
+  const broken = head({ txnCount: 1, grossPaise: 10000, collectedPaise: 4000, duePaise: 0 }, "closed");
+
+  const cells = buildGrid({
+    yearMonth: "2026-09",
+    todayKey: "2026-09-15",
+    heads: { "2026-09-07": broken },
+  });
+
+  const day = cells.find((c) => c.dateKey === "2026-09-07");
+  assert.equal(day.status, DAY_STATUS.CLOSED);
+  assert.equal(day.closed, true);
+  assert.equal(day.figuresUnreadable, true);
+  assert.equal(day.grossPaise, 0, "no figure is invented for a head that does not add up");
+
+  assert.ok(
+    !missedDays(cells).includes("2026-09-07"),
+    "a closed day is never offered as a missed day",
+  );
+});
+
 test("buildGrid: a day with nothing recorded is EMPTY, not a zero-sales day", () => {
   const cells = buildGrid({ yearMonth: "2026-09", todayKey: "2026-09-15" });
   const empty = cells.filter((c) => c.inMonth && c.status === DAY_STATUS.EMPTY);

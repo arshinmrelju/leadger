@@ -259,9 +259,11 @@
         : cell.dateKey;
 
       const money =
-        cell.status === DAY_STATUS.FILLED || cell.status === DAY_STATUS.CLOSED
-          ? '<span class="cal-cell-amount">' + formatINR(cell.grossPaise) + "</span>"
-          : '<span class="cal-cell-amount is-none">—</span>';
+        cell.figuresUnreadable
+          ? '<span class="cal-cell-amount is-none" title="This day is closed, but its totals could not be read">—</span>'
+          : cell.status === DAY_STATUS.FILLED || cell.status === DAY_STATUS.CLOSED
+            ? '<span class="cal-cell-amount">' + formatINR(cell.grossPaise) + "</span>"
+            : '<span class="cal-cell-amount is-none">—</span>';
 
       const foot = '<span class="cal-cell-foot">' + statusWord + "</span>";
 
@@ -415,14 +417,14 @@
      * is no longer the newest — or that no longer matches the month on
      * screen — throws its result away instead of painting the wrong month.
      */
-    async function loadMonth() {
+    async function loadMonth({ force = false } = {}) {
       const token = ++loadToken;
       loadError = null;
       const requested = yearMonth;
       renderSkeleton();
 
       try {
-        const heads = await fetchMonthHeads({ yearMonth: requested });
+        const heads = await fetchMonthHeads({ yearMonth: requested, force });
         if (!isCurrent(token, requested)) return;
         cells = buildGrid({ yearMonth: requested, heads, todayKey: todayKolkata() });
       } catch (err) {
@@ -482,7 +484,11 @@
       document.getElementById("calRefresh").addEventListener("click", () => {
         const btn = document.getElementById("calRefresh");
         setLoading(btn, true);
-        loadMonth().finally(() => setLoading(btn, false));
+        /* Forced. The button's whole promise is "read the month again", and
+           the month cache would otherwise answer it from up to ten minutes
+           ago — which is exactly the window in which a day closed on the
+           other device is still missing its lock and its Closed badge. */
+        loadMonth({ force: true }).finally(() => setLoading(btn, false));
       });
 
       await loadMonth();
