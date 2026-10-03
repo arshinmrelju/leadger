@@ -41,7 +41,6 @@ export const FIREBASE_CONFIG = {
      to guess, so a wrong value here breaks the catalog, the devices
      registry and expenses — everything except the ledger itself. */
   databaseURL: "https://trustxplpy-default-rtdb.firebaseio.com",
-  storageBucket: "trustxplpy.firebasestorage.app",
   messagingSenderId: "35151713005",
   appId: "1:35151713005:web:4450046d9fc20e133372e4",
   measurementId: "G-PDBHSYYFXQ",

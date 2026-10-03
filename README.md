@@ -471,6 +471,15 @@ Authentication.
 > longer ships a `storage.rules` file or a `storage` block in `firebase.json`.
 Never paste service-account or admin private keys into frontend code.
 
+> **Cloud Storage is not used, and does not need to exist.** Nothing in this
+> app calls the Storage API: a scanned receipt goes to the AI and is then
+> dropped. There is no `storage` deploy target in `firebase.json` and no
+> `storage.rules` file, so the project never has to enable the product. A
+> `storage` target left in the config is what makes `firebase deploy` fail
+> with *"Firebase Storage has not been set up on project ..."* — even though
+> the app never wanted it. The `storageBucket` key is the one part of the
+> config Firebase hands you that can simply be deleted.
+
 The app detects the placeholders and stays in a safe "setup needed" mode
 until a real config is present, so nothing is ever exposed by misconfiguration.
 
