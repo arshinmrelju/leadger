@@ -1127,6 +1127,14 @@ hr {
   margin: 0 auto 0.75rem;
   color: var(--color-faint);
 }
+.state .icon {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 0.75rem;
+  display: block;
+  color: var(--color-faint);
+  flex: none;
+}
 .state h3 { color: var(--color-text-soft); margin-bottom: 0.3rem; }
 .state p { max-width: 360px; margin: 0 auto 1rem; font-size: 0.9rem; }
 .state.is-error .state-icon { color: var(--color-danger); }
