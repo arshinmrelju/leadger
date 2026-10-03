@@ -1,13 +1,14 @@
 /* =========================================================
    TrustX Ledger — Protected-page shell bootstrap
    -----------------------------------------------------------------
-   Shared by dashboard.html, transactions.html, ledger.html and
-   admin.html. Owns:
+   Shared by dashboard.html, transactions.html, ledger.html,
+   calendar.html and admin.html. Owns:
      - auth guard + session-loss redirect
      - optional admin-grant check for the Developer console
      - default service catalog seed (so quick entry is never empty)
      - user chip + shop name + date pill
      - Kolkata day rollover
+     - the phone tab bar (bottom navigation under 1024px)
      - Ctrl/Cmd+N "new transaction" shortcut
    Pages call initAppShell(...) and receive a rendering context once
    the session is active.
@@ -145,6 +146,98 @@ function mountPwaChrome() {
   mountPwaControls(topbar);
 }
 
+/* ------------------------------------------------------------------
+   The phone tab bar
+   ------------------------------------------------------------------
+   Below 1024px the sidebar is off-canvas behind a hamburger in the top
+   LEFT corner, which on a phone is the hardest place on the screen to
+   reach with the thumb that is holding the phone. This puts the four
+   places the shop actually goes at the bottom instead, where the other
+   thumb already is.
+
+   BUILT HERE, NOT WRITTEN INTO EACH PAGE
+   The sidebar is duplicated across four pages, which is exactly why a
+   control that has to be remembered in four places eventually goes
+   missing from one of them. So the bar is assembled from the single list
+   below and the active tab is read off <body data-page>, which every page
+   already sets. Adding a tab is a one-line change here and nowhere else.
+
+   It is a fast path, not the only path: the sidebar keeps Customers,
+   Expenses, Reports, the user chip and Sign out, so the hamburger stays
+   on phones. Only the four destinations that earn a tab get one.
+
+   The bar is hidden above 1024px by css/mobile.css, so on a desktop
+   window this is inert markup.
+   ------------------------------------------------------------------ */
+
+const TAB_BAR = [
+  {
+    id: "dashboard",
+    label: "Today",
+    href: "dashboard.html",
+    icon:
+      '<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/>' +
+      '<rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>',
+  },
+  {
+    id: "ledger",
+    label: "Day",
+    href: "ledger.html",
+    icon:
+      '<path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 12h8"/><path d="M8 16h5"/>',
+  },
+  {
+    id: "transactions",
+    label: "Sales",
+    href: "transactions.html",
+    icon: '<path d="M7 17h10"/><path d="M4 5h16v14H4z"/><path d="M4 5l2-2h12l2 2"/>',
+  },
+  {
+    id: "calendar",
+    label: "Month",
+    href: "calendar.html",
+    icon:
+      '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  },
+];
+
+function mountTabBar() {
+  if (typeof document === "undefined" || !document.body) return;
+  /* The auth and offline pages have no shell and nowhere to navigate to,
+     so they get no bar. The presence of the sidebar is the real test of
+     "this is a shell page" — it is what admin.html has too, and the
+     Developer console deserves the same quick way back out. */
+  if (!document.querySelector(".sidebar")) return;
+
+  const page = document.body.dataset.page || "";
+
+  const nav = document.createElement("nav");
+  nav.className = "tabbar";
+  nav.setAttribute("aria-label", "Sections");
+  /* Two navs with the same label would be ambiguous to a screen reader;
+     the sidebar's own label already says "Main navigation". */
+  nav.setAttribute("data-mobile-only", "true");
+
+  nav.innerHTML = TAB_BAR.map((tab) => {
+    const active = tab.id === page;
+    return (
+      '<a class="tabbar-link' + (active ? " is-active" : "") + '"' +
+      ' href="' + tab.href + '"' +
+      ' data-tab="' + tab.id + '"' +
+      (active ? ' aria-current="page"' : "") +
+      ">" +
+      '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      tab.icon +
+      "</svg>" +
+      "<span>" + tab.label + "</span>" +
+      "</a>"
+    );
+  }).join("");
+
+  document.body.appendChild(nav);
+}
+
 function registerGlobalKeys() {
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && (event.key === "n" || event.key === "N")) {
@@ -195,6 +288,7 @@ export async function initAppShell({ onReady, onDayChange, requireAdmin = false 
     renderShopName(general);
     wireConnection(typeof onDayChange === "function" ? onDayChange : null);
     mountPwaChrome();
+    mountTabBar();
 
     const ctx = {
       user: real,

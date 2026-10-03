@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Transaction history &middot; TrustX Ledger</title>
   <meta name="description" content="Full transaction history for TrustX Ledger" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#132b1e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="TrustX Ledger" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -21,6 +22,7 @@
   <link rel="stylesheet" href="css/dashboard.css" />
   <link rel="stylesheet" href="css/transactions.css" />
   <link rel="stylesheet" href="css/responsive.css" />
+  <link rel="stylesheet" href="css/mobile.css" />
 
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
   <script type="importmap">
@@ -458,20 +460,20 @@ syncScopeButtons();
       );
     }
 
-    function txnRow(t) {
+function txnRow(t) {
       const customer = t.customerName || "Walk-in";
       const qtyInfo = t.quantity > 1 ? " &times; " + String(t.quantity) : "";
       return (
         "<tr>" +
-        '<td class="txn-time">' + escapeHtml(formatKolkataTime(t.createdAt)) + "</td>" +
+        '<td class="txn-time" data-label="Time">' + escapeHtml(formatKolkataTime(t.createdAt)) + "</td>" +
         '<td class="txn-customer"><div class="txn-clip">' + escapeHtml(customer) + "</div></td>" +
         '<td class="txn-service"><div class="txn-clip">' + escapeHtml(t.serviceName) + qtyInfo + "</div></td>" +
-        '<td class="text-right txn-num">' + escapeHtml(String(t.quantity)) + "</td>" +
-        '<td class="text-right txn-num">' + formatINR(t.ratePaise) + "</td>" +
-        "<td>" + methodChips(t) + "</td>" +
-        '<td class="text-right txn-num">' + formatINR(t.totalPaise) + "</td>" +
-        '<td class="text-right txn-num">' + formatINR(t.collectedPaise) + "</td>" +
-        '<td class="text-right txn-num">' +
+        '<td class="text-right txn-num" data-label="Qty">' + escapeHtml(String(t.quantity)) + "</td>" +
+        '<td class="text-right txn-num" data-label="Rate">' + formatINR(t.ratePaise) + "</td>" +
+        '<td data-label="Payment">' + methodChips(t) + "</td>" +
+        '<td class="text-right txn-num txn-total" data-label="Amount">' + formatINR(t.totalPaise) + "</td>" +
+        '<td class="text-right txn-num" data-label="Paid">' + formatINR(t.collectedPaise) + "</td>" +
+        '<td class="text-right txn-num txn-due" data-label="Due">' +
         (t.duePaise > 0 ? '<span class="text-danger">' + formatINR(t.duePaise) + "</span>" : '<span class="muted">' + formatINR(0) + "</span>") +
         "</td>" +
         '<td class="txn-actions-col"><div class="txn-row-actions">' +
@@ -567,10 +569,10 @@ syncScopeButtons();
             );
           })
           .join("") +
-        '<tr class="table-total"><td colspan="6"><strong>Total (' + filtered.length + ")</strong></td>" +
-        '<td class="text-right txn-num"><strong>' + formatINR(grand.total) + "</strong></td>" +
-        '<td class="text-right txn-num"><strong>' + formatINR(grand.paid) + "</strong></td>" +
-        '<td class="text-right txn-num"><strong>' + formatINR(grand.due) + "</strong></td>" +
+'<tr class="table-total"><td colspan="6" data-label="Sales"><strong>Total (' + filtered.length + ")</strong></td>" +
+        '<td data-label="Amount" class="text-right txn-num"><strong>' + formatINR(grand.total) + "</strong></td>" +
+        '<td data-label="Paid" class="text-right txn-num"><strong>' + formatINR(grand.paid) + "</strong></td>" +
+        '<td data-label="Due" class="text-right txn-num"><strong>' + formatINR(grand.due) + "</strong></td>" +
         '<td class="txn-actions-col"></td></tr>';
 
       const scopeText = scope === "day" ? formatDateKey(dateKey) : "all time";

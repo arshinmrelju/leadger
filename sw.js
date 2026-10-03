@@ -37,7 +37,7 @@
    ========================================================= */
 
 /** Bump to invalidate every cached file on the next activate. */
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 
 const SHELL_CACHE = `trustx-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `trustx-vendor-${CACHE_VERSION}`;
@@ -86,6 +86,7 @@ const SHELL_FILES = [
   "css/style.css",
   "css/forms.css",
   "css/responsive.css",
+  "css/mobile.css",
   "css/dashboard.css",
   "css/transactions.css",
   "css/ledger.css",

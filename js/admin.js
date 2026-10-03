@@ -687,19 +687,19 @@ async function loadDataBrowser() {
           .map(
             (t) =>
               "<tr>" +
-              '<td class="txn-time">' + escapeHtml(t.dateKey) + "</td>" +
-              '<td class="txn-time">' + escapeHtml(formatKolkataTime(t.createdAt)) + "</td>" +
+              '<td class="txn-time" data-label="Day">' + escapeHtml(t.dateKey) + "</td>" +
+              '<td class="txn-time" data-label="Time">' + escapeHtml(formatKolkataTime(t.createdAt)) + "</td>" +
               '<td class="txn-customer"><div class="txn-clip">' + escapeHtml(t.customerName || "Walk-in") + "</div></td>" +
               '<td class="txn-service"><div class="txn-clip">' + escapeHtml(t.serviceName) + (t.quantity > 1 ? " &times; " + String(t.quantity) : "") + "</div></td>" +
-              "<td>" + methodChip(t) + "</td>" +
-              '<td class="text-right txn-num">' + String(t.quantity) + "</td>" +
-              '<td class="text-right txn-num">' + formatINR(t.ratePaise) + "</td>" +
-              '<td class="text-right txn-num">' + formatINR(t.totalPaise) + "</td>" +
+              '<td data-label="Payment">' + methodChip(t) + "</td>" +
+              '<td class="text-right txn-num" data-label="Qty">' + String(t.quantity) + "</td>" +
+              '<td class="text-right txn-num" data-label="Rate">' + formatINR(t.ratePaise) + "</td>" +
+              '<td class="text-right txn-num txn-total" data-label="Amount">' + formatINR(t.totalPaise) + "</td>" +
               "</tr>"
           )
           .join("") +
-          '<tr><td class="text-right" colspan="7"><strong>Total (' + txns.length + ")</strong></td>" +
-          '<td class="text-right txn-num"><strong>' + formatINR(txnTotal) + "</strong></td></tr>"
+          '<tr class="table-total"><td class="text-right" colspan="7" data-label="Sales"><strong>Total (' + txns.length + ")</strong></td>" +
+          '<td class="text-right txn-num" data-label="Amount"><strong>' + formatINR(txnTotal) + "</strong></td></tr>"
       : '<tr><td colspan="8"><div class="state"><h3>No transactions</h3>' +
         "<p>" + (dateKey ? "Nothing recorded on this day." : "No transactions yet.") + "</p></div></td></tr>";
 
@@ -714,10 +714,10 @@ async function loadDataBrowser() {
           .map(
             (e) =>
               "<tr>" +
-              '<td class="txn-time">' + escapeHtml(e.date) + "</td>" +
+              '<td class="txn-time" data-label="Day">' + escapeHtml(e.date) + "</td>" +
               '<td class="txn-service"><div class="txn-clip">' + escapeHtml(e.title) + "</div></td>" +
-              "<td>" + escapeHtml(e.category || "—") + "</td>" +
-              '<td class="text-right txn-num">' + formatINR(e.amountPaise) + "</td>" +
+              '<td data-label="Category">' + escapeHtml(e.category || "—") + "</td>" +
+              '<td class="text-right txn-num txn-total" data-label="Amount">' + formatINR(e.amountPaise) + "</td>" +
               "</tr>"
           )
           .join("")
@@ -828,10 +828,10 @@ function auditDriftMarkup(audit) {
   const rows = audit.drift
     .map(
       (d) =>
-        "<tr><td>" + escapeHtml(d.label) + "</td>" +
-        '<td class="text-right txn-num">' + escapeHtml(auditAmount(d, d.head)) + "</td>" +
-        '<td class="text-right txn-num">' + escapeHtml(auditAmount(d, d.actual)) + "</td>" +
-        '<td class="text-right txn-num"><strong>' + escapeHtml(signedINR(d.delta)) + "</strong></td></tr>"
+          '<tr><td data-label="Field">' + escapeHtml(d.label) + "</td>" +
+          '<td class="text-right txn-num" data-label="Head says">' + escapeHtml(auditAmount(d, d.head)) + "</td>" +
+          '<td class="text-right txn-num" data-label="Sales add up to">' + escapeHtml(auditAmount(d, d.actual)) + "</td>" +
+          '<td class="text-right txn-num txn-due" data-label="Out by"><strong>' + escapeHtml(signedINR(d.delta)) + "</strong></td></tr>"
     )
     .join("");
 
@@ -1009,10 +1009,10 @@ function auditMonthMarkup(audits, skipped) {
       const headCount = a.headCounters && Number.isFinite(a.headCounters.txnCount) ? a.headCounters.txnCount : "&mdash;";
 
       return (
-        "<tr><td>" + escapeHtml(a.dateKey) + "</td>" +
-        '<td class="text-right txn-num">' + String(headCount) + "</td>" +
-        "<td>" + auditPillMarkup(a) + "</td>" +
-        '<td class="text-right txn-num">' + (gross ? escapeHtml(signedINR(gross.delta)) : "&mdash;") + "</td></tr>"
+        "<tr><td data-label=\"Day\">" + escapeHtml(a.dateKey) + "</td>" +
+        '<td class="text-right txn-num" data-label="Sales on the head">' + String(headCount) + "</td>" +
+        '<td data-label="Status">' + auditPillMarkup(a) + "</td>" +
+        '<td class="text-right txn-num txn-due" data-label="Out by">' + (gross ? escapeHtml(signedINR(gross.delta)) : "&mdash;") + "</td></tr>"
       );
     })
     .join("");

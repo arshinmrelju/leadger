@@ -1,0 +1,582 @@
+/* =========================================================
+   TrustX Ledger — Phone and installed-app presentation
+   -----------------------------------------------------------------
+   Loaded LAST, after style.css / forms.css / responsive.css, so it can
+   override the desktop-first layout rather than fight it. Everything here
+   is additive: on a desktop browser at full width this file changes
+   nothing at all.
+
+   THE FOUR JOBS
+
+   1. SAFE AREAS. Every page now declares `viewport-fit=cover`, which lets
+      the page paint under the notch and the home indicator instead of
+      being letterboxed inside them. That trade only works if something
+      then pads those edges back in, which is what the --sat/--sab/--sal
+      variables below are for. Without them the topbar sits under the
+      status bar and the last row of a list sits under the swipe bar.
+
+   2. A BOTTOM TAB BAR on phone-sized screens, mounted by js/shell.js.
+      The sidebar is a top-left hamburger, which on a 6-inch screen is a
+      stretch with the wrong thumb, and reaching for it is the single
+      clearest way a web app stops feeling like an app.
+
+   3. TABLE ROWS AS CARDS. `.txn-table` is pinned to `min-width: 640px`
+      on phones, which means the owner scrolls sideways to read an amount.
+      Below 720px each row becomes a card, using the `data-label` +
+      `::before` convention css/ledger.css already established — so the
+      same markup serves both layouts and there is no second render path.
+
+   4. APP-MODE POLISH. 44px tap targets, no tap-highlight flash, no
+      double-tap zoom, inputs at 16px so iOS does not zoom the page on
+      focus, and no pull-to-refresh on a page whose whole point is that a
+      refresh is a deliberate, confirmed action.
+
+   WHY A SEPARATE FILE
+   The phone layout is a coherent concern of its own and it is the part
+   most likely to keep changing; burying it in responsive.css would make
+   both harder to read. sw.js precaches it, so it is available offline
+   like every other stylesheet.
+   ========================================================= */
+
+/* ------------------------------------------------------------------
+   1. Safe-area insets
+
+   Declared as plain 0px first, then overridden with env(). A browser that
+   does not understand env() at all drops the second declaration and keeps
+   the first, so the fallback is a working desktop rather than a page with
+   no padding on its topbar.
+   ------------------------------------------------------------------ */
+
+:root {
+  --sat: 0px;
+  --sab: 0px;
+  --sal: 0px;
+  --sar: 0px;
+  /* Height of the phone tab bar, plus whatever the home indicator needs. */
+  --tabbar-h: 60px;
+}
+
+@supports (top: env(safe-area-inset-top)) {
+  :root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+  }
+}
+
+/* ------------------------------------------------------------------
+   2. Input and tap behaviour, at every width
+
+   These are not layout, so they are not inside a media query.
+   ------------------------------------------------------------------ */
+
+/* The grey flash Android draws over a tappable element. Every control here
+   already shows its own pressed state, and on a receipt-textured app the
+   flash reads as a rendering fault rather than feedback. */
+a,
+button,
+input,
+select,
+textarea,
+label,
+.nav-link,
+.pill,
+.badge,
+.txn-row-actions .btn {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* One-finger panning, no pinch-zoom. Zoom stays available where it is
+   genuinely needed (inputs) rather than hijacking the whole page: a shop
+   owner double-tapping a total to zoom is never the intent, and the
+   browser's own double-tap-to-zoom leaves a 300ms lag on every button. */
+html {
+  touch-action: manipulation;
+}
+
+/* No pull-to-refresh. On a ledger, a refresh that silently discards the
+   loaded day and re-reads the month is the wrong default, and this page
+   already offers an explicit Refresh that says what it does. */
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* Momentum scrolling on the long lists. */
+.table-wrap,
+.sidebar-nav,
+.txn-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 44px is the smallest target a thumb reliably hits. Buttons and inputs
+   are already comfortable on desktop; this lifts the small ones — icon
+   buttons, chips, segmented controls — to the same floor on a phone. */
+@media (pointer: coarse) {
+  .btn,
+  .seg-btn,
+  .chip,
+  .nav-link,
+  .topbar-hamburger {
+    min-height: 44px;
+  }
+
+  .btn-sm {
+    min-height: 40px;
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+  }
+
+  .icon-btn,
+  .txn-row-actions .btn,
+  .topbar-hamburger {
+    min-width: 44px;
+  }
+
+  /* The row action buttons sit at the far right of a card on a phone, so
+     they need the full 44px in both directions to be tappable at all. */
+  .txn-row-actions .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .txn-row-actions .icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* iOS zooms the whole page when a focused input is under 16px, and there
+   is no way to zoom back out without pinching. 16px is the threshold, so
+   every control that can take focus is held at or above it. */
+@media (max-width: 1024px) {
+  input,
+  select,
+  textarea,
+  .input {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Keyboard focus must stay visible; only the pointer case loses the ring. */
+:focus-visible {
+  outline: 2px solid var(--color-primary, #4b8bbf);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------
+   3. Safe-area padding for the shell
+
+   Unconditional rather than phone-only: with `viewport-fit=cover` these
+   insets are non-zero in landscape on a notched phone and zero everywhere
+   else, so the rule is simply a no-op on the machines that have no inset.
+   ------------------------------------------------------------------ */
+
+.topbar {
+  padding-left: calc(1.5rem + var(--sal));
+  padding-right: calc(1.5rem + var(--sar));
+  /* The sticky topbar is the one element that must clear the status bar;
+     its height is a fixed --topbar-h, so the extra goes on padding and the
+     content below is pushed down with it. */
+  height: calc(var(--topbar-h) + var(--sat));
+  padding-top: var(--sat);
+}
+
+.sidebar {
+  padding-top: var(--sat);
+  padding-bottom: var(--sab);
+}
+
+.content {
+  padding-left: calc(1.5rem + var(--sal));
+  padding-right: calc(1.5rem + var(--sar));
+}
+
+/* The sign-in card, the landing receipt and the offline notice have no
+   topbar and no .content, so without this they are the one page that can
+   still start under the notch in the installed app. */
+.auth-body {
+  padding-top: calc(2.5rem + var(--sat));
+  padding-bottom: calc(3rem + var(--sab));
+  padding-left: calc(1.25rem + var(--sal));
+  padding-right: calc(1.25rem + var(--sar));
+  /* The card is vertically centred, so on a short landscape phone the
+     status bar and the card fight over the same space. */
+  min-height: 100dvh;
+}
+
+/* ------------------------------------------------------------------
+   4. The phone tab bar
+
+   Mounted by js/shell.js into <body>. Hidden above the sidebar's own
+   collapse breakpoint so a desktop window never sees it.
+   ------------------------------------------------------------------ */
+
+.tabbar {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 2px;
+    height: calc(var(--tabbar-h) + var(--sab));
+    padding-bottom: var(--sab);
+    padding-left: var(--sal);
+    padding-right: var(--sar);
+    background: var(--color-topbar-bg, #fffdf9);
+    border-top: 1px solid var(--color-border, #e8dfc4);
+    box-shadow: 0 -2px 12px rgba(110, 75, 30, 0.06);
+  }
+
+  .tabbar-link {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 2px;
+    border: 0;
+    background: transparent;
+    color: var(--color-muted, #8a7355);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    cursor: pointer;
+    /* The bar owns the bottom of the screen; a tap that lands slightly
+       outside the icon must still hit the tab, not the page behind it. */
+    position: relative;
+  }
+
+  .tabbar-link .nav-icon {
+    width: 22px;
+    height: 22px;
+    flex: none;
+  }
+
+  .tabbar-link.is-active {
+    color: var(--color-primary-dark, #3a709e);
+  }
+
+  /* A short bar under the active tab, in the same idiom as the receipt
+     rules elsewhere in this app rather than a filled pill. */
+  .tabbar-link.is-active::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 26px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--color-primary, #4b8bbf);
+  }
+
+  /* Room for the bar, so the last card in a list is never behind it. */
+  .content {
+    padding-bottom: calc(var(--tabbar-h) + var(--sab) + 1rem);
+  }
+
+  /* The sidebar is still there for the entries that do not earn a tab
+     (Customers, Expenses, Reports, the user chip, sign out), so the
+     hamburger stays — the tab bar is the fast path, not the only path. */
+  .topbar-hamburger {
+    display: inline-flex;
+  }
+}
+
+/* The drawer needs the home-indicator clearance too when it is open on a
+   phone, since it covers the tab bar. */
+@media (max-width: 1024px) {
+  .sidebar-nav {
+    padding-bottom: calc(1rem + var(--tabbar-h));
+  }
+}
+
+/* ------------------------------------------------------------------
+   5. Table rows as cards (phone)
+
+   The convention css/ledger.css introduced: thead out of the flow, the
+   row becomes a bordered card, and each cell labels itself from its own
+   data-label attribute.
+   ------------------------------------------------------------------ */
+
+@media (max-width: 720px) {
+  /* Cancel the sideways-scroll table. The rows are no longer a grid, so
+     the wrapper has nothing to scroll. */
+  .txn-table {
+    min-width: 0;
+  }
+
+  .txn-table .table-wrap,
+  .hist-table {
+    overflow-x: visible;
+  }
+
+  .txn-table thead {
+    /* Kept in the DOM for screen readers, which still need the column
+       names to make sense of a cell; hidden from sight only. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .txn-table tbody tr {
+    /* A COLUMN flex container, not a block one. The cells are flex rows
+       (label left, value right), and the column lets `order` move the
+       service name and the customer to the top of the card — a plain
+       block row would ignore `order` entirely and leave them in markup
+       order, with the service name buried under the timestamp. */
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm, 8px);
+    margin: 0.7rem 0.25rem;
+    padding: 0.35rem 0.2rem;
+    background: var(--color-surface);
+  }
+
+  .txn-table tbody tr:hover {
+    background: var(--color-surface);
+  }
+
+  .txn-table td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 0;
+    padding: 0.35rem 0.75rem;
+    text-align: right;
+    white-space: normal;
+  }
+
+  .txn-table td::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    text-align: left;
+  }
+
+  /* The service is the card's headline: full width, no label, and pulled
+     to the top above the customer. */
+  .txn-table td.txn-service {
+    order: -2;
+    font-size: 1.02rem;
+    font-weight: 700;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 0.2rem;
+  }
+  .txn-table td.txn-service::before { display: none; }
+
+  /* The customer's name sits directly under the service, unlabelled. */
+  .txn-table td.txn-customer {
+    order: -1;
+    padding-top: 0;
+    font-size: 0.86rem;
+    color: var(--color-text-soft);
+  }
+  .txn-table td.txn-customer::before { display: none; }
+
+  /* The amount is what the owner came for: the largest thing on the card
+     and the reason the rest of it is there. */
+  .txn-table td.txn-total {
+    font-size: 1.12rem;
+    font-weight: 800;
+    border-top: 1px solid var(--color-border);
+    margin-top: 0.2rem;
+    padding-top: 0.5rem;
+  }
+
+  /* Due is the one number worth colouring on a card. */
+  .txn-table td.txn-due {
+    font-weight: 700;
+  }
+
+  /* Actions get their own full-width row of properly sized targets. */
+  .txn-table td.txn-actions-col {
+    padding-top: 0.55rem;
+    margin-top: 0.3rem;
+    border-top: 1px dashed var(--color-border);
+  }
+  .txn-table .txn-actions-col::before { display: none; }
+
+  /* The actions cell is one child in a space-between row, so it would sit
+     left rather than fill; the row actions are meant to span the card. */
+  .txn-table td.txn-actions-col .txn-row-actions {
+    width: 100%;
+  }
+
+  .txn-row-actions {
+    justify-content: stretch;
+  }
+  .txn-row-actions .btn {
+    flex: 1;
+  }
+
+  /* The day separator and the grand total are full-width blocks that were
+     never a grid of cells; keep them out of the card treatment. */
+  .txn-table .txn-group {
+    display: block;
+    margin: 1rem 0.25rem 0.4rem;
+    border-radius: var(--radius-sm, 8px);
+  }
+  .txn-table .txn-group td {
+    display: block;
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+  }
+  .txn-table .txn-group td::before { content: none; }
+
+  .txn-table .table-total {
+    display: block;
+    margin: 0.8rem 0.25rem 0.25rem;
+    border-radius: var(--radius-sm, 8px);
+  }
+  .txn-table .table-total td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0.75rem;
+    text-align: right;
+  }
+  .txn-table .table-total td::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    text-align: left;
+  }
+
+  .txn-table .table-total td:empty {
+    /* The total row ends with an empty spacer cell that exists only to
+       line the desktop columns up. With the label on the left and the
+       value on the right there is nothing in it to show. */
+    display: none;
+  }
+
+  /* The empty and loading states are a single colspan cell that must stay a
+     plain block — no label, no flex row, no card border around it.
+     Scoped away from .txn-group and .table-total, which are also colspan
+     rows but are handled above and must keep their own layout. */
+  .txn-table tbody tr:not(.txn-group):not(.table-total) td[colspan] {
+    display: block;
+    text-align: left;
+  }
+  .txn-table tbody tr:not(.txn-group):not(.table-total) td[colspan]::before {
+    content: none;
+  }
+
+  .txn-table tbody tr:not(.txn-group):not(.table-total):has(td[colspan]) {
+    border: 0;
+    background: transparent;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* ------------------------------------------------------------------
+   6. Installed-app (standalone) refinements
+
+   Only when there is no browser chrome to blend into, so a phone in a
+   browser tab keeps its address bar and its scrollbar and behaves like the
+   web page it is.
+   ------------------------------------------------------------------ */
+
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  /* The receipt printer's feed and tear edges are a desktop flourish. On
+     a phone they push the content down for no gain. */
+  .receipt-dispenser {
+    display: none;
+  }
+
+  /* No pull-to-refresh affordance, and nothing that looks like a browser
+     control, inside a window that has neither. */
+  .topbar-hamburger {
+    /* Still shown: it opens the drawer for the entries without a tab. */
+  }
+}
+
+/* iOS standalone reports a translucent status bar over the page, so the
+   topbar's own background has to be opaque enough to read against it. */
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    .topbar {
+      background: var(--color-topbar-bg, #fffdf9);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------
+   7. Small-screen density
+
+   The 480px block in responsive.css collapses the stat grid to one
+   column; below that the extra chrome the shell carries starts to cost
+   more than it explains.
+   ------------------------------------------------------------------ */
+
+@media (max-width: 400px) {
+  .tabbar-link {
+    font-size: 0.62rem;
+  }
+
+  .tabbar-link .nav-icon {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* Landscape on a phone: the tab bar would eat a third of a short screen,
+   so it shrinks to icons only and the safe-area sides take over. */
+@media (max-width: 1024px) and (orientation: landscape) and (max-height: 480px) {
+  :root {
+    --tabbar-h: 48px;
+  }
+
+  .tabbar-link {
+    flex-direction: row;
+    gap: 6px;
+    font-size: 0.7rem;
+  }
+
+  .tabbar-link .nav-icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* ------------------------------------------------------------------
+   8. Desktop is untouched
+
+   A guard rather than a hope: if the tab bar ever leaks past its
+   breakpoint it would sit across the bottom of a desktop window, and this
+   is the cheapest place to make that impossible.
+   ------------------------------------------------------------------ */
+
+@media (min-width: 1025px) {
+  .tabbar {
+    display: none !important;
+  }
+}
