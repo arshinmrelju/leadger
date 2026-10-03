@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -1444,8 +1444,13 @@ function loadNormalizeTxn() {
   assert.notEqual(start, -1, "js/ledger.js should still define normalizeTxn()");
   assert.notEqual(end, -1, "could not find the end of normalizeTxn()");
 
+  /* Resolved from ROOT, not hardcoded: the harness below is re-imported as a
+     data: URL, which cannot resolve a bare relative specifier, so the one
+     import it needs has to be absolute — and "absolute" here has to mean
+     absolute on whichever machine the repo is checked out on. */
+  const utilsUrl = pathToFileURL(path.join(ROOT, "js", "utils.js")).href;
   const preamble = [
-    'import { isPaymentMethod, methodLabel } from "file:///E:/Ledger/js/utils.js";',
+    `import { isPaymentMethod, methodLabel } from ${JSON.stringify(utilsUrl)};`,
     "function toSafe(value) {",
     '  const n = typeof value === "number" ? value : Number(value);',
     "  return Number.isFinite(n) ? n : 0;",
