@@ -256,6 +256,7 @@ received and are excluded).
 │   ├── ledger.js         Firestore day heads + sales, RTDB services/expenses
 │   ├── calendar.js       Pure month-grid logic (bounds, statuses, totals) — no Firebase
 │   ├── day-heads.js      Pure day-head counters + per-method split — no Firebase
+│   ├── day-audit.js      Pure day-integrity check (head vs its sales) — no Firebase
 │   ├── day-ledger.js     Pure day-view logic (date shift, filter, totals) — no Firebase
 │   ├── service-catalog.js  Default service seed list (pure data) — no Firebase
 │   ├── admin.js          Developer console rendering
@@ -872,6 +873,23 @@ hardening pass.
   three actions need an admin grant. Sign in with an admin Google account,
   or mint one with
   `node tools/bootstrap-access.mjs --key <sa.json> --grant <uid> --role admin`.
+- **"Not allowed to change this sale" when deleting, editing or settling one**
+  — the day's **head has stopped agreeing with its sales**. `headSteppedBy` in
+  `firestore.rules` only lets a sale move a day's counters by exactly its own
+  contribution, in its own direction, so a drifted head refuses every delete,
+  edit and settle on that day while still accepting new sales. Open the
+  Developer console → **Day integrity**, pick the day and press **Check day**:
+  it adds up the day's sales and shows which field is out. It reads only —
+  nothing is changed.
+  - The usual cause is a sale deleted straight from the Firestore console: no
+    counters move with it, so the head keeps its money. The head stays a
+    *valid* counter set while it is wrong, which is why nothing on screen
+    ever looked broken.
+  - The same check names a sale the rules cannot read at all — a document
+    written before the per-method split has no `amounts` map, and
+    `firestore.rules` reads `resource.data.amounts.gross` when deleting one,
+    which errors rather than answering. Such a row can never be deleted,
+    however healthy the head is.
 - **`auth/configuration-not-found`** — the Firebase project behind your web
   API key isn't available to the browser SDK. Confirm the key in
   `js/firebase.js` is the real Web API key for your project, the right

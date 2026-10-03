@@ -67,6 +67,14 @@ import {
 } from "../js/day-heads.js";
 
 import {
+  AUDIT_FIELDS,
+  AUDIT_STATUS,
+  auditDayCounters,
+  describeAudit,
+  sumDayCounters,
+} from "../js/day-audit.js";
+
+import {
   serviceMatchesQuery,
   serviceTile,
   serviceGroupOf,
@@ -918,6 +926,246 @@ test("the day state names are frozen, so a rule and a client cannot drift apart"
   assert.ok(Object.isFrozen(DAY_STATE), "DAY_STATE must not be editable at runtime");
   assert.deepEqual(Object.values(DAY_STATE).sort(), ["closed", "open"]);
   assert.ok(Object.isFrozen(COUNTER_FIELDS), "COUNTER_FIELDS must not be editable at runtime");
+});
+
+/* =========================================================
+   Day integrity (read-only)
+   -----------------------------------------------------------------
+   firestore.rules only ever lets a sale move a day head by
+   exactly one sale's worth, in that sale's direction. A head that
+   has stopped agreeing with its sales therefore freezes every edit,
+   settle and delete on that day — and the shop is told nothing more
+   than "not allowed to change this sale".
+
+   The usual cause is a sale deleted straight from the Firestore
+   console: no counters move with it, and the head keeps its money.
+   These tests pin down that the check names such a day, names the
+   field that is wrong, and never guesses a value for a sale the
+   rules cannot read at all.
+   ========================================================= */
+
+/** A stored sale document in the shape firestore.rules pins. */
+function storedSale(txnId, totalPaise, method) {
+  return {
+    txnId,
+    total: totalPaise,
+    paymentMethod: method,
+    amounts: splitAmounts(totalPaise, method),
+  };
+}
+
+/** A day head that has been kept correctly in step with `sales`. */
+function headFor(sales) {
+  return sales.reduce((c, s) => stepCounters(c, amountsFromDoc(s), 1), emptyCounters());
+}
+
+test("AUDIT_FIELDS names exactly the counters the rules pin", () => {
+  /* A counter added to COUNTER_FIELDS and not to AUDIT_FIELDS would
+     silently vanish from every drift report, which is the one place
+     it must never be able to do. */
+  assert.deepEqual(AUDIT_FIELDS.map((f) => f.field), [...COUNTER_FIELDS]);
+  assert.ok(Object.isFrozen(AUDIT_FIELDS), "the report's field list must not be editable");
+  assert.ok(Object.isFrozen(AUDIT_STATUS), "the verdict names must not be editable");
+});
+
+test("sumDayCounters adds a day's sales the way the head was advanced", () => {
+  const sales = [
+    storedSale("t1", 10000, "cash"),
+    storedSale("t2", 25000, "upi"),
+    storedSale("t3", 40000, "due"),
+    storedSale("t4", 1500, "card"),
+  ];
+
+  const sum = sumDayCounters(sales);
+  assert.equal(sum.saleCount, 4);
+  assert.deepEqual(sum.unreadable, [], "every modern sale is readable");
+  assert.deepEqual(
+    sum.counters,
+    headFor(sales),
+    "the sum must be indistinguishable from a head the rules would accept",
+  );
+  assert.ok(isCounterSetValid(sum.counters));
+});
+
+test("auditDayCounters: a head that adds up to its sales is in step", () => {
+  const sales = [storedSale("t1", 10000, "cash"), storedSale("t2", 40000, "due")];
+  const audit = auditDayCounters({
+    dateKey: "2026-10-02",
+    head: { state: DAY_STATE.OPEN, counters: headFor(sales) },
+    rows: sales,
+  });
+
+  assert.equal(audit.status, AUDIT_STATUS.OK);
+  assert.equal(audit.ok, true);
+  assert.deepEqual(audit.drift, [], "nothing to report when nothing is wrong");
+  assert.equal(describeAudit(audit).tone, "ok");
+});
+
+test("auditDayCounters: a sale deleted outside the app leaves the head stranded", () => {
+  /* The day as it was recorded... */
+  const recorded = [storedSale("t1", 10000, "cash"), storedSale("t2", 25000, "upi")];
+  const head = headFor(recorded);
+
+  /* ...and the day as it is now: t2 is gone from the console, so the head
+     still carries its money. The head is not merely wrong, it is a
+     perfectly VALID counter set — which is exactly why nothing on screen
+     ever looked broken. */
+  assert.ok(isCounterSetValid(head), "a stranded head still satisfies the rules' own invariant");
+
+  const audit = auditDayCounters({
+    dateKey: "2026-10-02",
+    head: { state: DAY_STATE.OPEN, counters: head },
+    rows: [recorded[0]],
+  });
+
+  assert.equal(audit.status, AUDIT_STATUS.DRIFTED);
+  assert.equal(audit.saleCount, 1, "one sale is really there");
+
+  const byField = Object.fromEntries(audit.drift.map((d) => [d.field, d]));
+  assert.equal(byField.txnCount.delta, -1, "the head counts a sale that is not there");
+  assert.equal(byField.grossPaise.delta, -25000, "and its money with it");
+  assert.equal(byField.upiPaise.delta, -25000, "in the bucket it was paid into");
+  assert.equal(byField.cashPaise, undefined, "a field that agrees is not reported");
+
+  /* The arithmetic to put it right is trivial, which is exactly why the
+     repair needs a deliberate rule of its own: no rule allows a step
+     bigger than one sale. */
+  assert.equal(
+    isCounterSetValid(stepCounters(head, amountsFromDoc(recorded[1]), -1)),
+    true,
+  );
+});
+
+test("auditDayCounters: the verdict does not depend on whether the day is open", () => {
+  /* A closed day refuses writes for its own reason. A stranded head
+     refuses them whatever the state says, so the check must not let the
+     state colour the answer — otherwise a shop is pointed at "the day is
+     closed" when reopening it will change nothing. */
+  const sales = [storedSale("t1", 10000, "cash")];
+  const head = headFor([...sales, storedSale("t2", 99900, "card")]);
+
+  const open = auditDayCounters({ dateKey: "2026-10-02", head: { state: DAY_STATE.OPEN, counters: head }, rows: sales });
+  const closed = auditDayCounters({ dateKey: "2026-10-02", head: { state: DAY_STATE.CLOSED, counters: head }, rows: sales });
+
+  assert.equal(open.status, AUDIT_STATUS.DRIFTED);
+  assert.equal(closed.status, AUDIT_STATUS.DRIFTED);
+  assert.equal(closed.state, DAY_STATE.CLOSED, "the state is still reported for the shop");
+  assert.deepEqual(open.drift, closed.drift);
+});
+
+test("auditDayCounters: a sale the rules cannot read is named, never guessed at", () => {
+  /* A document written before the per-method split. The client can still
+     read it (amountsFromDoc falls back to the row's own total and method)
+     but firestore.rules reads resource.data.amounts.gross when deleting
+     one, which ERRORS rather than answering — so that row can never be
+     deleted, however healthy the head is. */
+  const legacy = { txnId: "old1", total: 7000, paymentMethod: "cash" };
+  const sales = [storedSale("t1", 10000, "cash")];
+
+  const audit = auditDayCounters({
+    dateKey: "2026-10-02",
+    head: { state: DAY_STATE.OPEN, counters: headFor(sales) },
+    rows: [...sales, legacy],
+  });
+
+  assert.equal(audit.status, AUDIT_STATUS.UNREADABLE);
+  assert.deepEqual(audit.unreadable, ["old1"], "the row is named so it can be looked at");
+  assert.equal(audit.saleCount, 2, "the day's sale count is the truth, not the readable subset");
+
+  const said = describeAudit(audit);
+  assert.equal(said.tone, "error");
+  assert.ok(said.detail.includes("old1"), "the report has to point at the row: " + said.detail);
+});
+
+test("auditDayCounters: a day with sales and no head at all", () => {
+  const orphan = auditDayCounters({
+    dateKey: "2026-10-02",
+    head: null,
+    rows: [storedSale("t1", 10000, "cash")],
+  });
+  assert.equal(orphan.status, AUDIT_STATUS.NO_HEAD);
+  assert.ok(describeAudit(orphan).detail.includes("Every write to it is refused"));
+
+  const neverOpened = auditDayCounters({ dateKey: "2026-10-03", head: null, rows: [] });
+  assert.equal(neverOpened.status, AUDIT_STATUS.NO_HEAD);
+  assert.ok(
+    describeAudit(neverOpened).detail.includes("nothing to check"),
+    "a day that was never opened is not a fault: " + describeAudit(neverOpened).detail,
+  );
+});
+
+test("auditDayCounters: a head whose own counters are broken", () => {
+  /* Buckets that do not add up to the gross. Nothing can be written
+     against such a head, so this is called out ahead of any drift. */
+  const audit = auditDayCounters({
+    dateKey: "2026-10-02",
+    head: {
+      state: DAY_STATE.OPEN,
+      counters: {
+        txnCount: 2,
+        grossPaise: 35000,
+        cashPaise: 10000,
+        upiPaise: 10000,
+        cardPaise: 10000,
+        duePaise: 0,
+        collectedPaise: 30000,
+      },
+    },
+    rows: [storedSale("t1", 10000, "cash")],
+  });
+
+  assert.equal(audit.status, AUDIT_STATUS.BAD_HEAD);
+  assert.equal(describeAudit(audit).tone, "error");
+});
+
+test("auditDayCounters: a read that stopped short draws no conclusion", () => {
+  const sales = [storedSale("t1", 10000, "cash")];
+  const audit = auditDayCounters({
+    dateKey: "2026-10-02",
+    /* A head for far more sales than came back. Reporting that as drift
+       would be a lie: the missing rows are simply unread. */
+    head: {
+      state: DAY_STATE.OPEN,
+      counters: headFor([...sales, storedSale("t2", 40000, "upi"), storedSale("t3", 90000, "card")]),
+    },
+    rows: sales,
+    truncated: true,
+  });
+
+  assert.equal(audit.status, AUDIT_STATUS.INCOMPLETE);
+  assert.equal(audit.ok, false, "no verdict is not a pass");
+  assert.equal(describeAudit(audit).tone, "warning");
+});
+
+test("describeAudit says what is wrong instead of blaming a closed day", () => {
+  const sales = [storedSale("t1", 10000, "cash")];
+  const audit = auditDayCounters({
+    dateKey: "2026-10-02",
+    head: { state: DAY_STATE.OPEN, counters: headFor([...sales, storedSale("t2", 25000, "upi")]) },
+    rows: sales,
+  });
+
+  const said = describeAudit(audit);
+  assert.equal(said.tone, "error");
+  assert.ok(said.headline.includes("2026-10-02"), "the day is named: " + said.headline);
+  assert.ok(said.detail.includes("gross"), "the field is named: " + said.detail);
+  assert.ok(
+    !said.detail.toLowerCase().includes("closed"),
+    "a stranded head is not a closed day, and saying so sends the shop the wrong way",
+  );
+});
+
+test("auditDayCounters survives rubbish, because a diagnostic that crashes is useless", () => {
+  const audit = auditDayCounters({
+    dateKey: "2026-10-02",
+    head: { state: DAY_STATE.OPEN, counters: { txnCount: "two", grossPaise: null } },
+    rows: [null, undefined, storedSale("t1", 10000, "cash")],
+  });
+
+  assert.equal(audit.status, AUDIT_STATUS.BAD_HEAD);
+  assert.equal(audit.saleCount, 1, "holes in the list are skipped, and the real sale still counts");
+  assert.deepEqual(audit.unreadable, [], "a hole is not a malformed sale, so it is not named as one");
+  assert.equal(typeof describeAudit(audit).detail, "string");
 });
 
 /* =========================================================

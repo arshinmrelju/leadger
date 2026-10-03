@@ -97,6 +97,7 @@ const SHELL_FILES = [
   "js/ai-config.js",
   "js/auth.js",
   "js/calendar.js",
+  "js/day-audit.js",
   "js/day-heads.js",
   "js/day-ledger.js",
   "js/firebase.js",

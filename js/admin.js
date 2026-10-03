@@ -15,6 +15,7 @@ import {
   formatKolkataTime,
   formatKolkataLong,
   escapeHtml,
+  isValidDateKey,
   todayKolkata,
   paiseToInput,
   rateToPaise,
@@ -26,7 +27,9 @@ import {
   updateService,
   fetchTransactions,
   fetchExpenses,
+  fetchMonthHeads,
 } from "./ledger.js";
+import { auditDayCounters, describeAudit, AUDIT_STATUS } from "./day-audit.js";
 import { findMissingCatalogServices, SERVICE_CATALOG } from "./service-catalog.js";
 import {
   reportError,
@@ -52,6 +55,7 @@ function svg(id) {
       '<rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     quota:
       '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    check: '<path d="M20 6L9 17l-5-5"/>',
   };
   return (
     '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -281,6 +285,18 @@ export async function renderAdminPage(ctx) {
     '<tbody id="dataExpBody"><tr><td colspan="4"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading expenses<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></td></tr></tbody>' +
     "</table></div>" +
     '<div class="txn-footer small" id="dataExpFooter">&nbsp;</div>' +
+    "</div></section>" +
+
+    '<section class="card mt-2" id="auditCard">' +
+    '<div class="card-header"><h3>' + svg("check") + "Day integrity</h3>" +
+    '<div class="card-actions">' +
+    '<input class="input input-sm" id="auditDate" type="date" value="' + escapeHtml(todayKolkata()) + '" aria-label="Day to check" />' +
+    '<button type="button" class="btn btn-sm btn-primary" id="auditDayBtn">Check day</button>' +
+    '<button type="button" class="btn btn-sm btn-secondary" id="auditMonthBtn">Check month</button>' +
+    "</div></div>" +
+    '<div class="card-body">' +
+    '<p class="small muted" style="margin:0 0 .75rem;">Read-only. Adds up a day&rsquo;s sales and compares the total with the counters on that day&rsquo;s head. A head that has drifted out of step with its sales refuses every edit, settle and delete on that day, and the shop can only be told &ldquo;not allowed&rdquo;. Nothing here is changed or repaired.</p>' +
+    '<div id="auditResult">' + auditPlaceholderMarkup() + "</div>" +
     "</div></section>";
 
   wireAddService();
@@ -289,6 +305,7 @@ export async function renderAdminPage(ctx) {
   mountQuotaPanel(mainContent);
   wireDataBrowser();
   loadDataBrowser();
+  wireDayAudit();
   wireDevices();
 }
 
@@ -709,5 +726,265 @@ async function loadDataBrowser() {
     txnBody.innerHTML =
       '<tr><td colspan="8"><div class="state is-error"><h3>Could not load data</h3><p>' + escapeHtml(reportError(err)) + "</p></div></td></tr>";
     expBody.innerHTML = "";
+  }
+}
+
+/* =========================================================
+   Day integrity (read-only)
+   ------------------------------------------------------------
+   A day's head is only ever allowed to move by one sale's worth,
+   in that sale's direction — that is the headSteppedBy check in
+   firestore.rules. So a head that has stopped agreeing with its
+   sales (a sale removed straight from the Firestore console
+   moves no counters) freezes every edit, settle and delete on
+   that day, and the shop can only be told "not allowed to
+   change this sale". js/day-audit.js works out what a head
+   should say; this reads what it does say, and changes nothing.
+   ========================================================= */
+
+/** One day's sales come back in a single query. Past this there is no answer. */
+const AUDIT_ROW_LIMIT = 1000;
+
+/** A month sweep reads one day at a time, so it is capped at a calendar month. */
+const AUDIT_MONTH_CAP = 31;
+
+function wireDayAudit() {
+  const dateInput = document.getElementById("auditDate");
+  document.getElementById("auditDayBtn").addEventListener("click", runDayAudit);
+  document.getElementById("auditMonthBtn").addEventListener("click", runMonthAudit);
+  dateInput.addEventListener("change", () => {
+    /* Cleared rather than re-run: every check spends reads, and a stale
+       answer sitting under a freshly picked date is worse than none. */
+    document.getElementById("auditResult").innerHTML = auditPlaceholderMarkup();
+  });
+}
+
+function auditPlaceholderMarkup(title = "Nothing checked yet", body = "Pick a day and check it.") {
+  return (
+    '<div class="state"><h3>' + escapeHtml(title) + "</h3><p>" +
+    escapeHtml(body) + "</p></div>"
+  );
+}
+
+function auditLoadingMarkup(label) {
+  return (
+    '<div class="state state-table-loading"><div class="state-loading-badge">' +
+    '<span class="spinner spinner-sm"></span><span>' + escapeHtml(label) +
+    '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>' +
+    "</div></div>"
+  );
+}
+
+/** A signed rupee figure: what the day is out by, and in which direction. */
+function signedINR(paise) {
+  const n = Number.isFinite(paise) ? Math.round(paise) : 0;
+  if (n === 0) return formatINR(0);
+  return (n > 0 ? "+" : "\u2212") + formatINR(Math.abs(n));
+}
+
+/** Money is formatted with the rupee sign; a sale count is just a count. */
+function auditAmount(field, paise) {
+  return field.money ? formatINR(paise) : String(paise);
+}
+
+/**
+ * Read one day: its head (from the month's head read the calendar already
+ * makes) and its sales. Both go through the caches the rest of the console
+ * reads through, so checking the same day twice costs nothing the second time.
+ */
+async function readDayForAudit(dateKey) {
+  const [heads, rows] = await Promise.all([
+    fetchMonthHeads({ yearMonth: dateKey.slice(0, 7) }),
+    fetchTransactions({ dateKey, limit: AUDIT_ROW_LIMIT }),
+  ]);
+
+  const head = heads[dateKey] || null;
+  return auditDayCounters({
+    dateKey,
+    head: head ? { state: head.state, counters: head.counters } : null,
+    rows,
+    /* Hitting the limit means the sum is a floor rather than a total, so the
+       audit is told not to draw a conclusion from it. */
+    truncated: rows.length >= AUDIT_ROW_LIMIT,
+  });
+}
+
+/** The per-field table. Only the fields that disagree are listed. */
+function auditDriftMarkup(audit) {
+  if (!audit.drift.length) return "";
+
+  const rows = audit.drift
+    .map(
+      (d) =>
+        "<tr><td>" + escapeHtml(d.label) + "</td>" +
+        '<td class="text-right txn-num">' + escapeHtml(auditAmount(d, d.head)) + "</td>" +
+        '<td class="text-right txn-num">' + escapeHtml(auditAmount(d, d.actual)) + "</td>" +
+        '<td class="text-right txn-num"><strong>' + escapeHtml(signedINR(d.delta)) + "</strong></td></tr>"
+    )
+    .join("");
+
+  return (
+    '<div class="table-wrap" style="margin-top:.5rem;"><table class="table txn-table"><thead><tr>' +
+    "<th>Field</th>" +
+    '<th class="text-right">Head says</th>' +
+    '<th class="text-right">Sales add up to</th>' +
+    '<th class="text-right">Out by</th>' +
+    "</tr></thead><tbody>" + rows + "</tbody></table></div>"
+  );
+}
+
+function auditPillMarkup(audit) {
+  const tone = describeAudit(audit).tone;
+  const pill = tone === "ok" ? "pill-success" : tone === "warning" ? "pill-warning" : "pill-danger";
+  const label = audit.ok
+    ? "In step"
+    : audit.status === AUDIT_STATUS.INCOMPLETE
+      ? "No verdict"
+      : "Needs attention";
+  return '<span class="pill ' + pill + '">' + label + "</span>";
+}
+
+function auditReportMarkup(audit) {
+  const { tone, headline, detail } = describeAudit(audit);
+  const alert = tone === "ok" ? "success" : tone === "warning" ? "warning" : "error";
+  const sales = audit.saleCount === 1 ? "1 sale" : audit.saleCount + " sales";
+
+  return (
+    '<div class="alert alert-' + alert + '"><div><strong>' + escapeHtml(headline) + "</strong>" +
+    '<p class="small" style="margin:.25rem 0 0;">' + escapeHtml(detail) + "</p></div></div>" +
+
+    '<div class="flex" style="gap:.5rem;flex-wrap:wrap;margin:.75rem 0 .25rem;align-items:center;">' +
+    auditPillMarkup(audit) +
+    '<span class="pill pill-neutral">' + sales + "</span>" +
+    (audit.state ? '<span class="pill pill-neutral">' + (audit.state === "closed" ? "Day closed" : "Day open") + "</span>" : "") +
+    '<span class="small muted">Read-only: nothing was changed.</span>' +
+    "</div>" +
+    auditDriftMarkup(audit)
+  );
+}
+
+async function runDayAudit() {
+  const dateKey = document.getElementById("auditDate").value;
+  const btn = document.getElementById("auditDayBtn");
+  const out = document.getElementById("auditResult");
+
+  if (!isValidDateKey(dateKey)) {
+    toast("Pick a valid date to check.", "error");
+    return;
+  }
+
+  setLoading(btn, true);
+  out.innerHTML = auditLoadingMarkup("Checking " + dateKey);
+  try {
+    out.innerHTML = auditReportMarkup(await readDayForAudit(dateKey));
+  } catch (err) {
+    console.error("[trustx-ledger] day audit:", err);
+    out.innerHTML =
+      '<div class="state is-error"><h3>Could not check that day</h3><p>' +
+      escapeHtml(reportError(err)) + "</p></div>";
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+/** One row per day checked, worst news first would be nicer but is not worth it. */
+function auditMonthMarkup(audits, skipped) {
+  const broken = audits.filter((a) => !a.ok);
+  const rows = audits
+    .map((a) => {
+      const tone = describeAudit(a).tone;
+      const badge = tone === "ok" ? "badge-success" : tone === "warning" ? "badge-warning" : "badge-danger";
+      const gross = a.drift.find((d) => d.field === "grossPaise");
+      const headCount = a.headCounters && Number.isFinite(a.headCounters.txnCount) ? a.headCounters.txnCount : "&mdash;";
+
+      return (
+        "<tr><td>" + escapeHtml(a.dateKey) + "</td>" +
+        '<td class="text-right txn-num">' + String(headCount) + "</td>" +
+        "<td>" + auditPillMarkup(a) + "</td>" +
+        '<td class="text-right txn-num">' + (gross ? escapeHtml(signedINR(gross.delta)) : "&mdash;") + "</td></tr>"
+      );
+    })
+    .join("");
+
+  return (
+    '<div class="alert alert-' + (broken.length ? "error" : "success") + '"><div><strong>' +
+    (broken.length
+      ? broken.length === 1
+        ? "1 of " + audits.length + " days is out of step."
+        : broken.length + " of " + audits.length + " days are out of step."
+      : "All " + audits.length + " days are in step.") +
+    "</strong><p class=\"small\" style=\"margin:.25rem 0 0;\">" +
+    (broken.length
+      ? "Open a day that is not in step to see which field is wrong. Sales can still be added to any of these days, but they cannot be edited, settled or deleted."
+      : "Every day's head adds up to its own sales.") +
+    "</p></div></div>" +
+    (skipped ? '<p class="small muted">' + skipped + " day(s) with a head were not checked (month cap).</p>" : "") +
+    '<div class="table-wrap"><table class="table txn-table"><thead><tr>' +
+    "<th>Day</th>" +
+    '<th class="text-right">Sales on the head</th>' +
+    "<th>Status</th>" +
+    '<th class="text-right">Out by</th>' +
+    "</tr></thead><tbody>" + rows + "</tbody></table></div>"
+  );
+}
+
+async function runMonthAudit() {
+  const dateKey = document.getElementById("auditDate").value;
+  const btn = document.getElementById("auditMonthBtn");
+  const out = document.getElementById("auditResult");
+
+  if (!isValidDateKey(dateKey)) {
+    toast("Pick a valid date to check.", "error");
+    return;
+  }
+  const yearMonth = dateKey.slice(0, 7);
+
+  let heads;
+  try {
+    heads = await fetchMonthHeads({ yearMonth });
+  } catch (err) {
+    console.error("[trustx-ledger] month audit:", err);
+    toast(reportError(err), "error");
+    return;
+  }
+
+  const days = Object.keys(heads).filter((k) => isValidDateKey(k)).sort();
+  if (!days.length) {
+    out.innerHTML = auditPlaceholderMarkup(
+      "No day heads in " + yearMonth,
+      "Nothing was recorded in this month, so there is nothing to check.",
+    );
+    return;
+  }
+
+  const capped = days.slice(0, AUDIT_MONTH_CAP);
+  const ok = await confirm({
+    title: "Check every day in " + yearMonth,
+    message:
+      "This reads the sales of " + capped.length + " day" + (capped.length === 1 ? "" : "s") +
+      " that have a day head in this month. It reads and adds up; it changes nothing.",
+    confirmText: "Check " + capped.length + " days",
+  });
+  if (!ok) return;
+
+  setLoading(btn, true);
+  const audits = [];
+  try {
+    /* One day at a time, so the reads are spread out rather than fired as a
+       burst, and so the panel can say which day is being read. */
+    for (let i = 0; i < capped.length; i++) {
+      out.innerHTML = auditLoadingMarkup(
+        "Checking " + capped[i] + " (" + (i + 1) + " of " + capped.length + ")",
+      );
+      audits.push(await readDayForAudit(capped[i]));
+    }
+    out.innerHTML = auditMonthMarkup(audits, days.length - capped.length);
+  } catch (err) {
+    console.error("[trustx-ledger] month audit:", err);
+    out.innerHTML =
+      '<div class="state is-error"><h3>Could not check that month</h3><p>' +
+      escapeHtml(reportError(err)) + "</p></div>";
+  } finally {
+    setLoading(btn, false);
   }
 }
