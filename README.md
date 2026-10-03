@@ -873,7 +873,8 @@ hardening pass.
   three actions need an admin grant. Sign in with an admin Google account,
   or mint one with
   `node tools/bootstrap-access.mjs --key <sa.json> --grant <uid> --role admin`.
-- **"Not allowed to change this sale" when deleting, editing or settling one**
+- **"The ledger was not allowed to change that sale" when deleting, editing or
+  settling one**
   — the day's **head has stopped agreeing with its sales**. `headSteppedBy` in
   `firestore.rules` only lets a sale move a day's counters by exactly its own
   contribution, in its own direction, so a drifted head refuses every delete,

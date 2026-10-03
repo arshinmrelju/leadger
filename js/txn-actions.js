@@ -196,9 +196,17 @@ function describeWriteError(err, closed) {
   }
   const msg = String((err && err.message) || "").toLowerCase();
   if (msg.includes("permission") || msg.includes("insufficient")) {
+    /* Firestore reports a denial only as "permission-denied" and never names
+       the clause that failed, so neither cause can be asserted from here —
+       only offered. Naming just the closed day sent shops after the wrong
+       thing: a day whose head has drifted out of step with its sales refuses
+       every edit, settle and delete while still accepting new sales, and
+       reopening it changes nothing. */
     return closed
       ? CLOSED_DAY_MSG
-      : "Not allowed to change this sale. If the day was just closed, it can no longer be edited.";
+      : "The ledger was not allowed to change that sale. If the day was just closed, reopen it and try again. " +
+        "Otherwise the day's totals may be out of step with its sales — the Developer console's " +
+        "Day integrity check will name the day and the difference.";
   }
   return reportError(err);
 }
