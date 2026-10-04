@@ -1,91 +1,18 @@
-<!--
-  TrustX Ledger · README
-  ─────────────────────────────────────────────────────────────────────────────
-  Design intent: mirrors the receipt-paper aesthetic of the live app.
-  Warm parchment background, amber glow, Chaayos-style dashed dividers,
-  green stamp & CTA — all achieved with GitHub-renderable HTML + SVG + tables.
--->
-
 <div align="center">
 
-<!-- ══════════════════════  TOP DISPENSER BAR  ══════════════════════ -->
-<img
-  src="https://capsule-render.vercel.app/api?type=cylinder&color=d5c19e&height=30&section=header&reversal=false"
-  width="100%"
-  alt="Receipt dispenser bar"
-/>
+<!-- ═══════════════════════════════════════════════════════════
+     TrustX Ledger — GitHub README
+     Banner = pixel-faithful SVG replica of dashboard.html
+     ══════════════════════════════════════════════════════════ -->
 
-<!-- ══════════════════════  RECEIPT CARD  ══════════════════════ -->
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr><td align="center" style="background:#fffdf9;padding:2.2rem 2.5rem 0;">
+![TrustX Ledger Dashboard](assets/readme-banner.svg)
 
-<!-- Header row: left meta + right stamp -->
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr>
-<td valign="top" align="left">
-
-<sub><b>SYSTEM GATEWAY</b></sub><br/>
-
-<h1 align="left">
-  <img src="assets/logo.svg" width="38" height="38" alt="" style="vertical-align:middle;margin-right:10px;"/>
-  TrustX Ledger
-</h1>
-
-<sub><b>DIGITAL SHOP LEDGER &nbsp;•&nbsp; ₹ INR</b></sub>
-
-</td>
-<td width="80" valign="top" align="right">
-
-[![TrustX Verified](https://img.shields.io/badge/TrustX-VERIFIED-ffffff?style=flat&labelColor=0b4f23&color=18773c)](https://github.com)<br/>
-<sub>● LIVE</sub>
-
-</td>
-</tr>
-</table>
-
-</td></tr>
-<tr><td style="background:#fffdf9;padding:0 2.5rem;">
-
----
-
-</td></tr>
-
-<!-- ── Receipt meta rows ──────────────────────────────────────── -->
-<tr><td align="center" style="background:#fffdf9;padding:0 2.5rem;">
-<table width="100%" cellpadding="3" cellspacing="0" border="0">
-<tr><td align="left"><sub><b>LEDGER NODE</b></sub></td><td align="right"><sub><b>PRIMARY SHOP</b></sub></td></tr>
-<tr><td align="left"><sub><b>ACCESS</b></sub></td><td align="right"><sub><b>GOOGLE SIGN-IN</b></sub></td></tr>
-<tr><td align="left"><sub><b>STACK</b></sub></td><td align="right"><sub><b>HTML5 · CSS3 · Vanilla JS · Firebase</b></sub></td></tr>
-<tr><td align="left"><sub><b>CURRENCY</b></sub></td><td align="right"><sub><b>Indian Rupee (₹)</b></sub></td></tr>
-<tr><td align="left"><sub><b>OFFLINE</b></sub></td><td align="right"><sub><b>Firestore IndexedDB — auto-sync</b></sub></td></tr>
-</table>
-</td></tr>
-
-<tr><td style="background:#fffdf9;padding:0 2.5rem;">
-
----
-
-</td></tr>
-
-<!-- ── Badge row ─────────────────────────────────────────────── -->
-<tr><td align="center" style="background:#fffdf9;padding:0.5rem 2.5rem 1.5rem;">
+<br/>
 
 [![Firebase](https://img.shields.io/badge/Firebase-12.18.0-f5a623?style=flat&logo=firebase&logoColor=white)](https://firebase.google.com)
 [![PWA](https://img.shields.io/badge/PWA-Offline--First-2d8a4e?style=flat)](https://web.dev/progressive-web-apps/)
 [![No Build Step](https://img.shields.io/badge/No_Build-Zero_npm_deps-4b8bbf?style=flat)](https://github.com)
 [![Version](https://img.shields.io/badge/version-v0.13.1-132b1e?style=flat)](https://github.com)
-
-<br/><sub><b>HAVE A NICE DAY!</b></sub>
-
-</td></tr>
-</table>
-
-<!-- ══════════  TORN RECEIPT BOTTOM EDGE  ══════════ -->
-<svg width="100%" height="20" viewBox="0 0 1200 20" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-<polygon points="0,0 20,20 40,0 60,20 80,0 100,20 120,0 140,20 160,0 180,20 200,0 220,20 240,0 260,20 280,0 300,20 320,0 340,20 360,0 380,20 400,0 420,20 440,0 460,20 480,0 500,20 520,0 540,20 560,0 580,20 600,0 620,20 640,0 660,20 680,0 700,20 720,0 740,20 760,0 780,20 800,0 820,20 840,0 860,20 880,0 900,20 920,0 940,20 960,0 980,20 1000,0 1020,20 1040,0 1060,20 1080,0 1100,20 1120,0 1140,20 1160,0 1180,20 1200,0 1200,0 0,0" fill="#fffdf9"/>
-</svg>
-
-<sub>TrustX Ledger &nbsp;•&nbsp; Fast, Offline-First Shop Record</sub>
 
 </div>
 
@@ -197,7 +124,8 @@ The photo of a scanned receipt is saved as its own small document at `dayHeads/{
 │   └── rules-check.mjs        Firestore emulator rules test harness
 ├── assets/
 │   ├── logo.svg
-│   └── favicon.svg
+│   ├── favicon.svg
+│   └── readme-banner.svg      GitHub README dashboard preview
 ├── firestore.rules       Firestore security rules
 ├── database.rules.json   Realtime Database rules
 ├── firebase.json         Hosting + Firestore + Realtime Database deploy config
@@ -235,8 +163,6 @@ One shop · one Firebase project · **two databases**.
 ### Default Service Catalog
 
 `js/service-catalog.js` seeds the catalog a shop starts from. Seeds are **idempotent** — the same document is written by any device at once, and a renamed default keeps its seed ID so renaming is never undone.
-
-Services are grouped by `sortOrder` band:
 
 | Band | Group |
 |---|---|
@@ -340,15 +266,11 @@ npm test
 node --test tests/ledger.mjs tests/calendar.mjs
 ```
 
-Pure money/validation helpers and day-view helpers are unit-tested with Node's built-in runner — no installs needed.
-
 ```bash
 npm run test:rules   # Firestore emulator rules harness (136 cases, 0 skipped)
 ```
 
-`tests/module-graph.mjs` walks the real import graph (HTML entry scripts **and** JS → JS imports) and asserts:
-1. Every named import resolves to a name the target module actually exports.
-2. No module exports a name that nothing imports (dead exports fail the test).
+`tests/module-graph.mjs` walks the real import graph and asserts every named import resolves, and no dead exports accumulate.
 
 ---
 
@@ -365,12 +287,10 @@ npm run test:rules   # Firestore emulator rules harness (136 cases, 0 skipped)
 | Money | Integer paise (`₹10.50 → 1050`) — no floating point |
 | Dates | `Asia/Kolkata` (`YYYY-MM-DD` date keys) |
 
-### Keyboard Shortcuts
-
 | Key | Action |
 |---|---|
-| `Ctrl/⌘ + N` | Open "Record a sale" dialog from anywhere |
-| `Esc` | Close any modal or the mobile sidebar |
+| `Ctrl/⌘ + N` | Open "Record a sale" dialog |
+| `Esc` | Close any modal or mobile sidebar |
 
 ---
 
@@ -379,14 +299,12 @@ npm run test:rules   # Firestore emulator rules harness (136 cases, 0 skipped)
 <details>
 <summary><b>"Firebase is not configured yet."</b></summary>
 
-Replace the `YOUR_*` values in `js/firebase.js` — see *Connect Firebase* above.
+Replace the `YOUR_*` values in `js/firebase.js`.
 
 </details>
 
 <details>
 <summary><b>"That Google account is not authorised for this shop."</b></summary>
-
-The email is not in the Firestore `allowedUsers` allowlist. Run:
 
 ```bash
 node tools/bootstrap-access.mjs --key <service-account.json> \
@@ -394,21 +312,17 @@ node tools/bootstrap-access.mjs --key <service-account.json> \
 firebase deploy --only firestore
 ```
 
-The address must match `request.auth.token.email` byte for byte (lower-case). The bootstrap tool does this for you; a hand-edited entry may not.
-
 </details>
 
 <details>
 <summary><b>"Realtime Database is not reachable."</b></summary>
 
-`databaseURL` in `js/firebase.js` is wrong, or the database has never been created. The ledger still records sales (Firestore), but expenses are unavailable until it points at the right database.
+`databaseURL` in `js/firebase.js` is wrong or the database was never created. Sales (Firestore) still work; expenses are unavailable until fixed.
 
 </details>
 
 <details>
 <summary><b>The console stays on the locked card.</b></summary>
-
-The signed-in Google account does not have an admin role in the allowlist. Add it:
 
 ```bash
 node tools/bootstrap-access.mjs --key <sa.json> --add you@gmail.com --role admin
@@ -419,7 +333,7 @@ node tools/bootstrap-access.mjs --key <sa.json> --add you@gmail.com --role admin
 <details>
 <summary><b>"The ledger refused that sale."</b></summary>
 
-The rules re-derive `total = quantity × rate` and verify the head delta. Common causes: rate or quantity of zero, the service was deactivated, or the day is closed. Check the browser console for the specific rule path that fired.
+The rules re-derive `total = quantity × rate` and verify the head delta. Common causes: zero rate/quantity, deactivated service, or the day is closed. Check the browser console.
 
 </details>
 
@@ -429,23 +343,16 @@ The rules re-derive `total = quantity × rate` and verify the head delta. Common
 
 | Version | Highlight |
 |---|---|
-| **v0.13.1** | Receipt photographs in Firestore subcollection; rules fix for optional `notes`/`hasReceipt` fields — 136 rule cases, 0 skipped |
-| **v0.13.0** | Calendar, backfill, business-day field, day close/reopen, receipt scanner date |
+| **v0.13.1** | Receipt photographs in Firestore subcollection; rules fix for optional fields — 136 rule cases, 0 skipped |
+| **v0.13.0** | Calendar, backfill, business-day field, day close/reopen |
 | **v0.12.0** | Google Sign-In replaces access codes; server-enforced allowlist |
 | **v0.11.0** | SHA-256 hashed access codes; Admin SDK bootstrap tool |
-| **v0.10.0** | Admin role gate; Developer console unlocked by allowlist entry |
+| **v0.10.0** | Admin role gate; Developer console |
 | **v0.9.0** | Daily ledger; edit/delete; day-head close register; cursor paging |
 
 ---
 
 <div align="center">
-
-<!-- ══════════  FOOTER RECEIPT TEAR  ══════════ -->
-<svg width="100%" height="16" viewBox="0 0 1200 16" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-<polygon points="0,16 15,0 30,16 45,0 60,16 75,0 90,16 105,0 120,16 135,0 150,16 165,0 180,16 195,0 210,16 225,0 240,16 255,0 270,16 285,0 300,16 315,0 330,16 345,0 360,16 375,0 390,16 405,0 420,16 435,0 450,16 465,0 480,16 495,0 510,16 525,0 540,16 555,0 570,16 585,0 600,16 615,0 630,16 645,0 660,16 675,0 690,16 705,0 720,16 735,0 750,16 765,0 780,16 795,0 810,16 825,0 840,16 855,0 870,16 885,0 900,16 915,0 930,16 945,0 960,16 975,0 990,16 1005,0 1020,16 1035,0 1050,16 1065,0 1080,16 1095,0 1110,16 1125,0 1140,16 1155,0 1170,16 1185,0 1200,16 1200,16 0,16" fill="#f6f0e4"/>
-</svg>
-
-<br/>
 
 **TrustX Ledger &nbsp;·&nbsp; v0.13.1**  
 *Fast · Offline-First · Single-Shop · ₹ INR*

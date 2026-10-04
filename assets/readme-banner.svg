@@ -1,0 +1,395 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" role="img" aria-label="TrustX Ledger Dashboard">
+  <defs>
+    <!-- Sidebar gradient -->
+    <linearGradient id="sbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#132b1e"/>
+      <stop offset="100%" stop-color="#0b1f13"/>
+    </linearGradient>
+    <!-- Dispenser bar gradient (warm cylinder) -->
+    <linearGradient id="dsp" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffffff"/>
+      <stop offset="15%"  stop-color="#fefcf7"/>
+      <stop offset="45%"  stop-color="#f1e5cf"/>
+      <stop offset="75%"  stop-color="#d5c19e"/>
+      <stop offset="100%" stop-color="#9e8760"/>
+    </linearGradient>
+    <!-- TrustX stamp green gradient -->
+    <radialGradient id="stg" cx="35%" cy="35%" r="65%">
+      <stop offset="0%"   stop-color="#18773c"/>
+      <stop offset="100%" stop-color="#0b4f23"/>
+    </radialGradient>
+    <!-- Warm amber page background gradient -->
+    <radialGradient id="abg" cx="65%" cy="10%" r="60%" gradientUnits="userSpaceOnUse" gradientTransform="translate(260,0)">
+      <stop offset="0%"   stop-color="#f5aa28" stop-opacity="0.40"/>
+      <stop offset="50%"  stop-color="#f5aa28" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#f6f0e4" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Logo blue-to-green gradient -->
+    <linearGradient id="lbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#4b8bbf"/>
+      <stop offset="55%"  stop-color="#3a709e"/>
+      <stop offset="100%" stop-color="#2d8a4e"/>
+    </linearGradient>
+    <linearGradient id="amb" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#f5a623"/>
+      <stop offset="100%" stop-color="#e8921a"/>
+    </linearGradient>
+
+    <!-- Drop shadow for receipt card -->
+    <filter id="csf" x="-4%" y="-3%" width="108%" height="120%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#6e4b1e" flood-opacity="0.15"/>
+      <feDropShadow dx="0" dy="3"  stdDeviation="6"  flood-color="#000000" flood-opacity="0.04"/>
+    </filter>
+    <!-- Drop shadow for dispenser -->
+    <filter id="dsf" x="-2%" y="-50%" width="104%" height="250%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#966928" flood-opacity="0.30"/>
+    </filter>
+    <!-- TrustX stamp shadow -->
+    <filter id="stf" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#0b4f23" flood-opacity="0.42"/>
+    </filter>
+
+    <!-- Rounded outer frame clip -->
+    <clipPath id="frame"><rect width="960" height="560" rx="14"/></clipPath>
+    <!-- Sidebar clip -->
+    <clipPath id="sideclip"><rect width="252" height="560"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+
+    <!-- ═══════════════════════════ PAGE BG ═══════════════════════════ -->
+    <rect width="960" height="560" fill="#f6f0e4"/>
+    <!-- Amber radial glow over main area -->
+    <rect x="252" width="708" height="560" fill="url(#abg)"/>
+
+    <!-- ═══════════════════════════ SIDEBAR ═══════════════════════════ -->
+    <rect width="252" height="560" fill="url(#sbg)" clip-path="url(#sideclip)"/>
+
+    <!-- ── Logo block ── -->
+    <!-- Rounded square background -->
+    <rect x="16" y="14" width="38" height="38" rx="10" fill="url(#lbg)"/>
+    <!-- Inner highlight -->
+    <rect x="16" y="14" width="38" height="19" rx="10" fill="rgba(255,255,255,0.08)"/>
+    <!-- Open-book paths -->
+    <path d="M25 22 C29 20 33 20 35 22 L35 44 C33 42 29 42 25 44 Z" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M45 22 C41 20 37 20 35 22 L35 44 C37 42 41 42 45 44 Z" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linejoin="round"/>
+    <line x1="35" y1="22" x2="35" y2="44" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"/>
+    <!-- ₹ symbol (amber) -->
+    <path d="M37 26 C40 25.5 42.5 27 42.5 29 C42.5 31 40.5 32.2 37 32.2 L36 32.2 L38 37" fill="none" stroke="url(#amb)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="35" y1="31.5" x2="41" y2="31.5" stroke="url(#amb)" stroke-width="1.3" stroke-linecap="round"/>
+    <!-- Leaf dot -->
+    <circle cx="48" cy="47" r="4"   fill="rgba(45,138,78,0.55)"/>
+    <circle cx="48" cy="47" r="2.2" fill="rgba(245,166,35,0.9)"/>
+
+    <!-- Brand text -->
+    <text x="62" y="29" font-family="Arial,sans-serif" font-size="12.5" font-weight="700" fill="#ffffff">TrustX Ledger</text>
+    <text x="62" y="43" font-family="Arial,sans-serif" font-size="9.5"  fill="#a0c2ab">Shop ledger</text>
+
+    <!-- Brand separator -->
+    <line x1="10" y1="62" x2="242" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="5,3"/>
+
+    <!-- ── Nav section label ── -->
+    <text x="16" y="80" font-family="Arial,sans-serif" font-size="8.5" font-weight="700" fill="#3e6b52" letter-spacing="1.5">WORKSPACE</text>
+
+    <!-- Active item: Dashboard -->
+    <rect x="8"  y="87"  width="236" height="34" rx="7" fill="rgba(255,255,255,0.11)"/>
+    <rect x="8"  y="87"  width="3"   height="34" rx="1.5" fill="#4b8bbf"/>
+    <!-- Dashboard icon -->
+    <rect x="21" y="97"  width="6"   height="7"  rx="1" fill="none" stroke="#fff" stroke-width="1.3"/>
+    <rect x="30" y="97"  width="6"   height="4.5" rx="1" fill="none" stroke="#fff" stroke-width="1.3"/>
+    <rect x="30" y="104" width="6"   height="7"  rx="1" fill="none" stroke="#fff" stroke-width="1.3"/>
+    <rect x="21" y="108" width="6"   height="4.5" rx="1" fill="none" stroke="#fff" stroke-width="1.3"/>
+    <text x="43" y="110" font-family="Arial,sans-serif" font-size="12" font-weight="600" fill="#ffffff">Dashboard</text>
+
+    <!-- Transactions -->
+    <path d="M21 130 h8 v7 h-8 z M21 134 h5" fill="none" stroke="#a0c2ab" stroke-width="1.2" stroke-linecap="round"/>
+    <text x="43" y="139" font-family="Arial,sans-serif" font-size="12" fill="#a0c2ab">Transactions</text>
+
+    <!-- Daily Ledger -->
+    <rect x="21" y="154" width="8" height="8" rx="1" fill="none" stroke="#a0c2ab" stroke-width="1.2"/>
+    <line x1="23" y1="158" x2="28" y2="158" stroke="#a0c2ab" stroke-width="0.9"/>
+    <line x1="23" y1="161" x2="27" y2="161" stroke="#a0c2ab" stroke-width="0.9"/>
+    <text x="43" y="163" font-family="Arial,sans-serif" font-size="12" fill="#a0c2ab">Daily Ledger</text>
+
+    <!-- Calendar -->
+    <rect x="21" y="178" width="8" height="8" rx="1" fill="none" stroke="#a0c2ab" stroke-width="1.2"/>
+    <line x1="23" y1="178" x2="23" y2="176" stroke="#a0c2ab" stroke-width="1"/>
+    <line x1="27" y1="178" x2="27" y2="176" stroke="#a0c2ab" stroke-width="1"/>
+    <line x1="21" y1="182" x2="29" y2="182" stroke="#a0c2ab" stroke-width="0.9"/>
+    <text x="43" y="187" font-family="Arial,sans-serif" font-size="12" fill="#a0c2ab">Calendar</text>
+
+    <!-- Faint rule -->
+    <line x1="10" y1="206" x2="242" y2="206" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+
+    <!-- Coming-soon items -->
+    <text x="43" y="225" font-family="Arial,sans-serif" font-size="12" fill="#3a5e48">Customers</text>
+    <rect x="137" y="216" width="36" height="14" rx="7" fill="rgba(75,139,191,0.14)"/>
+    <text x="155"  y="227" font-family="Arial,sans-serif" font-size="7.5" fill="#4b8bbf" text-anchor="middle">Soon</text>
+
+    <text x="43" y="249" font-family="Arial,sans-serif" font-size="12" fill="#3a5e48">Expenses</text>
+    <rect x="130" y="240" width="36" height="14" rx="7" fill="rgba(75,139,191,0.14)"/>
+    <text x="148"  y="251" font-family="Arial,sans-serif" font-size="7.5" fill="#4b8bbf" text-anchor="middle">Soon</text>
+
+    <text x="43" y="273" font-family="Arial,sans-serif" font-size="12" fill="#3a5e48">Reports</text>
+    <rect x="118" y="264" width="36" height="14" rx="7" fill="rgba(75,139,191,0.14)"/>
+    <text x="136"  y="275" font-family="Arial,sans-serif" font-size="7.5" fill="#4b8bbf" text-anchor="middle">Soon</text>
+
+    <!-- Sidebar footer -->
+    <line x1="10" y1="502" x2="242" y2="502" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    <circle cx="28" cy="521" r="12" fill="#2d8a4e"/>
+    <text x="28" y="526" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#fff" text-anchor="middle">A</text>
+    <text x="48" y="517" font-family="Arial,sans-serif" font-size="10" font-weight="600" fill="#ffffff">Shop Owner</text>
+    <text x="48" y="531" font-family="Arial,sans-serif" font-size="8"  fill="#a0c2ab">TrustX Ledger · v0.13.1</text>
+
+    <!-- ═══════════════════════════ TOPBAR ═══════════════════════════ -->
+    <rect x="252" y="0" width="708" height="56" fill="#fffdf9"/>
+    <line x1="252" y1="56" x2="960" y2="56" stroke="#e8dfc4" stroke-width="1"/>
+    <!-- Hamburger icon -->
+    <line x1="272" y1="21" x2="292" y2="21" stroke="#5c4a30" stroke-width="2" stroke-linecap="round"/>
+    <line x1="272" y1="28" x2="292" y2="28" stroke="#5c4a30" stroke-width="2" stroke-linecap="round"/>
+    <line x1="272" y1="35" x2="292" y2="35" stroke="#5c4a30" stroke-width="2" stroke-linecap="round"/>
+    <!-- Page title -->
+    <text x="304" y="35" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#2d2416">Dashboard</text>
+    <!-- Shop pill -->
+    <rect x="636" y="15" width="96" height="26" rx="13" fill="#f0e9d6" stroke="#e8dfc4" stroke-width="1"/>
+    <text x="684"  y="32" font-family="Arial,sans-serif" font-size="9.5" font-weight="600" fill="#5c4a30" text-anchor="middle">PRIMARY SHOP</text>
+    <!-- Date pill -->
+    <rect x="740" y="15" width="116" height="26" rx="13" fill="#f0e9d6" stroke="#e8dfc4" stroke-width="1"/>
+    <text x="798"  y="32" font-family="Arial,sans-serif" font-size="9.5" font-weight="600" fill="#5c4a30" text-anchor="middle">04 OCT 2026</text>
+
+    <!-- ═══════════════════════════ DISPENSER GLOW ═══════════════════════════ -->
+    <ellipse cx="606" cy="76" rx="300" ry="52" fill="#faba37" opacity="0.28"/>
+
+    <!-- ── Dispenser bar (cylinder roller) ── -->
+    <rect x="264" y="64" width="684" height="35" rx="17.5"
+          fill="url(#dsp)" stroke="rgba(255,255,255,0.95)" stroke-width="1"
+          filter="url(#dsf)"/>
+    <!-- Highlight stripe on roller -->
+    <rect x="320" y="70"  width="602" height="3.5" rx="1.8" fill="rgba(255,255,255,0.88)"/>
+    <!-- Dark slot below roller -->
+    <rect x="290" y="92"  width="634" height="9"   rx="4.5" fill="#120d07"/>
+    <rect x="290" y="92"  width="634" height="3.5" rx="1.5" fill="rgba(0,0,0,0.55)"/>
+
+    <!-- ═══════════════════════════ RECEIPT CARD ═══════════════════════════ -->
+    <rect x="264" y="96" width="684" height="436" fill="#fffdf9" filter="url(#csf)"/>
+    <!-- Inner shadow at top (dispenser overhang) -->
+    <rect x="264" y="96" width="684" height="18" fill="rgba(70,45,15,0.22)"/>
+
+    <!-- ── Status tag ── -->
+    <rect x="286" y="118" width="262" height="20" rx="4" fill="#ede3d0"/>
+    <!-- Pulse dot -->
+    <circle cx="299" cy="128" r="4" fill="#2d8a4e"/>
+    <circle cx="299" cy="128" r="2.4" fill="#5cd680" opacity="0.75"/>
+    <text x="308" y="133" font-family="Arial,sans-serif" font-size="8.5" font-weight="700" fill="#63503a" letter-spacing="0.5">ACTIVE WORKSPACE · LIVE SHOP LEDGER</text>
+
+    <!-- ── Receipt title ── -->
+    <text x="286" y="162" font-family="Arial,sans-serif" font-size="22" font-weight="800" fill="#1e1912">Today's Overview</text>
+
+    <!-- ── Subtitle ── -->
+    <text x="286" y="179" font-family="Arial,sans-serif" font-size="9.5" font-weight="700" fill="#9c8a74" letter-spacing="0.5">SUN, 04 OCTOBER 2026  ·  ASIA/KOLKATA  ·  ₹ INR</text>
+
+    <!-- ── TrustX stamp (top-right, rotated -7deg) ── -->
+    <g transform="translate(896,142) rotate(-7)">
+      <circle r="34" fill="url(#stg)" stroke="rgba(255,255,255,0.65)" stroke-width="2" stroke-dasharray="4,3" filter="url(#stf)"/>
+      <circle r="31" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+      <text x="0" y="-4" font-family="Arial,sans-serif" font-size="9.5" font-weight="900" fill="#ffffff" text-anchor="middle">TrustX</text>
+      <text x="0" y="9"  font-family="Arial,sans-serif" font-size="6.2" font-weight="800" fill="rgba(255,255,255,0.9)" text-anchor="middle" letter-spacing="1.8">VERIFIED</text>
+    </g>
+
+    <!-- ── Sync pill ── -->
+    <rect x="778" y="160" width="94" height="22" rx="11" fill="#d4f0de" stroke="#b0e0c3" stroke-width="0.7"/>
+    <circle cx="791" cy="171" r="3.2" fill="#2d8a4e"/>
+    <text x="800" y="175.5" font-family="Arial,sans-serif" font-size="8.5" font-weight="600" fill="#0f632f">Live sync</text>
+
+    <!-- ── NEW SALE button ── -->
+    <rect x="778" y="116" width="92" height="32" rx="8" fill="#1f7a42"/>
+    <!-- Arrow icon (simple + sign) -->
+    <line x1="792" y1="132" x2="800" y2="132" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    <line x1="796" y1="128" x2="796" y2="136" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    <text x="808" y="137" font-family="Arial,sans-serif" font-size="9.5" font-weight="800" fill="#ffffff">NEW SALE</text>
+
+    <!-- ── Dashed divider 1 ── -->
+    <line x1="286" y1="194" x2="936" y2="194" stroke="#dbc9b5" stroke-width="1.5" stroke-dasharray="7,5"/>
+
+    <!-- ══════════  STAT CARDS (8 cards: Revenue, Txns, Cash, UPI, Card, Due, Expenses, Net)  ══════════ -->
+    <!-- Using a 4-up layout in two rows of 4 -->
+
+    <!-- Row 1 -->
+    <!-- Revenue -->
+    <rect x="286" y="204" width="158" height="76" rx="9" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="297" y="215" width="22"  height="22" rx="6" fill="rgba(245,166,35,0.15)"/>
+    <!-- Trend icon -->
+    <polyline points="301,230 305,224 308,228 316,219" fill="none" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="323" y="229" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#8a7355" letter-spacing="0.5">Today's revenue</text>
+    <text x="297" y="256" font-family="Arial,sans-serif" font-size="20" font-weight="800" fill="#1e1912">₹4,820</text>
+    <text x="297" y="272" font-family="Arial,sans-serif" font-size="7.5" fill="#2d8a4e">↑ 12 transactions today</text>
+
+    <!-- Txns -->
+    <rect x="452" y="204" width="130" height="76" rx="9" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="463" y="215" width="22"  height="22" rx="6" fill="rgba(75,139,191,0.13)"/>
+    <rect x="467" y="218" width="7" height="9" rx="1" fill="none" stroke="#4b8bbf" stroke-width="1.3"/>
+    <line x1="469" y1="221" x2="472" y2="221" stroke="#4b8bbf" stroke-width="0.9"/>
+    <line x1="469" y1="223" x2="472" y2="223" stroke="#4b8bbf" stroke-width="0.9"/>
+    <text x="489" y="229" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#8a7355" letter-spacing="0.5">Transactions</text>
+    <text x="463" y="256" font-family="Arial,sans-serif" font-size="20" font-weight="800" fill="#1e1912">12</text>
+    <text x="463" y="272" font-family="Arial,sans-serif" font-size="7.5" fill="#8a7355">sales recorded</text>
+
+    <!-- Cash -->
+    <rect x="590" y="204" width="130" height="76" rx="9" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="601" y="215" width="22"  height="22" rx="6" fill="rgba(45,138,78,0.13)"/>
+    <rect x="604" y="219" width="12" height="9" rx="1.5" fill="none" stroke="#2d8a4e" stroke-width="1.3"/>
+    <circle cx="610" cy="223.5" r="2" fill="none" stroke="#2d8a4e" stroke-width="1"/>
+    <text x="627" y="229" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#8a7355" letter-spacing="0.5">Cash</text>
+    <text x="601" y="256" font-family="Arial,sans-serif" font-size="20" font-weight="800" fill="#1e1912">₹2,100</text>
+    <text x="601" y="272" font-family="Arial,sans-serif" font-size="7.5" fill="#8a7355">5 transactions</text>
+
+    <!-- UPI -->
+    <rect x="728" y="204" width="208" height="76" rx="9" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="739" y="215" width="22"  height="22" rx="6" fill="rgba(99,102,241,0.13)"/>
+    <rect x="743" y="218" width="8"   height="14" rx="1.5" fill="none" stroke="#6366f1" stroke-width="1.3"/>
+    <line x1="745" y1="229" x2="749" y2="229" stroke="#6366f1" stroke-width="1"/>
+    <text x="765" y="229" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#8a7355" letter-spacing="0.5">UPI</text>
+    <text x="739" y="256" font-family="Arial,sans-serif" font-size="20" font-weight="800" fill="#1e1912">₹2,720</text>
+    <text x="739" y="272" font-family="Arial,sans-serif" font-size="7.5" fill="#8a7355">7 transactions</text>
+
+    <!-- Row 2: Card, Due, Expenses, Net (green) -->
+    <!-- Card -->
+    <rect x="286" y="286" width="130" height="68" rx="9" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="297" y="295" width="22"  height="18" rx="5" fill="rgba(75,139,191,0.13)"/>
+    <rect x="300" y="297" width="13" height="9" rx="1" fill="none" stroke="#4b8bbf" stroke-width="1.2"/>
+    <line x1="300" y1="301" x2="313" y2="301" stroke="#4b8bbf" stroke-width="0.9"/>
+    <text x="322" y="308" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#8a7355">Card</text>
+    <text x="297" y="336" font-family="Arial,sans-serif" font-size="17" font-weight="800" fill="#1e1912">₹0</text>
+    <text x="297" y="348" font-family="Arial,sans-serif" font-size="7" fill="#8a7355">0 transactions</text>
+
+    <!-- Due -->
+    <rect x="424" y="286" width="158" height="68" rx="9" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="435" y="295" width="22"  height="18" rx="5" fill="rgba(192,57,43,0.10)"/>
+    <circle cx="446" cy="304" r="5" fill="none" stroke="#c0392b" stroke-width="1.3"/>
+    <line x1="446" y1="301" x2="446" y2="304" stroke="#c0392b" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="446" y1="304" x2="449" y2="306" stroke="#c0392b" stroke-width="1.2" stroke-linecap="round"/>
+    <text x="461" y="308" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#8a7355">Due</text>
+    <text x="435" y="336" font-family="Arial,sans-serif" font-size="17" font-weight="800" fill="#c0392b">₹0</text>
+    <text x="435" y="348" font-family="Arial,sans-serif" font-size="7" fill="#8a7355">0 pending</text>
+
+    <!-- Expenses -->
+    <rect x="590" y="286" width="130" height="68" rx="9" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="601" y="295" width="22"  height="18" rx="5" fill="rgba(217,119,6,0.12)"/>
+    <circle cx="612" cy="304" r="5" fill="none" stroke="#d97706" stroke-width="1.3"/>
+    <line x1="609" y1="304" x2="615" y2="304" stroke="#d97706" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="612" y1="301" x2="612" y2="307" stroke="#d97706" stroke-width="1.2" stroke-linecap="round"/>
+    <text x="627" y="308" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#8a7355">Expenses</text>
+    <text x="601" y="336" font-family="Arial,sans-serif" font-size="17" font-weight="800" fill="#1e1912">₹500</text>
+    <text x="601" y="348" font-family="Arial,sans-serif" font-size="7" fill="#8a7355">today</text>
+
+    <!-- Net (green emphasis card) -->
+    <rect x="728" y="286" width="208" height="68" rx="9" fill="#d4f0de" stroke="#b0e0c3" stroke-width="1"/>
+    <rect x="739" y="295" width="22"  height="18" rx="5" fill="rgba(45,138,78,0.20)"/>
+    <!-- Wallet icon -->
+    <path d="M742 298 h14 a2 2 0 0 1 2 2 v8 a2 2 0 0 1-2 2 h-14 a1 1 0 0 1-1-1 v-10 a1 1 0 0 1 1-1 z" fill="none" stroke="#0f632f" stroke-width="1.2"/>
+    <circle cx="752" cy="303" r="1.5" fill="#0f632f"/>
+    <text x="765" y="308" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#0f632f">Net earnings</text>
+    <text x="739" y="336" font-family="Arial,sans-serif" font-size="17" font-weight="800" fill="#0f632f">₹4,320</text>
+    <text x="739" y="348" font-family="Arial,sans-serif" font-size="7" fill="#2d8a4e">revenue − expenses</text>
+
+    <!-- ── Dashed divider 2 ── -->
+    <line x1="286" y1="366" x2="936" y2="366" stroke="#dbc9b5" stroke-width="1.5" stroke-dasharray="7,5"/>
+
+    <!-- ══════════  TWO-COLUMN SECTION  ══════════ -->
+
+    <!-- ── Left: Recent transactions table ── -->
+    <!-- Card -->
+    <rect x="286" y="376" width="400" height="128" rx="10" fill="#fdf8ee" stroke="#e8dfc4" stroke-width="1"/>
+    <!-- Card header -->
+    <rect x="286" y="376" width="400" height="34" rx="10" fill="#f4ead5"/>
+    <rect x="286" y="392" width="400" height="18" fill="#f4ead5"/>
+    <text x="300" y="398" font-family="Arial,sans-serif" font-size="11" font-weight="800" fill="#2d2416">Recent transactions</text>
+    <!-- View all link -->
+    <text x="674" y="398" font-family="Arial,sans-serif" font-size="8.5" fill="#4b8bbf" text-anchor="end">View all →</text>
+
+    <!-- Table header row -->
+    <line x1="286" y1="410" x2="686" y2="410" stroke="#e8dfc4" stroke-width="1"/>
+    <text x="300" y="423" font-family="Arial,sans-serif" font-size="7.5" font-weight="700" fill="#8a7355">TIME</text>
+    <text x="340" y="423" font-family="Arial,sans-serif" font-size="7.5" font-weight="700" fill="#8a7355">SERVICE</text>
+    <text x="490" y="423" font-family="Arial,sans-serif" font-size="7.5" font-weight="700" fill="#8a7355">PAYMENT</text>
+    <text x="674" y="423" font-family="Arial,sans-serif" font-size="7.5" font-weight="700" fill="#8a7355" text-anchor="end">AMOUNT</text>
+    <line x1="286" y1="427" x2="686" y2="427" stroke="#e8dfc4" stroke-width="0.8"/>
+
+    <!-- Table row 1 -->
+    <text x="300" y="441" font-family="Arial,sans-serif" font-size="9" fill="#5c4a30">07:32 PM</text>
+    <text x="340" y="441" font-family="Arial,sans-serif" font-size="9" fill="#1e1912">Photocopy</text>
+    <rect x="488" y="432" width="36" height="13" rx="6" fill="rgba(45,138,78,0.14)"/>
+    <text x="506" y="442" font-family="Arial,sans-serif" font-size="7.5" fill="#0f632f" text-anchor="middle">UPI</text>
+    <text x="674" y="441" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#1e1912" text-anchor="end">₹40</text>
+    <line x1="300" y1="447" x2="674" y2="447" stroke="#e8dfc4" stroke-width="0.6"/>
+
+    <!-- Table row 2 -->
+    <text x="300" y="461" font-family="Arial,sans-serif" font-size="9" fill="#5c4a30">06:15 PM</text>
+    <text x="340" y="461" font-family="Arial,sans-serif" font-size="9" fill="#1e1912">Pan Card</text>
+    <rect x="488" y="452" width="38" height="13" rx="6" fill="rgba(75,139,191,0.14)"/>
+    <text x="507" y="462" font-family="Arial,sans-serif" font-size="7.5" fill="#254d6e" text-anchor="middle">Cash</text>
+    <text x="674" y="461" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#1e1912" text-anchor="end">₹150</text>
+    <line x1="300" y1="467" x2="674" y2="467" stroke="#e8dfc4" stroke-width="0.6"/>
+
+    <!-- Table row 3 -->
+    <text x="300" y="481" font-family="Arial,sans-serif" font-size="9" fill="#5c4a30">05:48 PM</text>
+    <text x="340" y="481" font-family="Arial,sans-serif" font-size="9" fill="#1e1912">Govt Certificate</text>
+    <rect x="488" y="472" width="36" height="13" rx="6" fill="rgba(45,138,78,0.14)"/>
+    <text x="506" y="482" font-family="Arial,sans-serif" font-size="7.5" fill="#0f632f" text-anchor="middle">UPI</text>
+    <text x="674" y="481" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#1e1912" text-anchor="end">₹250</text>
+    <line x1="300" y1="487" x2="674" y2="487" stroke="#e8dfc4" stroke-width="0.6"/>
+
+    <!-- Footer note of txn card -->
+    <text x="300" y="498" font-family="Arial,sans-serif" font-size="7.5" fill="#b89f7a">12 transactions · ₹4,820 today</text>
+
+    <!-- ── Right: Quick services card ── -->
+    <rect x="694" y="376" width="242" height="128" rx="10" fill="#fdf8ee" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="694" y="376" width="242" height="34" rx="10" fill="#f4ead5"/>
+    <rect x="694" y="392" width="242" height="18" fill="#f4ead5"/>
+    <text x="708" y="398" font-family="Arial,sans-serif" font-size="11" font-weight="800" fill="#2d2416">Quick services</text>
+    <line x1="694" y1="410" x2="936" y2="410" stroke="#e8dfc4" stroke-width="1"/>
+
+    <!-- Quick service tiles (4 tiles in 2x2) -->
+    <!-- Tile PC -->
+    <rect x="704" y="416" width="104" height="38" rx="7" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="709" y="421"  width="20" height="20" rx="5" fill="rgba(75,139,191,0.15)"/>
+    <text x="719" y="435" font-family="Arial,sans-serif" font-size="9.5" font-weight="800" fill="#4b8bbf" text-anchor="middle">PC</text>
+    <text x="734" y="430" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#1e1912">Photocopy</text>
+    <text x="734" y="442" font-family="Arial,sans-serif" font-size="7" fill="#8a7355">₹2/page</text>
+
+    <!-- Tile PR -->
+    <rect x="816" y="416" width="110" height="38" rx="7" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="821" y="421"  width="20" height="20" rx="5" fill="rgba(75,139,191,0.15)"/>
+    <text x="831" y="435" font-family="Arial,sans-serif" font-size="9.5" font-weight="800" fill="#4b8bbf" text-anchor="middle">PR</text>
+    <text x="846" y="430" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#1e1912">Print</text>
+    <text x="846" y="442" font-family="Arial,sans-serif" font-size="7" fill="#8a7355">₹5/page</text>
+
+    <!-- Tile SC -->
+    <rect x="704" y="460" width="104" height="38" rx="7" fill="#fffdf9" stroke="#e8dfc4" stroke-width="1"/>
+    <rect x="709" y="465"  width="20" height="20" rx="5" fill="rgba(75,139,191,0.15)"/>
+    <text x="719" y="479" font-family="Arial,sans-serif" font-size="9.5" font-weight="800" fill="#4b8bbf" text-anchor="middle">SC</text>
+    <text x="734" y="474" font-family="Arial,sans-serif" font-size="8" font-weight="700" fill="#1e1912">Scan</text>
+    <text x="734" y="486" font-family="Arial,sans-serif" font-size="7" fill="#8a7355">₹10/page</text>
+
+    <!-- Tile +more -->
+    <rect x="816" y="460" width="110" height="38" rx="7" fill="#dceefa" stroke="#4b8bbf" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="871" y="477" font-family="Arial,sans-serif" font-size="10" font-weight="800" fill="#4b8bbf" text-anchor="middle">+26 more</text>
+    <text x="871" y="490" font-family="Arial,sans-serif" font-size="7.5" fill="#3a709e" text-anchor="middle">Browse →</text>
+
+    <!-- ══════════  RECEIPT FOOTER NOTE  ══════════ -->
+    <text x="606" y="516" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#9c8a74" text-anchor="middle" letter-spacing="0.5">HAVE A NICE DAY! • TRUSTX LEDGER</text>
+
+    <!-- ══════════  RECEIPT TEAR EDGE (zigzag bottom)  ══════════ -->
+    <!-- Zigzag at y=528: peaks at 520, valleys at 528 -->
+    <path d="M264,525 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9"
+          fill="none" stroke="#dbc9b5" stroke-width="1.2"/>
+    <!-- Clip everything below tear line with warm background fill -->
+    <rect x="264" y="525" width="684" height="10" fill="#fffdf9"/>
+    <path d="M264,525 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 l9,-9 l9,9 L948,560 L264,560 Z"
+          fill="#f6f0e4" opacity="0.9"/>
+
+    <!-- Footer caption below tear -->
+    <text x="606" y="548" font-family="Arial,sans-serif" font-size="9" fill="#9c8a74" text-anchor="middle">TrustX Ledger  ·  Fast, Offline-First Shop Record</text>
+
+  </g>
+</svg>
