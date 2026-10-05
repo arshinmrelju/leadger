@@ -505,10 +505,26 @@ body {
    web page it is.
    ------------------------------------------------------------------ */
 
-@media (display-mode: standalone), (display-mode: fullscreen) {
-  /* The receipt printer's feed and tear edges are a desktop flourish. On
-     a phone they push the content down for no gain. */
+/* Why both a width and a display-mode here: the dispenser bar and its
+   tear edge are a phone-size flourish, paying no rent in a crowded phone
+   window. The rule used to gate on display-mode ALONE, which also matched
+   a desktop installed PWA with a wide screen - on the installed desktop
+   app the receipt's dispenser bar went display:none, yet the warm glow
+   orb (a ::before on the wrapper, NOT inside .receipt-dispenser) stayed
+   behind it, so the top of the receipt read as a golden band with nothing
+   to hold it. Width-gating ties the phone behaviour to the same 1024px
+   breakpoint as the sidebar, and hiding the orb there closes the gap. */
+@media (display-mode: standalone) and (max-width: 1024px),
+       (display-mode: fullscreen) and (max-width: 1024px) {
   .receipt-dispenser {
+    display: none;
+  }
+
+  /* Match the dispenser going away: the orb behind it sits on the
+     wrapper, not the dispenser, so hiding only the bar would leave a
+     bare gold band across the paper on a phone in the installed app. */
+  .dash-receipt-wrapper::before,
+  .receipt-wrapper::before {
     display: none;
   }
 
