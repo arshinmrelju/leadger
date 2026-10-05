@@ -990,14 +990,14 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 </details>
 
 <details>
-<summary><b>⚙️ A 38-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
+<summary><b>⚙️ A 39-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
 
-`js/service-catalog.js` seeds the catalog a shop starts from: **38 services across 8 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Owner console's **Shop** tab asks for real rates once, after the seed.
+`js/service-catalog.js` seeds the catalog a shop starts from: **39 services across 8 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Owner console's **Shop** tab asks for real rates once, after the seed.
 
 ```text
 100s  Printing & document services      Normal Printing · Colour/Photo Printing ·
                                         Scanning · Scan+Print · Photocopy ·
-                                        DTP/Typing · Document Processing
+                                        DTP/Typing · Document Processing · Lamination
 200s  Computer & DTP services           Document Formatting · Document Preparation ·
                                         CV / Resume
 300s  Government / certificate services PCC · Income Certificate · Possession

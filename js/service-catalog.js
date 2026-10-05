@@ -80,6 +80,7 @@ const GROUPS = [
       ["Photocopy", "PX"],
       ["DTP / Typing", "DT"],
       ["Document Processing", "DP"],
+      ["Lamination", "LM"],
     ],
   },
   {
