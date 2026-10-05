@@ -211,11 +211,16 @@ let seq = 0;
  * @param {object} handlers
  * @param {Function} handlers.onSelect  (service|null) — the choice changed
  * @param {Function} [handlers.onCreate] (query) — the user asked to add a service
- * @returns {{setServices, setValue}}
+ * @param {string} [handlers.inputId]  id for the search box, when the host
+ *   form labels it
+ * @param {string|null} [handlers.focusAfterChoose] selector for what takes
+ *   focus once a service is chosen; null keeps focus on the box. Defaults to
+ *   the sale form's quantity field, which is the next thing to fill in there.
+ * @returns {{setServices, setValue, destroy}}
  */
 export function createServicePicker(
   mount,
-  { onSelect, onCreate, inputId = "" } = {}
+  { onSelect, onCreate, inputId = "", focusAfterChoose = "#qtyInput" } = {}
 ) {
   if (!mount) throw new Error("createServicePicker needs a mount element");
 
@@ -234,6 +239,7 @@ export function createServicePicker(
   let open = false;
   let rows = [];
   let activeIndex = -1;
+  let destroyed = false;
   /* The box doubles as a search field, so the text in it and the text being
      searched are not the same thing: on open the box shows the chosen
      service with the text selected, while `query` is still empty and the
@@ -406,9 +412,15 @@ export function createServicePicker(
     close();
     const input = root.querySelector(".svc-pick-input");
     input.blur();
-    /* Hand focus to the quantity box: the next thing to fill in. */
-    const qty = document.getElementById("qtyInput");
-    if (qty) qty.focus();
+    /* Hand focus on to whatever this picker is followed by. In the sale
+       form that is the quantity box; on a bill being reviewed line by
+       line there is no such box, and a picker that focused a field
+       which does not exist would either jump the page or steal focus
+       from the row the shopkeeper is actually working on. */
+    const next = typeof focusAfterChoose === "string"
+      ? document.querySelector(focusAfterChoose)
+      : null;
+    if (next && typeof next.focus === "function") next.focus();
     else input.focus();
   }
 
@@ -690,6 +702,26 @@ export function createServicePicker(
         );
       }
       render();
+    },
+    /**
+     * Let the picker go.
+     *
+     * Every instance listens on `document` and `window` — the outside-
+     * click, the viewport resize, the scroll — because the menu is
+     * pinned to the viewport and cannot see the page from inside itself.
+     * Those listeners outlive the node they belong to, so a host that
+     * builds and drops pickers (a bill being reviewed row by row) must be
+     * able to hand the picker back its listeners, or a long review would
+     * leave a trail of them doing nothing but testing `open` forever.
+     */
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      open = false;
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      window.removeEventListener("resize", onViewportChange);
+      document.removeEventListener("scroll", onViewportChange, true);
+      if (root.parentNode) root.parentNode.removeChild(root);
     },
   };
 }

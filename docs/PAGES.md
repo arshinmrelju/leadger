@@ -270,12 +270,44 @@ misses the cache and there is no connection.
 | Confirm | `js/app.js` | every destructive action |
 | Toast | `js/app.js` | everything |
 
+### Scan a receipt — one bill, one list
+
+The scan modal has four stages and never sends the shopkeeper back to re-type what the bill already
+said. `#scanStage` holds them and `setStage()` moves between them; the reading is in
+`js/receipt-items.js`, the drawing in `js/image-receipt.js`.
+
+| Stage | Shown when | Elements |
+|---|---|---|
+| Drop zone | the modal opens, and after `Pick different` | `#dropZone` `#fileInput` |
+| Preview | a photo is chosen | `#previewWrap` `#previewImg` `#previewMeta` `#analyzeBtn` `#pickDifferentBtn` |
+| Analyzing | a read is in flight | `#analyzingWrap` |
+| Review | **more than one line was read** | `#reviewWrap` and the rows below |
+
+| Review element | Purpose |
+|---|---|
+| `#reviewTitle` `#reviewSub` | how many lines were read, and whether they add up to the bill's own total |
+| `#scanItems` | one `.scan-item` per line: `[data-line-total]`, qty + rate inputs, its own service search |
+| `[data-cands]` | the closest catalog services for a line nothing matched, one tap each |
+| `[data-add-service]` | add the name the bill printed as a new service, at the bill's rate |
+| `.scan-item-remove` | a reading the shopkeeper does not believe |
+| `#scanDate` `#scanDayHint` | the business day for **every** line, future days refused |
+| `#scanMethodRow` | one payment method for the whole bill |
+| `#scanTotalPreview` | the sum of the lines |
+| `#reviewSaveBtn` | writes the batch; disabled until every line has a service and a rate |
+| `#reviewRereadBtn` `#reviewOtherBtn` | keep this bill / scan a different one |
+| `#reviewMsg` | why a line was not booked, and which lines are still waiting |
+
+A **single-line** bill skips the review and opens the record-a-sale form instead, prefilled. When
+that line's name is not in the catalog, the form shows `#scanSuggest` — the name as it was read,
+the closest services as chips, `Add it as a service`, `Hide`. Choosing any service hides it.
+
 ### Record a sale — fields
 
 | Field | Element | Notes |
 |---|---|---|
 | Business day * | `#txnDate` | `type="date"`, `#bizDayHint`; future days refused |
 | Service * | `#servicePick` | ARIA combobox from `js/service-picker.js` |
+| — scan suggests | `#scanSuggest` | only when a scan named something the catalog lacks: `#scanSuggestName`, `#scanSuggestChips`, `#scanSuggestAdd`, `#scanSuggestHide` |
 | — inline add | `#newServiceName` `maxlength=80` · `#newServiceRate` | `Add "<query>" as a service` |
 | Quantity | `#qtyInput` | `min=1 max=100000 step=1` |
 | Rate ₹ | `#rateInput` | text + `inputmode="decimal"`, parsed to paise |

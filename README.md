@@ -17,7 +17,7 @@
 [![Build step](https://img.shields.io/badge/build-none-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![Dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![PWA](https://img.shields.io/badge/PWA-installable-2d8a4e?style=flat-square)](https://web.dev/progressive-web-apps/)
-[![Tests](https://img.shields.io/badge/tests-142%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/ledger.mjs)
+[![Tests](https://img.shields.io/badge/tests-176%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
 [![Security rules](https://img.shields.io/badge/firestore.rules-923%20lines-c0392b?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/firestore.rules)
 
 <br/>
@@ -84,12 +84,12 @@ The interesting engineering is not the CRUD. It is that **a browser is treated a
 
 | Pages | JS modules | CSS files | Rules | Tests | Runtime deps |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| **8** | **20** | **9** | **978** | **142** | **0** |
+| **8** | **21** | **9** | **978** | **176** | **0** |
 
 </div>
 
 `978` = 923 lines of `firestore.rules` + 55 lines of `database.rules.json`.
-`142` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
+`176` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
 
 <details>
 <summary><b>📦 What is actually in the repository</b> (70 tracked files)</summary>
@@ -118,13 +118,14 @@ TrustX Ledger/
 │   ├── View receipt photo            js/txn-actions.js
 │   └── Confirm / alert               js/app.js
 │
-├── js/  20 modules · 11,284 lines
+├── js/  21 modules · 12,278 lines
 │   ├── firebase.js         SDK bootstrap · lazy import · offline persistence
 │   ├── auth.js             Google Sign-In · enrollment · grants · admin promotion
 │   ├── ledger.js           the only module that writes money
 │   ├── sale-form.js        shared "Record a sale" modal
 │   ├── txn-actions.js      edit · settle · delete · receipt view · refusal diagnosis
-│   ├── image-receipt.js    Gemini OCR + offline Tesseract OCR + catalog matching
+│   ├── image-receipt.js    Gemini OCR + offline Tesseract OCR + multi-line review
+│   ├── receipt-items.js    a bill as line items · pricing · catalog ranking  (pure)
 │   ├── service-picker.js   WAI-ARIA combobox over the service catalog
 │   ├── service-catalog.js  38 seed services in 8 sortOrder bands  (pure)
 │   ├── calendar.js         month-grid logic                            (pure)
@@ -141,15 +142,15 @@ TrustX Ledger/
 │   ├── ai-config.js        Gemini model config (key is a placeholder)
 │   └── read-cache / quota / …  no cycles — leaves → firebase → auth/ledger → UI
 │
-├── css/  9 files · 5,400 lines  (style · forms · dashboard · transactions ·
+├── css/  9 files · 5,418 lines  (style · forms · dashboard · transactions ·
 │                                   ledger · calendar · admin · responsive · mobile)
-├── tests/  3 files · 3,263 lines  (ledger · calendar · module-graph)
+├── tests/  5 files             (ledger · calendar · receipt-scan · module-graph · owner-console)
 ├── tools/  7 Node scripts       (bootstrap-access · rules-check · make-icons · …)
 ├── assets/ 10 files             (logo · favicon · PWA icons · coins · banner · sound)
 ├── firestore.rules       923 lines   the money
 ├── database.rules.json    55 lines   expenses + fail-closed legacy paths
 ├── firestore.indexes.json             empty — the day key is the partition
-├── sw.js                 342 lines   cache v4 · 51-file precache
+├── sw.js                 343 lines   cache v7 · 52-file precache
 ├── manifest.webmanifest              4 app shortcuts
 ├── firebase.json                    hosting + both rule sets + emulators + headers
 └── package.json                      2 scripts, 0 dependencies
@@ -281,7 +282,7 @@ This is the single most opinionated thing in the app. A day with no sales is dra
 
 Below the grid, a **catch-up panel** lists the days still to fill in (up to 8), each with its own `+`. Catching up a missed week is a sequence of short taps and never a second visit to the ledger page.
 
-### Scan a receipt — two OCR paths
+### Scan a receipt — two OCR paths, one bill at a time
 
 <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>, or the `SCAN RECEIPT` button on the dashboard.
 
@@ -294,16 +295,31 @@ flowchart TD
     D -- yes --> E["POST generativelanguage.googleapis.com<br/>gemini-1.5-flash · temperature 0.2<br/>responseMimeType application/json"]
     D -- "no - placeholder in this repo" --> F["Tesseract.js 5.1.1<br/>fully offline · nothing leaves the device"]
     E -- "429 · 400 · network" --> F
-    E --> G["Strict JSON out"]
+    E --> G["Strict JSON out<br/>items[] · one entry per line sold"]
     F --> G
-    G --> H["normaliseAiOutput<br/>clamp money · floor qty · derive rate"]
-    H --> I["matchAiServiceToCatalog<br/>token overlap · accept at score 24 or more"]
-    I -- "matched" --> J["prefillSaleForm with the catalog service"]
-    I -- "no match" --> K["prefill with the read name<br/>offer to add it as a service"]
-    J --> L["One batch: sale + receiptImages doc"]
-    K --> L
+    G --> H["normalizeAiOutput + receipt-items<br/>clamp money · floor qty · derive rate"]
+    H --> I{"How many lines?"}
+    I -- "more than one" --> R["Review list in the scan modal<br/>one row per line · own search, qty, rate"]
+    I -- one --> J["rankCatalogMatches<br/>token overlap · accept at score 24 or more"]
+    J -- "matched" --> K["prefillSaleForm with the catalog service"]
+    J -- "no match" --> K2["prefill with the read name<br/>closest services as chips"]
+    K --> L["One batch: sale + receiptImages doc"]
+    K2 --> L
+    R --> S["Write each line in turn<br/>a written line leaves the list"]
+    S --> L
     L --> M["Second encode: 1000px at q0.72<br/>capped 600 KiB for Firestore"]
 ```
+
+> **A bill is a list, and the scanner keeps it that way.** Three sold lines means three entries in
+> `items[]` and three rows in the review — the extraction prompt used to ask for the *largest* line
+> only, which quietly booked one sale out of three and lost the rest of the paper. A single-line
+> bill still goes straight to the record-a-sale form, unchanged.
+>
+> A name the shop has never catalogued is a **question, not a refusal**: the row shows the name as
+> it was read, offers the closest catalog services one tap away, and will add the name as a new
+> service at the rate the bill printed. The save button stays disabled until every line has both a
+> service and a rate, and if a write fails half way, the lines that landed are gone from the list
+> and the ones that did not are still on it.
 
 > **Right now the Gemini key in `js/ai-config.js` is the literal placeholder `YOUR_GEMINI_API_KEY_HERE`, so the shipped app runs the offline Tesseract path.** The Gemini branch is real code and is documented here because it exists — not because it is switched on. See [Integrations](#integrations).
 
@@ -799,10 +815,10 @@ flowchart TD
     subgraph CLIENT["Browser - no build step - no bundler"]
         direction TB
         HTML["8 HTML pages<br/>import map to Firebase 12.18.0"]
-        PURE["Pure logic modules<br/>calendar · day-heads · day-ledger<br/>day-audit · service-catalog · utils"]
+        PURE["Pure logic modules<br/>calendar · day-heads · day-ledger<br/>day-audit · service-catalog · receipt-items · utils"]
         UI["UI modules<br/>shell · app · sale-form<br/>txn-actions · image-receipt · service-picker · admin"]
         IO["Data modules<br/>ledger.js · auth.js"]
-        SW["Service worker sw.js<br/>cache v4 · 51-file precache"]
+        SW["Service worker sw.js<br/>cache v7 · 52-file precache"]
         HTML --> UI
         UI --> IO
         UI --> PURE
@@ -1149,7 +1165,7 @@ Input escaping: `escapeHtml` on every interpolated value; `serviceId` may not co
 <details>
 <summary><b>🎨 A receipt-paper design system</b> — <code>css/style.css</code></summary>
 
-Nine stylesheets, 5,400 lines, one token set:
+Nine stylesheets, 5,418 lines, one token set:
 
 | Token | Value | |
 |---|---|---|
@@ -1187,9 +1203,9 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 | | |
 |---|---|
 | ![HTML5](https://img.shields.io/badge/HTML5-8-e34f26?style=flat-square&logo=html5&logoColor=white) | 8 static HTML pages |
-| ![CSS3](https://img.shields.io/badge/CSS3-9-5435d3?style=flat-square&logo=css3&logoColor=white) | 9 stylesheets · 5,400 lines · custom-property design tokens |
-| ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 20 native ES modules · 11,284 lines · **no bundler** |
-| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v4` · manifest · 4 shortcuts |
+| ![CSS3](https://img.shields.io/badge/CSS3-9-5435d3?style=flat-square&logo=css3&logoColor=white) | 9 stylesheets · 5,418 lines · custom-property design tokens |
+| ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 21 native ES modules · 12,278 lines · **no bundler** |
+| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v7` · manifest · 4 shortcuts |
 
 No framework. No build step. No `node_modules`. Pages load the Firebase SDK through a pinned import map and everything else is a native ES module.
 
@@ -1243,7 +1259,7 @@ There is **no application server**. Firebase is the backend.
 
 [![Live status](https://img.shields.io/badge/STATUS-%F0%9F%9F%A2%20ONLINE-2d8a4e?style=flat-square)](https://trustxplpy.web.app)
 [![HTTP 200](https://img.shields.io/badge/live%20deploy-HTTP%20200-brightgreen?style=flat-square)](https://trustxplpy.web.app)
-[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v4-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
+[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v7-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
 
 </div>
 
@@ -1724,23 +1740,25 @@ FIREBASE_PROJECT_ALIAS=default
 ## 🧪 Testing
 
 ```bash
-npm test          # node --test tests/ledger.mjs tests/calendar.mjs tests/module-graph.mjs
+npm test          # node --test tests/{ledger,calendar,receipt-scan,module-graph,owner-console}.mjs
 npm run test:rules # Firestore emulator harness — requires `firebase emulators:start`
 ```
 
 | Suite | Lines | What it covers |
 |---|---:|---|
-| `tests/ledger.mjs` | 2,290 | paise maths, validation, day-view logic, catalog seeding, day-head counters — **and it reads `firestore.rules` off disk to assert the client constants still match the rules** |
-| `tests/calendar.mjs` | 416 | month bounds, totals, missed-day detection, backfilled-row marking |
-| `tests/module-graph.mjs` | 557 | every named import resolves to a real export; no dead exports; `sw.js`'s `FIREBASE_VERSION` matches all 8 import maps |
+| `tests/ledger.mjs` | 2,010 | paise maths, validation, day-view logic, catalog seeding, day-head counters — **and it reads `firestore.rules` off disk to assert the client constants still match the rules** |
+| `tests/calendar.mjs` | 352 | month bounds, totals, missed-day detection, backfilled-row marking |
+| `tests/receipt-scan.mjs` | 263 | a scanned bill read as a **list** of lines, priced the way `createTransaction()` recomputes them, with an unknown name offered as suggestions instead of refused — **and a source guard on the Gemini prompt, because that instruction is what used to collapse a bill to its largest line** |
+| `tests/module-graph.mjs` | 486 | every named import resolves to a real export; no dead exports; `sw.js`'s `FIREBASE_VERSION` matches all 8 import maps |
+| `tests/owner-console.mjs` | 456 | the admin console's figures, chips and half-scoped guard |
 
 ### Current result — stated honestly
 
 ```
-ℹ tests 142     ℹ pass 141     ℹ fail 1     ℹ skipped 0     ℹ todo 0
+ℹ tests 176     ℹ pass 175     ℹ fail 1     ℹ skipped 0     ℹ todo 0
 ```
 
-**One test is failing** on `main` right now:
+**One test is failing** on `main` right now, and it was already failing before the receipt work:
 
 ```text
 ✖ a day of legacy sales reads as in step to the client and unusable to the rules
@@ -1854,15 +1872,15 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 |---|---|
 | Tracked files | 70 |
 | HTML pages | 8 · 3,228 lines |
-| JS modules | 20 · 11,284 lines |
-| CSS files | 9 · 5,400 lines |
-| Tests | 3 files · 3,263 lines · 142 cases |
+| JS modules | 21 · 12,278 lines |
+| CSS files | 9 · 5,418 lines |
+| Tests | 5 files · 3,567 lines · 176 cases |
 | Tools | 7 Node scripts |
 | Assets | 10 files |
 | Security rules | 978 lines |
 | Runtime dependencies | **0** |
 | Build steps | **0** |
-| Version | 0.13.1 · service worker cache `v4` |
+| Version | 0.13.1 · service worker cache `v7` |
 
 ### Version history
 
@@ -1934,7 +1952,7 @@ Security ................. ✓           rules matrix · authz · 3-layer valida
                                         sensitive data · 6 known gaps
 Installation ............. ✓           verified against package.json and real tools
 Configuration ............ ✓           3 real config points, placeholders only
-Testing ................. ✓           142 tests · 141 pass / 1 fail reported
+Testing ................. ✓           176 tests · 175 pass / 1 fail reported
 Statistics ............... ✓           all badges dynamic, none hardcoded
 Developer ................ ✓            from repository metadata only
 Secrets exposed .......... 0 ✓         no key, token or credential reproduced
@@ -1951,7 +1969,7 @@ Fabricated content ....... 0 ✓         no invented pages, features, stats or m
 
 ### Verification performed
 
-- `npm test` executed — **142 tests, 141 pass, 1 fail**; the failure is reproduced verbatim above rather than hidden behind a green badge
+- `npm test` executed — **176 tests, 175 pass, 1 fail**; the failure is reproduced verbatim above rather than hidden behind a green badge
 - All 8 deployed page URLs requested — **HTTP 200** each
 - **All 10 Mermaid diagrams** (7 here, 3 in `docs/`) parsed with the `mermaid@11` parser that GitHub uses — every one renders
 - **Anchor, fence and HTML-tag balance machine-checked** across this README and all 6 `docs/` files — every internal anchor resolves, every fence closes, every `<details>` pairs
@@ -1975,7 +1993,7 @@ Fabricated content ....... 0 ✓         no invented pages, features, stats or m
 | [`DATABASE-RULES.md`](https://github.com/arshinmrelju/leadger/blob/main/DATABASE-RULES.md) | why the RTDB rules file has no comments, and what moved to Firestore |
 | [`firestore.rules`](https://github.com/arshinmrelju/leadger/blob/main/firestore.rules) | 923 lines — the money |
 | [`database.rules.json`](https://github.com/arshinmrelju/leadger/blob/main/database.rules.json) | expenses + fail-closed legacy paths |
-| [`sw.js`](https://github.com/arshinmrelju/leadger/blob/main/sw.js) | the 51-file precache and its allowlist |
+| [`sw.js`](https://github.com/arshinmrelju/leadger/blob/main/sw.js) | the 52-file precache and its allowlist |
 | [`js/ledger.js`](https://github.com/arshinmrelju/leadger/blob/main/js/ledger.js) | the only module that writes money |
 | [`js/auth.js`](https://github.com/arshinmrelju/leadger/blob/main/js/auth.js) | the access chain, client side |
 | [`tools/bootstrap-access.mjs`](https://github.com/arshinmrelju/leadger/blob/main/tools/bootstrap-access.mjs) | the one-time owner bootstrap |

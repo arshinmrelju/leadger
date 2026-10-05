@@ -1,7 +1,7 @@
 # Architecture
 
 [TrustX Ledger](https://github.com/arshinmrelju/leadger) is a **static** Progressive Web App: eight
-HTML documents, twenty ES modules, nine stylesheets, and no build step. There is no bundler, no
+HTML documents, twenty-one ES modules, nine stylesheets, and no build step. There is no bundler, no
 transpiler, no framework, and `package.json` declares **zero** dependencies — the only two scripts
 in it are `test` and `test:rules`.
 
@@ -28,15 +28,16 @@ flowchart TD
         DL["day-ledger 243"]
         CAL["calendar 450"]
         AUD["day-audit 492"]
+        RITEMS["receipt-items 494"]
     end
 
     subgraph UI["UI layer"]
         APP["app 295"]
         SHELL["shell 306"]
-        FORM["sale-form 1301"]
-        PICK["service-picker 706"]
+        FORM["sale-form 1311"]
+        PICK["service-picker 682"]
         TXN["txn-actions 764"]
-        IMGR["image-receipt 976"]
+        IMGR["image-receipt 1562"]
         ADMJS["admin 1540"]
     end
 
@@ -82,6 +83,8 @@ flowchart TD
     IMGR --> APP
     IMGR --> LEDGER
     IMGR --> FORM
+    IMGR --> RITEMS
+    RITEMS --> UTIL
     ADMJS --> APP
     ADMJS --> CAT
     LEDGER --> FB
@@ -103,13 +106,20 @@ Lines are **module sizes in lines**, from the repository at `v0.13.1`.
 
 | Tier | Modules | Rule |
 |---|---|---|
-| **Pure logic** | `utils`, `service-catalog`, `day-heads`, `day-ledger`, `calendar`, `day-audit` | No Firebase import, no DOM. Directly unit-testable, and they are. |
+| **Pure logic** | `utils`, `service-catalog`, `day-heads`, `day-ledger`, `calendar`, `day-audit`, `receipt-items` | No Firebase import, no DOM. Directly unit-testable, and they are. |
 | **UI** | `app`, `shell`, `sale-form`, `service-picker`, `txn-actions`, `image-receipt`, `admin` | Talks to the DOM and calls the data tier. |
 | **Data** | `ledger`, `auth`, `read-cache`, `quota` | The only modules that touch Firestore or the RTDB. |
 | **Platform** | `firebase`, `pwa`, `ai-config`, `sw.js` | SDK wiring, service worker, optional Gemini key. |
 
 `tests/ledger.mjs` imports the pure tier directly under Node and exercises it without a browser —
-that is why the money arithmetic is tested at all.
+that is why the money arithmetic is tested at all. `tests/receipt-scan.mjs` does the same for
+`receipt-items.js`, which is where a scanned bill's lines are read, priced and matched.
+
+`receipt-items` is in the pure tier for the same reason as the rest of them: the Gemini extractor
+and the offline OCR path both hand it whatever they managed to read and need the same answer — a
+list of honest line items, priced the way `createTransaction()` will recompute them. A module with
+no DOM in it is a module whose arithmetic can be checked against real bills in a test instead of
+against a customer's money.
 
 ---
 
@@ -161,6 +171,38 @@ Consequences that shape the code:
 
 ---
 
+## Scanning a bill
+
+A bill is a **list**, and the scanner keeps it that way. The Gemini prompt asks for an `items` array
+— one entry per line the customer was charged for — and `js/receipt-items.js` normalises whatever
+arrives (that array, or raw OCR text) into line items priced the way `createTransaction()` will
+recompute them. `js/image-receipt.js` then routes on the count:
+
+| The bill had | What happens |
+|---|---|
+| one line | the existing sale form, prefilled, with the photo attached |
+| several lines | a review list **inside the scan modal** — one row per line, each with its own service search, quantity, rate and line total — and the bill is saved as a batch |
+
+Three decisions are worth stating, because each of them is a choice against the obvious one:
+
+- **The review lives in the scan modal, not in the sale form.** Sending a five-line bill through the
+  one-sale form five times is the manual typing the scanner exists to remove.
+- **The photo rides with the first line only.** A receipt image is one Firestore document per sale,
+  so one bill cannot be attached five times; the remaining lines are the amounts that were on the
+  same paper.
+- **Lines are written one at a time, and a written line leaves the list.** A failure half way
+  therefore leaves exactly the unpaid lines on screen, with the reason named, instead of a batch
+  that is all-or-nothing and cannot say which half went in.
+
+A name the catalog does not have is a **question, not a refusal**. `rankCatalogMatches()` returns a
+confident `match` (same threshold the app has always used) *and* the closest `candidates`; the
+review row shows the name as it was read with those near misses one tap away, and offers to add the
+name as a new service at the rate the bill printed. The single-line path does the same through the
+sale form's suggestion panel (`celebrateSavedSale` / `emitSaleRecorded` in `js/sale-form.js` are the
+shared entry points the scanner uses, so a scanned sale and a typed one behave identically).
+
+---
+
 ## Read caching
 
 `js/read-cache.js` (`createReadCache`) wraps the queries the shell makes so that switching from
@@ -197,7 +239,7 @@ migration is recorded in `firestore.rules:616-619`.
 
 | Piece | File | Behaviour |
 |---|---|---|
-| Precaching | `sw.js` | cache `v4`, 51 files (47 app + 4 pinned Firebase SDK bundles), install-time |
+| Precaching | `sw.js` | cache `v7`, 52 files (48 app + 4 pinned Firebase SDK bundles), install-time |
 | Navigation | `sw.js` | network first, cache fallback, then `offline.html` |
 | App data | Firestore | `persistentLocalCache` + multi-tab, so an open shop keeps reading while offline |
 | Writes while offline | — | not queued. A sale needs the rules to approve it, and the rules are server-side |

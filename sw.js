@@ -37,7 +37,7 @@
    ========================================================= */
 
 /** Bump to invalidate every cached file on the next activate. */
-const CACHE_VERSION = "v6";
+const CACHE_VERSION = "v7";
 
 const SHELL_CACHE = `trustx-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `trustx-vendor-${CACHE_VERSION}`;
@@ -107,6 +107,7 @@ const SHELL_FILES = [
   "js/pwa.js",
   "js/quota.js",
   "js/read-cache.js",
+  "js/receipt-items.js",
   "js/sale-form.js",
   "js/service-catalog.js",
   "js/service-picker.js",

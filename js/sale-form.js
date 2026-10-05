@@ -93,12 +93,37 @@ let targetDateKey = todayKolkata();
  * next, unrelated sale.
  */
 let pendingReceiptImage = null;
+/**
+ * The name a scanned bill printed, when the shop's catalog does not
+ * have it.
+ *
+ * Held beside the form for the same reason the business day is: the
+ * panel that names it, the button that adds it and the rate the new
+ * service would be created at are all decided once, from the same
+ * reading. Cleared on every open, so a scan cannot follow the
+ * shopkeeper into a hand-typed sale.
+ */
+let scannedName = "";
+/** The closest catalog services to offer, when the name is unknown. */
+let scannedCandidates = [];
 const listeners = new Set();
 
 /** Subscribe to successful saves. Returns an unsubscribe function. */
 export function onSaleRecorded(cb) {
   listeners.add(cb);
   return () => listeners.delete(cb);
+}
+
+/**
+ * Tell the pages that a sale landed, from outside this module.
+ *
+ * The scanner books a multi-line bill as several sales and has no form
+ * of its own to emit from (js/image-receipt.js), so it announces
+ * through here rather than growing a second refresh path: one
+ * `onSaleRecorded` subscription per page, whichever module wrote.
+ */
+export function emitSaleRecorded(record) {
+  emit(record);
 }
 
 function emit(record) {
@@ -117,6 +142,24 @@ function saleFormMarkup() {
   return (
     '<form id="saleForm" novalidate>' +
     '<div class="alert alert-error is-hidden" id="formMsg" role="alert"><span data-form-msg></span></div>' +
+
+    /* What the scanner could not place. Shown ABOVE the form, and only
+       when the bill named something the catalog does not have — the
+       alternative used to be the form silently refusing the save with
+       "Choose a service", which is a dead end for a name the shop has
+       never typed before. */
+    '<div class="scan-suggest is-hidden" id="scanSuggest" role="group" aria-label="Read from the bill">' +
+    '<p class="scan-suggest-head">' +
+    '<span class="scan-suggest-label">Read from the bill</span> ' +
+    '<strong class="scan-suggest-name" id="scanSuggestName"></strong>' +
+    "</p>" +
+    '<p class="small muted scan-suggest-note" id="scanSuggestNote"></p>' +
+    '<div class="scan-suggest-chips" id="scanSuggestChips"></div>' +
+    '<div class="scan-suggest-actions">' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="scanSuggestAdd">Add it as a service</button>' +
+    '<button type="button" class="btn btn-ghost btn-sm" id="scanSuggestHide">Hide</button>' +
+    "</div>" +
+    "</div>" +
 
     /* The business day this entry belongs to. `max` is today: a sale
        cannot be booked into a day the shop has not lived through yet, and
@@ -242,14 +285,91 @@ function buildOverlay() {
          after this factory returns. */
       el.querySelector("#rateInput").value = service ? paiseToInput(service.pricePaise) : "";
       hideFormMsg();
+      /* The question the scan asked is answered the moment a service is
+         chosen — by tapping a chip, by typing, by a quick tile, by all
+         three. And if the choice is taken back, it is a question again. */
+      if (service) hideScanSuggest();
+      else if (scannedName) showScanSuggest(scannedName, scannedCandidates);
       updateTotal();
     },
     /* "No match in your catalog" offers to add what was typed — the
        search box is then the fastest way to invent a new service. */
-    onCreate: (query) => openAddServiceBox(query),
+    onCreate: (query) => openAddServiceBox(query || scannedName),
   });
   wire(el);
   return el;
+}
+
+/* ---------------- The name the scan could not place ---------------- */
+
+/**
+ * Name a service the bill printed and the catalog does not have, with
+ * the closest ones to choose from.
+ *
+ * This is the second half of the scan's job. Reading "Laminate A4" and
+ * having nowhere to put it used to end in a form that refused to save
+ * until the shop typed something sensible — so the honest reading was
+ * thrown away and the bill had to be re-entered by hand. Here the name
+ * is shown as it was read, the near misses are one tap away, and adding
+ * the service is offered for the case where the bill is right and the
+ * catalog is behind.
+ */
+function showScanSuggest(name, candidates) {
+  if (!overlay) return;
+  const box = overlay.querySelector("#scanSuggest");
+  if (!box) return;
+  const text = String(name || "").trim();
+  if (!text) return;
+  scannedName = text;
+  scannedCandidates = Array.isArray(candidates) ? candidates : [];
+
+  const nameEl = overlay.querySelector("#scanSuggestName");
+  if (nameEl) nameEl.textContent = "“" + text + "”";
+  const note = overlay.querySelector("#scanSuggestNote");
+  if (note) {
+    note.textContent = scannedCandidates.length
+      ? "That name is not in your catalog. Pick the service it belongs to, or add the name as a new one."
+      : "That name is not in your catalog. Add it as a service, or pick one below.";
+  }
+  const chips = overlay.querySelector("#scanSuggestChips");
+  if (chips) {
+    chips.innerHTML = "";
+    for (const service of scannedCandidates) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "btn btn-secondary btn-sm";
+      chip.textContent = service.name + " · " + formatINR(service.pricePaise);
+      chip.addEventListener("click", () => applySuggestedService(service.serviceId));
+      chips.appendChild(chip);
+    }
+  }
+  box.classList.remove("is-hidden");
+}
+
+function hideScanSuggest() {
+  const box = overlay && overlay.querySelector("#scanSuggest");
+  if (box) box.classList.add("is-hidden");
+}
+
+/**
+ * Take one of the near misses, keeping the rate the BILL said.
+ *
+ * The picker's own onSelect writes the catalog's default rate, which is
+ * right for a service tapped out of the list and wrong here: the price
+ * on the paper is the price that was charged, and a suggestion chip is
+ * only naming the service, never repricing the sale.
+ */
+function applySuggestedService(serviceId) {
+  if (!overlay || !picker) return;
+  const rateField = overlay.querySelector("#rateInput");
+  const scannedRate = rateField ? rateField.value : "";
+  picker.setValue(serviceId);
+  if (rateField && scannedRate) {
+    rateField.value = scannedRate;
+    rateField.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  hideScanSuggest();
+  updateTotal();
 }
 
 /* ---------------- Open / close ---------------- */
@@ -274,6 +394,11 @@ export function openSaleForm({ serviceId = "", dateKey = "" } = {}) {
   /* Likewise the photo: a scan belongs to the sale it was scanned for, and
      must not follow the shopkeeper into the next entry. */
   setReceiptImage(null);
+  /* And likewise the name the last bill could not place: a hand-typed
+     sale has no bill, so it must not be shown one. */
+  scannedName = "";
+  scannedCandidates = [];
+  hideScanSuggest();
   resetForm();
   openModal(overlay);
   renderQuickGrid();
@@ -421,6 +546,15 @@ function wire(root) {
   });
 
   root.querySelector("#receiptRemove").addEventListener("click", () => setReceiptImage(null));
+
+  /* The scan's "this name is not in your catalog" panel. Add opens the
+     add-service box with the name the bill printed already in it, and
+     Hide just takes the panel away — neither one touches the rest of
+     the entry. */
+  const suggestAdd = root.querySelector("#scanSuggestAdd");
+  if (suggestAdd) suggestAdd.addEventListener("click", () => openAddServiceBox(scannedName));
+  const suggestHide = root.querySelector("#scanSuggestHide");
+  if (suggestHide) suggestHide.addEventListener("click", () => hideScanSuggest());
 
   root.querySelectorAll("#methodRow .seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -759,17 +893,14 @@ predictable refusal into a sentence the shop can act on. */
 
     /* Celebration: the cha-ching, the coin shower, and the splash
        screen with the animated tick. */
-    playCoinSound();
-    showCoinBurst();
     const online = navigator.onLine;
-    showSuccessSplash({
+    celebrateSavedSale({
       totalPaise: result.totalPaise,
       serviceName: selectedService ? selectedService.name : "",
       quantity: qty,
       ratePaise,
       customerName: customer,
       method: paymentMethod,
-      online,
     });
 
     /* The splash is the confirmation while online, so it says
@@ -834,6 +965,12 @@ function resetForm() {
   overlay.querySelector("#qtyInput").value = "1";
   overlay.querySelector("#rateInput").value = selectedService ? paiseToInput(selectedService.pricePaise) : "";
   overlay.querySelector("#customerInput").value = "";
+  /* The name the last bill could not place belongs to that bill: once
+     this form has been reset the next sale has no reading behind it, and
+     a suggestion panel for a service nobody is booking is noise. */
+  scannedName = "";
+  scannedCandidates = [];
+  hideScanSuggest();
   syncDateField();
   updateTotal();
 }
@@ -1201,6 +1338,34 @@ function prefersReducedMotion() {
   }
 }
 
+/**
+ * The confirmation a saved sale gets, from outside this module.
+ *
+ * One celebration, one code path: the scanner books a multi-line bill
+ * as several sales without ever opening this form, and the shop should
+ * not be able to tell which door the money came in by.
+ */
+export function celebrateSavedSale({
+  totalPaise = 0,
+  serviceName = "",
+  quantity = null,
+  ratePaise = null,
+  customerName = "",
+  method = "cash",
+} = {}) {
+  playCoinSound();
+  showCoinBurst();
+  showSuccessSplash({
+    totalPaise,
+    serviceName,
+    quantity,
+    ratePaise,
+    customerName,
+    method,
+    online: navigator.onLine,
+  });
+}
+
 /* =========================================================
    External prefill API (used by Scan Receipt / AI extraction)
    -----------------------------------------------------------------
@@ -1221,6 +1386,11 @@ function prefersReducedMotion() {
  * @param {string} [opts.customerName]
  * @param {"cash"|"upi"|"card"|"due"} [opts.paymentMethod]
  * @param {string} [opts.dateKey]  business day to file the entry under
+ * @param {string} [opts.receiptImage]  JPEG data URL to keep with the entry
+ * @param {{name: string, candidates?: object[]}} [opts.scanned]  the name the
+ *   bill printed, when the catalog has no service for it. Shown, with the
+ *   closest services to choose from, instead of leaving the form to refuse
+ *   the save.
  */
 export function prefillSaleForm({
   serviceId = "",
@@ -1231,6 +1401,7 @@ export function prefillSaleForm({
   paymentMethod = null,
   dateKey = null,
   receiptImage = null,
+  scanned = null,
 } = {}) {
   if (!overlay) overlay = buildOverlay();
   const root = overlay;
@@ -1257,6 +1428,15 @@ export function prefillSaleForm({
       input.value = String(serviceNameFallback).slice(0, 80);
       input.dispatchEvent(new Event("input", { bubbles: true }));
     }
+  }
+
+  /* A name the catalog does not have. Shown AFTER the search box is
+     seeded, because the panel is the answer to the question the
+     filtered list cannot answer: with the name in the box, the list
+     offers near misses, and the panel offers the same few by name
+     (and the option to add one) without a keystroke. */
+  if (scanned && scanned.name) {
+    showScanSuggest(scanned.name, scanned.candidates);
   }
 
   // Quantity

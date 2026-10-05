@@ -663,6 +663,141 @@
 /* Setup banner inside scan modal */
 #scanSetupBanner { margin-bottom: 0.8rem; }
 
+/* =========================================================
+   Reviewing a bill that came back with more than one line
+   -------------------------------------------------------------
+   The list is the point of this screen, so a line is a bordered card
+   and not a table row: on a phone each one holds a name, a service
+   search, two numbers and its own line total, and the card keeps all of
+   that in a single thumb-reachable column instead of squeezing five
+   columns onto 360px.
+
+   Two states carry meaning and are the reason the rules are not purely
+   decorative:
+     .is-unmatched — nothing has been chosen, so the row is a question;
+     .is-unpriced  — the reading found no amount for it, so the row
+                     cannot be booked until a rate is typed.
+   ========================================================= */
+.scan-review { display: flex; flex-direction: column; gap: 0.85rem; }
+.scan-review.is-hidden { display: none; }
+
+.scan-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.scan-review-title { margin: 0 0 0.2rem; font-size: 1.02rem; font-weight: 800; }
+.scan-review-sub { margin: 0; line-height: 1.45; }
+.scan-review-headbtns { display: flex; gap: 0.4rem; flex-shrink: 0; }
+
+.scan-items { display: flex; flex-direction: column; gap: 0.7rem; }
+
+.scan-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: 0.7rem 0.75rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+/* A line the reading matched is settled and can be skimmed; a line that
+   still needs the shopkeeper is the one that should catch the eye. */
+.scan-item.is-unmatched {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+.scan-item.is-unpriced {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.scan-item-top { display: flex; align-items: flex-start; gap: 0.6rem; }
+.scan-item-tile {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.6rem;
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-strong);
+}
+.scan-item-heads { flex: 1 1 auto; min-width: 0; }
+.scan-item-name {
+  margin: 0;
+  font-weight: 800;
+  font-size: 0.94rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.scan-item-read { margin: 0.1rem 0 0; font-size: 0.78rem; color: var(--color-muted); }
+.scan-item-remove {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.2rem 0.25rem;
+  border-radius: var(--radius-sm);
+}
+.scan-item-remove:hover { color: var(--color-danger); }
+
+.scan-item-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: end;
+}
+.scan-item-numbers { display: flex; flex-direction: column; gap: 0.35rem; }
+.scan-item-num { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+.scan-item-num > span { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.scan-item-num > .input { width: 5.6rem; }
+.scan-item-line {
+  align-self: flex-end;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92rem;
+}
+
+.scan-item-cands { display: flex; flex-direction: column; gap: 0.45rem; }
+.scan-item-cands.is-hidden { display: none; }
+.scan-item-cands-label { font-size: 0.78rem; font-weight: 700; color: var(--color-warning); }
+.scan-item-cands-row { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.scan-item-cands-row .btn-sm { font-size: 0.76rem; padding: 0.3rem 0.55rem; }
+
+.scan-review-foot { display: flex; flex-direction: column; gap: 0.7rem; }
+.scan-review-bill {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.7rem;
+}
+/* The grand total, and the sum of the lines, are the last thing anyone
+   looks at before pressing save — so it is a full-width bar rather than
+   a number tucked into a form. */
+.entry-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius);
+  border: 2px solid var(--color-border-strong);
+  background: var(--color-bg);
+}
+.entry-total-label { font-weight: 800; font-size: 0.9rem; }
+.entry-total-value { font-weight: 900; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+
 /* Mobile tuning */
 @media (max-width: 560px) {
   .scan-dropzone { min-height: 230px; }
@@ -671,4 +806,12 @@
   .btn-scan-receipt span { display: none; }
   .scan-preview-img { max-height: 45vh; }
   .scan-preview-img img { max-height: 45vh; }
+  /* One column per line: the numbers stack under the service search
+     rather than competing with it for the same 340px. */
+  .scan-item-body { grid-template-columns: minmax(0, 1fr); }
+  .scan-item-numbers { flex-direction: row; align-items: flex-end; gap: 0.6rem; }
+  .scan-item-num { flex-direction: column; align-items: flex-start; gap: 0.2rem; }
+  .scan-item-num > .input { width: 100%; }
+  .scan-item-line { margin-left: auto; }
+  .scan-review-bill { grid-template-columns: minmax(0, 1fr); }
 }
