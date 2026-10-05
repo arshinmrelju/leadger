@@ -31,7 +31,7 @@ never the control; the rules are.
 | Calendar | `calendar.html` | `/calendar.html` | trusted | 538 |
 | Daily Ledger | `ledger.html` | `/ledger.html?date=YYYY-MM-DD` | trusted | 746 |
 | Transaction History | `transactions.html` | `/transactions.html[?date=YYYY-MM-DD]` | trusted | 623 |
-| Developer Console | `admin.html` | `/admin.html` | admin | 161 |
+| Owner Console | `admin.html` | `/admin.html` | admin | 231 |
 | Offline Fallback | `offline.html` | `/offline.html` | public | 112 |
 
 ---
@@ -178,21 +178,68 @@ Scope is derived from the URL: a `date` param means **day**, otherwise **all tim
 
 ---
 
-### 🛡️ Developer Console — `admin.html`
+### 🛡️ Owner Console — `admin.html`
 
-`data-page="admin"` · `initAppShell({ requireAdmin: true })` · **not in the sidebar nav**
+`requireAccess()` + `grantAdminAccess()` · **not in the sidebar nav** · **no app shell**
 
-The HTML is a 161-line shell; `renderAdminPage(ctx)` in `js/admin.js` renders everything.
+The one page that does not use `js/app.js`. It carries its own top bar and a fixed
+four-tab bottom bar, because the console is a different job from the shop screens and
+inheriting the daily navigation would put day-to-day entry one tap away from day-close
+and integrity actions. `initOwnerConsole()` in `js/admin.js` drives it; the HTML is a
+231-line shell.
 
-| Card | Controls |
-|---|---|
-| **Services** | `Add default services` (`#seedSvcBtn`) with a missing-seeds preview · inline rename (`[data-svc-name]`) · re-price (`[data-svc-price]`) · archive/restore |
-| **Free plan usage** | `#quotaBars` · `#quotaResetNote` · `#quotaResetBtn` `Clear today's counter` |
-| **Trusted browsers** | `#devicesList` with `[data-grant-action="revoke\|restore\|remove"]`; the current browser is marked |
-| **All data** | `#dataDate` · `#dataDayBtn` `Day` · `#dataAllBtn` `All recent` · `#dataRefreshBtn` · `#dataTxnBody` / `#dataTxnFooter` · `#dataExpBody` / `#dataExpFooter` |
-| **Day integrity** | recompute vs head counters; offers a one-step repair when the difference is one sale wide |
+| Tab | What it answers | Reads |
+|---|---|---|
+| **Money** | What did we take today, and how is this month going? | today's summary · the month's day heads · the month's expenses |
+| **Month** | Which days are in this month, and where is it out of step? | the month's day heads · the month's expenses |
+| **Day** | Is this day finished, and does its head add up? | the day's head · the day's summary · head + rows for the integrity check |
+| **Shop** | What do we sell, and who may open the ledger? | service catalog · access grants |
 
-Non-admins get `Developer console is locked`.
+**Money** shows today's taken, collected, due, expenses and net, then the same five for
+the month to date. Every figure is folded off day heads rather than summed from sales,
+so it costs one query per month instead of a read per sale.
+
+**Month** lists the month's recorded days with sales, taken, collected, expenses and net
+per day, a total row, and the days with nothing on them called out by name. A finished
+month is scanned whole (`monthBounds(yearMonth).days`): stopping at the last day with
+something on it would declare the rest of the month outside the ledger, which is the
+exact gap the screen exists to find. Future months cannot be walked into.
+
+**Day** takes any date, opens or closes it, and checks it. Closing is enforced by
+`firestore.rules`, not by the UI: every sale write against a closed day is refused.
+Re-opening is how a sale typed against the wrong day gets fixed. The integrity check
+recomputes the day's counters from its rows and offers a one-step repair when the
+difference is exactly one sale wide. The current browser's own grant uid is tracked
+separately from the rolled-over business day, so midnight refreshes today's figures
+without moving an owner who is deliberately reading yesterday.
+
+**Shop** edits the catalog inline (name, rate, archive/restore) and manages the browsers
+allowed to open the ledger: revoke, restore, remove.
+
+Two things were removed rather than moved, because the console now works differently
+without them:
+
+- **Free plan usage.** The counters and their "clear today's" button are gone; the quota
+  layer still counts and still raises its own exhausted banner, but the owner is not
+  asked to manage a meter's read budget.
+- **All data.** It read every recent sale in the app. The Money and Month tabs read the
+  same figures off day heads, which is what the shop actually wants to know.
+
+**Every expenses figure is guarded.** `fetchTodaySummary()` leaves `expensesPaise` at `0`
+when the Realtime Database read fails and marks it with `expensesUnavailable`, because
+"nothing was spent" and "we could not read" are otherwise the same number. The console
+prints `Not read` and withholds the net rather than showing one that is too high by
+exactly the amount nobody could read.
+
+Non-admins get an `Owner console locked` gate; an unauthenticated visitor gets
+`Sign in with the owner's Google account to get in.`
+
+**Dues stop at the month, on purpose.** Money reports what is due today and what is due this
+month, both folded off day heads. There is no all-time outstanding total: Firestore charges
+one read per matching document, so that figure would cost a read per unpaid sale in the
+shop's history, exceed the app's 50-read daily budget on a shop with more than roughly fifty
+open dues, and leave the screen showing an error instead of a number. Every unpaid sale from
+any month is on the Sales screen.
 
 ---
 

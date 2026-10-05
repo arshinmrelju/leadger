@@ -1,77 +1,268 @@
 ﻿/* =========================================================
-   TrustX Ledger — Developer console (admin.html)
+   TrustX Ledger — Owner console (admin.html)
+   -----------------------------------------------------------------
+   The shell is not this page's job: the sidebar, top bar, user chip,
+   install controls and the mobile shop tab bar are css/style.css and
+   css/dashboard.css, drawn by js/shell.js. Neither is the money
+   figures: the five stat cards this page prints are the dashboard's
+   own cards, reused whole rather than restyled, so a rupee reads the
+   same on both sheets.
+
+   So what is left here is the console's own furniture: the chips that
+   choose a section, the receipt labels, the month switcher and the
+   stepper, and the rows in the Shop section. All of it is written for
+   the narrow case and widened with min-width, never the other way
+   round. The `own-` prefix keeps this file out of the way of
+   css/responsive.css and css/mobile.css, which load after it.
    ========================================================= */
 
-.svc-row {
+/* ---------- Content ---------- */
+
+/* One section at a time. `hidden` is the whole mechanism: the panes are
+   all in the DOM, so switching chips never re-fetches anything and the
+   month the owner was reading survives a look at Shop. */
+.own-pane[hidden] { display: none; }
+
+.own-section {
+  margin-top: 1rem;
+}
+
+/* The gate card and the chip row draw their icons from one helper that
+   emits no width/height, and style.css only caps an svg at 100% of its
+   container — so an unsized icon fills the space it is given. Sized here,
+   once, rather than as attributes on every call site. */
+.own-gate .stat-icon { width: 34px; height: 34px; }
+.own-chip .stat-icon { width: 15px; height: 15px; }
+
+/* ---------- Section chips ---------- */
+
+/* Receipt chips, not browser tabs. They sit between the sheet's title
+   and its figures, which is where a paper receipt puts the things it is
+   being asked for, and they are the only nav the console needs: the
+   sidebar's single "Owner console" link already says where you are. */
+.own-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.15rem 0 0.35rem;
+}
+
+.own-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.8rem;
+  border: 1px dashed var(--color-border, #e8dfc4);
+  border-radius: 999px;
+  background: rgba(255, 253, 247, 0.6);
+  color: var(--color-muted, #8a7355);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition:
+    color var(--t-fast, 130ms) var(--ease, ease),
+    background var(--t-fast, 130ms) var(--ease, ease),
+    border-color var(--t-fast, 130ms) var(--ease, ease);
+}
+.own-chip:hover {
+  color: var(--color-text-soft, #5c4a30);
+  border-color: var(--color-primary, #4b8bbf);
+}
+.own-chip.is-active {
+  color: #fff;
+  background: var(--color-primary, #4b8bbf);
+  border-color: var(--color-primary-dark, #3a709e);
+  border-style: solid;
+}
+.own-chip:focus-visible { outline: none; box-shadow: var(--ring, 0 0 0 3px rgba(75, 139, 191, 0.3)); }
+
+/* ---------- Receipt labels ---------- */
+
+/* A monospace, letter-spaced caption for each block of figures — the
+   same trick the dashboard's receipt metadata rows use, so "today" and
+   "this month" read as headings on a printed sheet rather than as
+   bolded text in a web page. */
+.own-receipt-label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.9rem;
-  padding: 0.65rem 0;
-  border-bottom: 1px solid var(--color-border);
+  gap: 0.45rem;
+  margin: 0.9rem 0 0.55rem;
+  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Consolas, monospace);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted, #8a7355);
 }
-.svc-row:last-child { border-bottom: 0; }
-
-.svc-fields {
-  display: flex;
-  gap: 0.6rem;
+.own-receipt-label::after {
+  content: "";
   flex: 1 1 auto;
-  min-width: 0;
+  height: 1px;
+  background: var(--color-border, #e8dfc4);
 }
 
-.svc-actions {
+.own-note {
+  margin-bottom: 0;
+}
+
+/* ---------- Money figures ---------- */
+
+/* Two across on a phone, which is the most that stays legible for a
+   rupee with a label over it; four from a tablet, which is the
+   dashboard's own count. The cards themselves, their icons, their
+   paper tint and their hover lift all come from css/dashboard.css. */
+.own-money {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* What came in and what is left get two columns each: they are the two
+   figures an owner reads first, and on a phone a full-width row is the
+   only size at which a rupee amount stays legible. */
+.own-money .stat-span-2 { grid-column: span 2; }
+
+/* ---------- A control row: stepper, month switcher, buttons ---------- */
+
+.own-controls {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
-@media (max-width: 640px) {
-  .svc-row { flex-direction: column; align-items: stretch; }
-  .svc-actions { justify-content: flex-end; }
+.own-controls .input { flex: 1 1 130px; min-width: 0; }
+.own-controls-spacer { flex: 1 1 auto; }
+
+.own-step {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  width: 100%;
+}
+.own-step .input { flex: 1 1 auto; min-width: 0; }
+.own-step .btn {
+  flex: 0 0 auto;
+  width: 44px;
+  padding-left: 0;
+  padding-right: 0;
 }
 
-/* ---------- Trusted devices ---------- */
-
-.dev-row {
+.own-month {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.9rem;
-  padding: 0.65rem 0;
-  border-bottom: 1px solid var(--color-border);
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
-.dev-row:last-child { border-bottom: 0; }
-
-.dev-main {
+.own-month-label {
   flex: 1 1 auto;
-  min-width: 0;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 800;
 }
 
-.dev-title {
-  font-weight: 600;
+/* The add-a-service box. Its own layout rather than a shared form row: the
+   name has to be allowed to shrink to nothing before the rate does, and the
+   two buttons take a whole line on the narrowest phones rather than
+   squeezing the fields to unreadable widths. */
+.own-addrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+}
+.own-addrow .field { margin: 0; }
+.own-addrow-name { flex: 1 1 150px; min-width: 0; }
+.own-addrow-rate { flex: 0 1 110px; min-width: 88px; }
+.own-addrow-actions { display: flex; gap: 0.5rem; flex: 0 0 auto; }
+
+/* ---------- Shop rows (services, trusted browsers) ---------- */
+
+.own-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--color-border, #e8dfc4);
+}
+.own-row:last-child { border-bottom: 0; }
+
+.own-row-fields {
+  display: flex;
+  gap: 0.5rem;
+}
+.own-row-fields .input { flex: 1 1 auto; min-width: 0; }
+/* The rate box is a currency figure: fixed width so a row of rupee amounts
+   still lines up down the column. */
+.own-row-fields .input.is-rate {
+  flex: 0 0 104px;
+  text-align: right;
+}
+
+.own-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.own-row-actions .own-row-actions-end { margin-left: auto; display: flex; gap: 0.5rem; }
+
+.own-row-main { min-width: 0; }
+
+.own-row-title {
+  font-weight: 700;
   font-size: 0.95rem;
   line-height: 1.4;
+  word-break: break-word;
 }
 
-.dev-sub {
-  font-size: 0.8rem;
-  color: var(--color-text-secondary, #4b5563);
+.own-row-sub {
+  font-size: 0.78rem;
+  color: var(--color-muted, #8a7355);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
-.dev-sub.small { margin-top: 0.15rem; }
+.own-row-sub.small { margin-top: 0.15rem; }
 
-.dev-side {
+/* ---------- Day state ---------- */
+
+.own-day-head {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.85rem 0 0.6rem;
 }
 
-@media (max-width: 640px) {
-  .dev-row { flex-direction: column; align-items: stretch; }
-  .dev-side { justify-content: flex-end; }
+/* ---------- Loading / empty ---------- */
+
+.own-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.75rem 1rem;
+  color: var(--color-muted, #8a7355);
+  font-size: 0.9rem;
+}
+
+/* ---------- Wider windows ---------- */
+
+@media (min-width: 560px) {
+  .own-money { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* A rate box stays readable rather than growing with the grid. */
+  .own-row-fields .input.is-rate { flex: 0 0 120px; }
+}
+
+@media (min-width: 900px) {
+  /* Past a tablet the two shop lists sit side by side, as the dashboard's
+     lower columns do. */
+  .own-split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+  .own-split > * { min-width: 0; }
 }

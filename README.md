@@ -108,7 +108,8 @@ TrustX Ledger/
 │   └── transactions.html     623 lines   All-time or single-day history · search · grouped
 │
 ├── ADMIN  (admin role only · deliberately NOT in the nav)
-│   └── admin.html            161 lines   Developer console → js/admin.js renders 5 cards
+│   └── admin.html            231 lines   Owner console → js/admin.js · no app shell
+│                                            Money · Month · Day · Shop
 │
 ├── OVERLAYS  (modals, not pages)
 │   ├── Record a sale                 js/sale-form.js
@@ -130,7 +131,7 @@ TrustX Ledger/
 │   ├── day-heads.js        day counters + per-method split             (pure)
 │   ├── day-ledger.js       single-day view logic                       (pure)
 │   ├── day-audit.js        day-integrity check + repair plan          (pure)
-│   ├── admin.js            Developer console rendering
+│   ├── admin.js            Owner console (4 tabs, own layout, no shell)
 │   ├── shell.js            shared protected-page bootstrap
 │   ├── app.js              toasts · modals · sidebar · global errors
 │   ├── utils.js            paise · Asia/Kolkata dates · validation
@@ -342,7 +343,7 @@ Every page except `index.html`, `login.html` and `offline.html` redirects to the
 ║  🧾  Transaction history ········ transactions.html  /transactions[open]  ║
 ║                                                                          ║
 ║  ADMIN — admin role only, deliberately not in the nav                    ║
-║  🛡️  Developer console ·········· admin.html         /admin       [open]  ║
+║  🛡️  Owner console ··············· admin.html         /admin       [open]  ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 ```
 
@@ -356,7 +357,7 @@ Every page except `index.html`, `login.html` and `offline.html` redirects to the
 | 📅 **Calendar** | `/calendar.html` | trusted | [`calendar.html`](https://github.com/arshinmrelju/leadger/blob/main/calendar.html) · [open](https://trustxplpy.web.app/calendar.html) |
 | 📒 **Daily Ledger** | `/ledger.html?date=` | trusted | [`ledger.html`](https://github.com/arshinmrelju/leadger/blob/main/ledger.html) · [open](https://trustxplpy.web.app/ledger.html) |
 | 🧾 **Transaction History** | `/transactions.html` | trusted | [`transactions.html`](https://github.com/arshinmrelju/leadger/blob/main/transactions.html) · [open](https://trustxplpy.web.app/transactions.html) |
-| 🛡️ **Developer Console** | `/admin.html` | **admin** | [`admin.html`](https://github.com/arshinmrelju/leadger/blob/main/admin.html) · [open](https://trustxplpy.web.app/admin.html) |
+| 🛡️ **Owner Console** | `/admin.html` | **admin** | [`admin.html`](https://github.com/arshinmrelju/leadger/blob/main/admin.html) · [open](https://trustxplpy.web.app/admin.html) |
 | 📴 **Offline Fallback** | `/offline.html` | public | [`offline.html`](https://github.com/arshinmrelju/leadger/blob/main/offline.html) · [open](https://trustxplpy.web.app/offline.html) |
 
 Jump to a section: [Gateway](#page-index) · [Sign in](#page-login) · [Dashboard](#page-dashboard) · [Calendar](#page-calendar) · [Ledger](#page-ledger) · [History](#page-transactions) · [Console](#page-admin) · [Offline](#page-offline)
@@ -552,26 +553,66 @@ The dashboard reads the day head, which is why the counters must be provably cor
 
 <a id="page-admin"></a>
 
-### 🛡️ Developer Console — `admin.html`
+### 🛡️ Owner Console — `admin.html`
 
-**Route** `/admin.html` · **Access** **`admin` role only** · **161 lines shell + `js/admin.js`**
+**Route** `/admin.html` · **Access** **`admin` role only** · **231 lines shell + `js/admin.js`**
 **Deliberately not in the sidebar nav.** Reached by URL.
 
-> Not a settings page. An operator console for the five jobs that would otherwise need the Firebase console or a service-account key: seed the catalog, watch the free-plan bill, revoke a lost phone, read any day, and repair a day head that has drifted out of step with its sales.
+> Not a settings page, and not a developer page. This is the screen a shop owner opens
+> on a phone to answer four questions: how did today go, which days of this month are
+> missing, can I close a day and is that day in step, and who still has access.
 
-**Features**
+**The one page with no app shell.** It builds its own top bar and a fixed four-tab bottom
+bar instead of calling `initAppShell()`. Inheriting the daily navigation would put sale
+entry one tap away from day-close and integrity actions, and the console has no business
+being the shop's front door. `initOwnerConsole()` drives it.
 
-- Rendered entirely by `renderAdminPage(ctx)`; the HTML is a 161-line shell
-- Gate: `initAppShell({ requireAdmin: true })` — and, more importantly, every read and write below is refused by `firestore.rules` unless `accessGrants/{uid}.role == 'admin'`. A locked card is shown to non-admins
-- **Five cards:**
+**Gate** `requireAccess()` with `grantAdminAccess()`, which promotes a browser holding
+active `shop` trust by presenting an `admin`-scope proof — and, more importantly, every
+read and write below is refused by `firestore.rules` unless
+`accessGrants/{uid}.role == 'admin'`. A non-admin gets a locked gate, not a page.
 
-| Card | What it does |
+**Four tabs**
+
+| Tab | What it answers |
 |---|---|
-| **Services** | Inline rename / re-price / archive-restore per service; `Add default services` previews exactly which of the 38 seeds are missing before writing anything |
-| **Free plan usage** | Metered reads / writes / deletes for **this browser**, with headroom bars, the Pacific reset time, and `Clear today's counter` |
-| **Trusted browsers** | Every grant with its derived device label, language and role; `Revoke` · `Restore` · `Remove`; "this browser" is marked |
-| **All data** | `Day` or `All recent` browser over transactions **and** expenses, with gross / collected / due totals |
-| **Day integrity** | Adds up a day's sales and compares them with that day's head counters. Costs reads, changes nothing. When the difference is one sale wide it offers to put the counters back in one step |
+| **Money** | Today's taken, collected, due, expenses and net — then the same five for the month to date |
+| **Month** | Which days this month contains, what each day took and netted, and which days have nothing on them |
+| **Day** | Any date: open or close it, then check that its head adds up |
+| **Shop** | The service catalog (name, rate, archive) and the browsers allowed to open the ledger |
+
+**Everything is folded off day heads,** not summed from sales, so a month costs one query
+rather than a read per sale. A day that has not been recorded shows as *nothing*, never as
+a zero — the difference matters when you are looking for the gap.
+
+**Month gaps are found, not hidden.** A finished month is scanned whole; a past month used
+to be scanned only as far as its last recorded day, which quietly declared every later day
+outside the ledger. Days with nothing on them are listed by name under the table.
+
+**Closing a day is enforced by `firestore.rules`,** not by the UI. Every sale write against
+a closed day is refused. Re-opening it is how a sale typed against the wrong day gets
+fixed, and it is deliberately on the same tab as the integrity check — both are questions
+about one day. The check recomputes the counters from the day's rows, changes nothing, and
+offers a one-step repair when the difference is exactly one sale wide.
+
+**A figure the console cannot vouch for is not printed.** `fetchTodaySummary()` leaves
+expenses at `0` when the Realtime Database read fails and flags it, because "nothing was
+spent" and "we could not read" are otherwise the same number. Expenses show as `Not read`
+and the net is withheld rather than shown too high by exactly the amount nobody could read.
+The same holds for the month.
+
+**Removed, not moved:** the **Free plan usage** card (the quota layer still counts and
+still raises its own exhausted banner — the owner is not asked to manage a meter's read
+budget) and **All data** (it read every recent sale in the app; the Money and Month tabs
+answer the same question off day heads).
+
+**Dues stop at the month, on purpose.** Money shows what is due today and what is due this
+month, both folded off day heads. It does **not** show an all-time outstanding total, and
+that is a decision rather than an omission: Firestore charges one read per matching
+document, so an all-time figure would cost a read per unpaid sale in the shop's history —
+past the app's own 50-read daily budget on a shop with more than about fifty open dues, and
+left on screen as an error rather than a number. Every unpaid sale from any month is on the
+**Sales** screen.
 
 🔗 [Open live](https://trustxplpy.web.app/admin.html) · [Source](https://github.com/arshinmrelju/leadger/blob/main/admin.html)
 
@@ -637,20 +678,28 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["admin.html<br/>requireAdmin true"] --> B{"grant.role is admin?"}
-    B -- no --> C["Developer console is locked"]
-    B -- yes --> D["Console renders 5 cards"]
-    D --> E["Services<br/>seed · rename · re-price · archive"]
-    D --> F["Free plan usage<br/>this browser's metered reads and writes"]
-    D --> G["Trusted browsers<br/>Revoke · Restore · Remove"]
-    D --> H["All data<br/>Day or All recent · sales and expenses"]
-    D --> I["Day integrity<br/>recompute vs head counters"]
+    A["admin.html<br/>requireAccess · grantAdminAccess"] --> B{"grant.role is admin?"}
+    B -- no --> C["Owner console locked"]
+    B -- yes --> D["Four tabs · own top bar and bottom bar"]
+    D --> E["Money<br/>today and month to date<br/>folded off day heads"]
+    D --> F["Month<br/>each day's taken · expenses · net<br/>plus the days with nothing on them"]
+    D --> G["Day<br/>open or close · any date"]
+    D --> H["Shop<br/>catalog · trusted browsers"]
+    G --> I["Integrity check<br/>recompute vs head counters"]
     I --> J{"Out of step?"}
     J -- no --> K["in step · nothing to do"]
     J -- "one sale wide" --> L["Offer a one-step counter repair"]
     J -- wider --> M["Show the difference in full<br/>repair refused"]
-    G --> N["active set to false<br/>effective on the next request"]
+    E --> N["If expenses could not be read<br/>print Not read · withhold the net"]
+    F --> N
+    H --> P["Revoke · Restore · Remove<br/>effective on the next request"]
 ```
+
+Two things the diagram leaves out on purpose. **Free plan usage is gone** — the quota layer
+still counts and still raises its own exhausted banner, but no card asks the owner to
+manage a meter's read budget. **All data is gone** — it read every recent sale in the app,
+and the Money and Month tabs answer the same question off day heads for one query per
+month instead of a read per sale.
 
 ### <a id="auth-flow"></a>Authentication Flow
 
@@ -936,7 +985,7 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 <details>
 <summary><b>⚙️ A 38-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
 
-`js/service-catalog.js` seeds the catalog a shop starts from: **38 services across 8 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Developer console asks for real rates once, after the seed.
+`js/service-catalog.js` seeds the catalog a shop starts from: **38 services across 8 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Owner console's **Shop** tab asks for real rates once, after the seed.
 
 ```text
 100s  Printing & document services      Normal Printing · Colour/Photo Printing ·
@@ -1036,7 +1085,11 @@ The app meters its **own estimated** usage in `localStorage`, coalesced to one w
 
 The reset time is **midnight Pacific** — roughly 12:30–1:30 pm in India — found by binary search to ±30 s and formatted `en-IN` / `Asia/Kolkata`, DST included.
 
-The Developer console's **Free plan usage** card shows this browser's counters and headroom.
+The Owner console no longer shows these counters — the **Free plan usage** card is gone, and
+so are the `getUsage` / `subscribeUsage` / `resetUsage` exports that fed it. The quota layer
+itself is untouched: it still counts, still charges reads before they are made, and still
+raises its own exhausted banner. What changed is that the owner is no longer asked to manage
+a meter's read budget, and a browser cannot reset its own counter any more.
 
 </details>
 
@@ -1191,7 +1244,7 @@ All 8 pages were checked and return **HTTP 200**:
 | Calendar | https://trustxplpy.web.app/calendar.html |
 | Daily Ledger | https://trustxplpy.web.app/ledger.html |
 | Transaction history | https://trustxplpy.web.app/transactions.html |
-| Developer console | https://trustxplpy.web.app/admin.html |
+| Owner console | https://trustxplpy.web.app/admin.html |
 | Offline fallback | https://trustxplpy.web.app/offline.html |
 
 <details>
@@ -1251,7 +1304,7 @@ flowchart TD
 
 ### Authorisation
 
-- **Two roles only:** `shop` (full ledger access) and `admin` (ledger + Developer console).
+- **Two roles only:** `shop` (full ledger access) and `admin` (ledger + Owner console).
 - `isTrusted(uid)` = the grant exists **and** `active == true`. `isAdmin(uid)` = trusted **and** `role == 'admin'`. A Google session alone grants nothing.
 - **A grant can never be richer than the allowlist.** Creation requires `get(enrollments/{uid}).scope == request.resource.data.role`.
 - **Admin promotion is one-directional** (`shop → admin`) and requires the browser to already hold active shop trust — an admin email on its own is useless to someone not already inside the shop.
@@ -1723,10 +1776,10 @@ The app runs locally from step 2 of [Installation](#installation). Because every
 
 **1 · Prepare a browser profile with a trusted grant.** Use a clean profile or a private window so you do not disturb your shop's own grant list, then sign in with an account on the allowlist. Note that the console labels the current browser *"this browser"*.
 
-**2 · Seed representative data** via the Developer console (`admin.html`):
+**2 · Seed representative data** via the Owner console (`admin.html`):
 
-- **⚙️ Services → Add default services** — writes the 38 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
-- **🗄️ All data** has no write path; record sales through **⌘N** on the dashboard instead, so the atomicity proof is exercised for real.
+- **🛒 Shop → Add default services** — writes the 38 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
+- **💵 Money / 📅 Month** are read-only views. Record sales through **⌘N** on the dashboard instead, so the atomicity proof is exercised for real.
 - Record a spread of sales across several days: different payment methods, at least one **due** left pending, at least one sale **backfilled** onto a past business day, and at least one day with **no entries at all** so the calendar's catch-up panel is populated.
 
 **3 · Capture, at 1440 × 900 (desktop):**
@@ -1743,10 +1796,10 @@ The app runs locally from step 2 of [Installation](#installation). Because every
 | `docs/screens/08-history.png` | `transactions.html` in **All time** scope, grouped by day |
 | `docs/screens/09-sale-form.png` | ⌘N with the service picker open |
 | `docs/screens/10-receipt-ocr.png` | ⌘⇧N, drop a real receipt photo, capture mid-analysis |
-| `docs/screens/11-console-services.png` | `admin.html` → ⚙️ Services |
-| `docs/screens/12-console-devices.png` | `admin.html` → 💻 Trusted browsers |
-| `docs/screens/13-console-integrity.png` | `admin.html` → ✅ Day integrity |
-| `docs/screens/14-console-usage.png` | `admin.html` → 📊 Free plan usage |
+| `docs/screens/11-console-money.png` | `admin.html` → 💵 Money |
+| `docs/screens/12-console-month.png` | `admin.html` → 📅 Month |
+| `docs/screens/13-console-day.png` | `admin.html` → 🗓️ Day |
+| `docs/screens/14-console-shop.png` | `admin.html` → 🛒 Shop |
 | `docs/screens/15-offline.png` | DevTools → Network → **Offline**, then navigate to a page not in the precache |
 | `docs/screens/16-mobile-dashboard.png` | DevTools → 390 × 844, showing the bottom tab bar |
 

@@ -375,6 +375,10 @@ function emptySummary() {
     duePaise: 0,
     expensesPaise: 0,
     netPaise: 0,
+    /* Defaults matter more than the value: expensesPaise above is 0 when the
+       day genuinely had none and also 0 when the read failed, and this is
+       what tells the two apart. Absent would read as false and hide it. */
+    expensesUnavailable: false,
   };
 }
 
@@ -476,51 +480,63 @@ async function readExpensesForDay(dateKey, { force = false } = {}) {
 }
 
 /**
- * Read expenses for the Developer console.
+ * Every expense filed in one calendar month, for the Owner console's
+ * month report.
  *
- * Expenses are bucketed by day in the Realtime Database, so a single day
- * is one straight read. With no `dateKey`, the most recent DAYS buckets
- * are read and flattened — Realtime Database orders object keys, so the
- * newest days come first with no index and no query language involved.
+ * Expenses are bucketed by day in the Realtime Database, so a month is one
+ * ranged query rather than up to thirty-one straight reads. Realtime
+ * Database orders object keys natively, so `startAt`/`endAt` on the day's
+ * `YYYY-MM-DD` keys selects exactly the month without an index and without
+ * a query language — and unlike `limitToLast`, it reaches a month in the
+ * PAST, which is the whole point of a report the owner can scroll back to.
  *
- * The one query already downloads every field of every bucket it returns,
- * so the rows are normalized straight out of that payload. Reading each day
+ * The query already downloads every field of every bucket it returns, so
+ * the rows are normalized straight out of that payload. Reading each day
  * again afterwards would ask the network for bytes it had already sent —
- * thirty round-trips and roughly double the download for an identical
+ * thirty-one round-trips and roughly double the download for an identical
  * answer.
  *
+ * Guarded and classified like every other read, because an out-of-bandwidth
+ * refusal must not be reported as "this month had no expenses" — that would
+ * put a confidently wrong NET in front of the owner.
+ *
  * @param {object} [opts]
- * @param {string|null} [opts.dateKey] a single `YYYY-MM-DD`, or null for recent days
- * @param {number} [opts.limit]        cap on returned rows
- * @param {number} [opts.days]         how many recent days to span
+ * @param {string} [opts.yearMonth] `YYYY-MM`; defaults to this month in India
+ * @param {number} [opts.limit]     cap on returned rows (a month fits easily)
+ * @param {boolean} [opts.force]    re-read instead of answering from the cache
+ * @returns {Promise<Array<object>>} expense rows, oldest day first
  */
-export async function fetchExpenses({ dateKey = null, limit = 200, days = 30 } = {}) {
-  if (dateKey) {
-    if (!isValidDateKey(dateKey)) return [];
-    const rows = await readExpensesForDay(dateKey);
-    return rows.slice(0, limit);
-  }
+export async function fetchMonthExpenses({ yearMonth = "", limit = 400, force = false } = {}) {
+  const bounds = monthBounds(String(yearMonth || "").trim() || currentYearMonth());
+  if (!bounds) throw new Error("Pick a valid month to view.");
 
   const b = await rtdbBridge();
   const rt = b.rtdbMod;
-  /* One query for the day buckets, then normalize from the payload it
-     already returned. See the note on fetchExpenses. */
-  const buckets = await expensesCache.read(`recent:${days}`, () =>
-    guardQuota(async () => {
-      const snap = await rt.get(
-        rt.query(rt.ref(b.rtdb, "expenses"), rt.orderByKey(), rt.limitToLast(days))
-      );
-      return snap.val() || {};
-    })
+
+  const buckets = await expensesCache.read(
+    `month:${bounds.yearMonth}`,
+    () =>
+      guardQuota(async () => {
+        const snap = await rt.get(
+          rt.query(
+            rt.ref(b.rtdb, "expenses"),
+            rt.orderByKey(),
+            rt.startAt(bounds.firstKey),
+            rt.endAt(bounds.lastKey)
+          )
+        );
+        return snap.val() || {};
+      }),
+    { force }
   );
 
   const flat = [];
+  /* Object keys come back newest-first from the server; sort so the report
+     reads the way the month does. */
   for (const dateKey of Object.keys(buckets).sort()) {
     const raw = buckets[dateKey] || {};
     for (const id of Object.keys(raw)) flat.push(normalizeExpense(dateKey, id, raw[id]));
   }
-  /* Newest day first, matching the transactions browser beside it. */
-  flat.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
   return flat.slice(0, limit);
 }
 
@@ -583,6 +599,7 @@ export async function fetchTodaySummary(dateKey = todayKolkata(), { force = fals
   /* Expenses first: they live on the other database, so a Realtime
      Database problem should not also cost us the day's totals. */
   let expensesPaise = 0;
+  let expensesUnavailable = false;
   try {
     expensesPaise = await expensesTotalForDay(dateKey, { force });
   } catch (err) {
@@ -593,6 +610,12 @@ export async function fetchTodaySummary(dateKey = todayKolkata(), { force = fals
        it has just thrown the error away. */
     if (isQuotaExhausted(err)) throw err;
     console.warn("[trustx-ledger] expenses unavailable for the summary:", err);
+    /* The day's sales are still worth showing, so the failure is carried on
+       the summary rather than thrown. expensesPaise stays 0, which is exactly
+       why it cannot be left unmarked: every caller below has to know that the
+       zero is a "could not read", not a "nothing spent". Same shape as
+       transactionsUnavailable on the summary's row list. */
+    expensesUnavailable = true;
   }
 
   let head = null;
@@ -628,6 +651,7 @@ export async function fetchTodaySummary(dateKey = todayKolkata(), { force = fals
     if (isCounterSetValid(counters)) {
       const summary = summaryFromCounters(dateKey, counters);
       summary.expensesPaise = expensesPaise;
+      summary.expensesUnavailable = expensesUnavailable;
       summary.netPaise = summary.paidPaise - expensesPaise;
       /* The head carries no rows, so the day's recent sales are read here —
          one cached, bounded page, the same one every reload serves from the
@@ -664,6 +688,7 @@ export async function fetchTodaySummary(dateKey = todayKolkata(), { force = fals
     const summary = emptySummary();
     summary.dateKey = dateKey;
     summary.expensesPaise = expensesPaise;
+    summary.expensesUnavailable = expensesUnavailable;
     summary.netPaise = -expensesPaise;
     return summary;
   }
@@ -672,7 +697,9 @@ export async function fetchTodaySummary(dateKey = todayKolkata(), { force = fals
      path by definition, so it must not run when the reason we could not
      read the head is that the day's read budget is already spent. */
   const rows = await fetchTransactions({ dateKey, limit: MAX_DAY_LIMIT, force });
-  return summaryFromRows(rows, expensesPaise);
+  const folded = summaryFromRows(rows, expensesPaise);
+  folded.expensesUnavailable = expensesUnavailable;
+  return folded;
 }
 
 /**

@@ -184,11 +184,11 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
 
   const table = heads && typeof heads === "object" ? heads : {};
   const today = isValidDateKey(todayKey) ? todayKey : "";
-  const gridStart = shiftDateKeyLocal(bounds.firstKey, -weekdayIndex(bounds.firstKey));
+  const gridStart = shiftDayKey(bounds.firstKey, -weekdayIndex(bounds.firstKey));
 
   const cells = [];
   for (let i = 0; i < 42; i += 1) {
-    const dateKey = shiftDateKeyLocal(gridStart, i);
+    const dateKey = shiftDayKey(gridStart, i);
     const inMonth = dateKey.slice(0, 7) === bounds.yearMonth;
     const isToday = today ? dateKey === today : false;
 
@@ -246,12 +246,23 @@ function weekdayIndex(dateKey) {
 }
 
 /**
- * Local day shift. Named apart from `shiftDateKey` in js/day-ledger.js
- * only to keep this file free of that import's page-level concerns; the
- * arithmetic is deliberately identical, because there is exactly one
- * correct way to step a date key and two copies of it would drift.
+ * Step a `YYYY-MM-DD` key by `days`. The one way to do it in this app.
+ *
+ * The arithmetic is UTC on purpose: a local-time shift moves a day for
+ * anyone east of UTC in the evening and drops one in between, so a
+ * stepper built on it lands on the wrong business day half the time.
+ *
+ * Named for this module and exported so the Owner console's day stepper
+ * uses the same arithmetic instead of a third copy. It is deliberately
+ * identical to `shiftDateKey` in js/day-ledger.js, because there is
+ * exactly one correct way to step a date key and two copies of it would
+ * drift.
+ *
+ * @param {string} key
+ * @param {number} days
+ * @returns {string}
  */
-function shiftDateKeyLocal(key, days) {
+export function shiftDayKey(key, days) {
   const shifted = new Date(dateKeyToUTC(key).getTime() + Math.trunc(Number(days) || 0) * MS_PER_DAY);
   return utcToDateKey(shifted);
 }

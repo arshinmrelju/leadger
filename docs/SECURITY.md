@@ -182,10 +182,11 @@ browser alive — there is no path from revoked back to trusted without a valid 
 
 ## Client-side gates, and why they are not the control
 
-`js/auth.js` `guardPage` / `requireAccess` redirect a browser that is not trusted, and
-`initAppShell({ requireAdmin: true })` locks the console. Both are **user experience**. The HTML
-of every page is served to anyone who asks for it — the gate is the rules, on every read and write.
-Nothing in `js/` is a security boundary.
+`js/auth.js` `guardPage` / `requireAccess` redirect a browser that is not trusted, and the
+Owner console gates itself with `requireAccess()` + `grantAdminAccess()` — it does **not** call
+`initAppShell`, which is what makes it a standalone page in the first place. Both are **user
+experience**. The HTML of every page is served to anyone who asks for it — the gate is the rules,
+on every read and write. Nothing in `js/` is a security boundary.
 
 ---
 

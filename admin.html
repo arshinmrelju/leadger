@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Developer console &middot; TrustX Ledger</title>
-  <meta name="description" content="TrustX Ledger developer console" />
+  <title>Owner console &middot; TrustX Ledger</title>
+  <meta name="description" content="TrustX Ledger owner console: the month's money, close any day, and the shop's services and trusted browsers." />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#132b1e" />
@@ -36,6 +36,18 @@
   }
   </script>
 </head>
+<!--
+  A shell page, like every other protected screen: the sidebar, the top
+  bar, the user chip, the install controls and the mobile tab bar all come
+  from js/shell.js. The console is reached from the sidebar's Management
+  section, not from the shop's daily navigation.
+
+  What is its own is the paper. Inside the shell, the four sections sit on
+  the same receipt sheet the dashboard prints its figures on, so a rupee
+  looks the same wherever it is read. The figures themselves are never
+  computed here — this page reads through js/ledger.js, so a rupee shown
+  in the console is the same rupee the day head holds.
+-->
 <body data-page="admin">
   <div class="app">
     <!-- ===================== Sidebar ===================== -->
@@ -44,7 +56,7 @@
         <img class="brand-logo" src="assets/logo.svg" alt="" width="38" height="38" />
         <div class="brand-text">
           <div class="brand-name">TrustX Ledger</div>
-          <div class="brand-sub">Developer console</div>
+          <div class="brand-sub">Shop ledger</div>
         </div>
       </div>
 
@@ -71,29 +83,11 @@
           Calendar
         </a>
 
-        <button class="nav-link" type="button" data-coming>
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Customers
-          <span class="nav-badge">Soon</span>
-        </button>
-
-        <button class="nav-link" type="button" data-coming>
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Expenses
-          <span class="nav-badge">Soon</span>
-        </button>
-
-        <button class="nav-link" type="button" data-coming>
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg>
-          Reports
-          <span class="nav-badge">Soon</span>
-        </button>
-
         <div class="nav-section-title">Management</div>
 
         <a class="nav-link is-active" data-nav="admin" href="admin.html">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Admin
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Owner console
         </a>
       </nav>
 
@@ -112,30 +106,180 @@
         <button class="topbar-hamburger" type="button" data-sidebar-toggle aria-label="Toggle navigation">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
         </button>
-        <div class="topbar-title">Developer console</div>
+        <div class="topbar-title">Owner console</div>
         <span class="pill pill-neutral" id="topbarShop" style="display:none;"></span>
         <span class="pill pill-neutral" id="topbarDate" aria-live="off"></span>
       </header>
 
       <main class="content" id="mainContent">
-        <!-- Rendered by admin JS (app shell). -->
-        <div class="ledger-loading-screen" aria-label="Loading developer console">
-          <div class="ledger-loading-card">
-            <div class="ledger-loading-emblem">
-              <div class="emblem-spinner"></div>
-              <div class="emblem-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <!-- The gate, the locked card and the loading screen all land here. -->
+        <div id="ownBoot">
+          <div class="ledger-loading-screen" aria-label="Loading the owner console">
+            <div class="ledger-loading-card">
+              <div class="ledger-loading-emblem">
+                <div class="emblem-spinner"></div>
+                <div class="emblem-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82l-.06-.06a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </div>
+              </div>
+              <h2 class="ledger-loading-title">Owner console</h2>
+              <p class="ledger-loading-sub">The shop&rsquo;s money, days &amp; services</p>
+              <div class="ledger-loading-pill">
+                <span class="loading-pulse-dot"></span>
+                <span>Opening the ledger<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>
+              </div>
+              <div class="ledger-loading-progress">
+                <div class="ledger-loading-bar"></div>
               </div>
             </div>
-            <h2 class="ledger-loading-title">Developer Console</h2>
-            <p class="ledger-loading-sub">Shop Management &amp; Diagnostics</p>
-            <div class="ledger-loading-pill">
-              <span class="loading-pulse-dot"></span>
-              <span>Authenticating admin access<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>
+          </div>
+        </div>
+
+        <!-- Everything below is populated by js/admin.js. The panes stay in
+             the DOM when the section changes, so switching never re-reads. -->
+        <div id="ownConsole" hidden>
+          <div class="dash-receipt-wrapper">
+
+            <div class="receipt-dispenser dash-dispenser" aria-hidden="true">
+              <div class="dispenser-bar"></div>
+              <div class="dispenser-slot"></div>
             </div>
-            <div class="ledger-loading-progress">
-              <div class="ledger-loading-bar"></div>
-            </div>
+
+            <main class="auth-card receipt-card dash-receipt-card">
+              <div class="receipt-inner dash-receipt-inner">
+
+                <!-- One title for the whole sheet: it follows the section. -->
+                <div class="receipt-top-row dash-receipt-top-row">
+                  <div class="receipt-header-left">
+                    <span class="receipt-status-tag">OWNER CONSOLE &bull; MANAGEMENT</span>
+                    <h1 class="receipt-title" id="ownPaneTitle">Money</h1>
+                    <p class="receipt-subtitle" id="ownPaneSub"></p>
+                  </div>
+                  <div class="dash-header-actions">
+                    <div class="receipt-stamp" title="TrustX Ledger Owner console">
+                      <span class="receipt-stamp-brand">TrustX</span>
+                      <span class="receipt-stamp-sub">OWNER</span>
+                    </div>
+                  </div>
+                </div>
+
+                <hr class="receipt-divider" />
+
+                <!-- The four sections. Receipt chips, so they read as part
+                     of the sheet rather than as browser furniture. -->
+                <nav class="own-chips" id="ownTabs" aria-label="Owner console sections"></nav>
+
+                <hr class="receipt-divider" />
+
+                <!-- ---------- Money ---------- -->
+                <section class="own-pane" data-pane="money" hidden>
+                  <div class="own-controls">
+                    <button type="button" class="btn btn-secondary btn-sm" id="moneyRefreshBtn">Refresh</button>
+                    <span class="own-controls-spacer"></span>
+                    <a class="btn btn-secondary btn-sm receipt-pill-btn" href="transactions.html">Sales</a>
+                    <a class="btn btn-secondary btn-sm receipt-pill-btn" href="dashboard.html">Dashboard</a>
+                  </div>
+
+                  <div class="own-receipt-label">Today</div>
+                  <div class="dash-grid own-money" id="todayTiles"></div>
+
+                  <div class="own-receipt-label own-section">This month</div>
+                  <div class="dash-grid own-money" id="monthTiles"></div>
+
+                  <p class="small muted own-section own-note" id="moneyNote"></p>
+                </section>
+
+                <!-- ---------- Month ---------- -->
+                <section class="own-pane" data-pane="month" hidden>
+                  <div class="own-month">
+                    <button type="button" class="btn btn-secondary" id="monthPrevBtn" aria-label="Previous month">&lsaquo;</button>
+                    <div class="own-month-label" id="monthLabel" aria-live="polite"></div>
+                    <button type="button" class="btn btn-secondary" id="monthNextBtn" aria-label="Next month">&rsaquo;</button>
+                  </div>
+
+                  <div class="own-controls">
+                    <button type="button" class="btn btn-secondary btn-sm" id="monthThisBtn">This month</button>
+                    <span class="own-controls-spacer"></span>
+                    <button type="button" class="btn btn-primary btn-sm" id="monthRefreshBtn">Refresh</button>
+                  </div>
+
+                  <div class="dash-grid own-money" id="monthSummaryTiles"></div>
+
+                  <div class="own-receipt-label own-section">Days</div>
+                  <div id="monthDays"></div>
+                </section>
+
+                <!-- ---------- Day ---------- -->
+                <section class="own-pane" data-pane="day" hidden>
+                  <div class="own-step">
+                    <button type="button" class="btn btn-secondary" id="dayPrevBtn" aria-label="Previous day">&lsaquo;</button>
+                    <input class="input" id="dayDate" type="date" aria-label="Business day" />
+                    <button type="button" class="btn btn-secondary" id="dayNextBtn" aria-label="Next day">&rsaquo;</button>
+                  </div>
+
+                  <div class="own-day-head">
+                    <span class="pill" id="dayStatePill"></span>
+                    <span class="small muted" id="dayStateNote"></span>
+                    <span class="own-controls-spacer"></span>
+                    <button type="button" class="btn btn-primary btn-sm" id="dayToggleBtn">Close day</button>
+                  </div>
+
+                  <div class="dash-grid own-money" id="dayTiles"></div>
+
+                  <div class="own-receipt-label own-section">Integrity</div>
+                  <p class="small muted own-note" style="margin:0;">Adds up the day&rsquo;s sales and compares the total with the counters on its head. Checking reads and changes nothing.</p>
+                  <div class="own-controls own-section">
+                    <button type="button" class="btn btn-secondary btn-sm" id="auditDayBtn">Check this day</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="auditMonthBtn">Check this month</button>
+                  </div>
+                  <div id="auditResult"></div>
+                </section>
+
+                <!-- ---------- Shop ---------- -->
+                <section class="own-pane" data-pane="shop" hidden>
+                  <div class="dash-columns own-split">
+                    <section class="card dash-paper-card">
+                      <div class="card-header dash-card-header">
+                        <h3>Services</h3>
+                        <div class="card-actions">
+                          <button type="button" class="btn btn-secondary btn-sm" id="seedSvcBtn" title="Add whatever of the default service list is still missing">Add defaults</button>
+                        </div>
+                      </div>
+                      <div class="card-body">
+                        <div class="own-addrow">
+                          <div class="field own-addrow-name"><input class="input" id="addSvcName" type="text" maxlength="80" placeholder="New service name" /></div>
+                          <div class="field own-addrow-rate"><input class="input" id="addSvcPrice" type="text" inputmode="decimal" placeholder="Rate (&curren;)" aria-label="Rate in rupees" /></div>
+                          <div class="own-addrow-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" id="addSvcClear">Clear</button>
+                            <button type="button" class="btn btn-primary btn-sm" id="addSvcSave">Add service</button>
+                          </div>
+                        </div>
+                        <p class="small muted">The default list &mdash; printing, DTP, CV/resume, certificates, online applications, photos and bill payments &mdash; is added the first time a device opens the app, and every service starts at &curren;0. Set your own rate on each row.</p>
+                        <div id="servicesList"></div>
+                      </div>
+                    </section>
+
+                    <section class="card dash-paper-card">
+                      <div class="card-header dash-card-header">
+                        <h3>Trusted browsers</h3>
+                        <div class="card-actions">
+                          <button type="button" class="btn btn-secondary btn-sm" id="devicesRefreshBtn">Refresh</button>
+                        </div>
+                      </div>
+                      <div class="card-body">
+                        <p class="small muted" style="margin-top:0;">These browsers open the ledger with their authorised Google accounts. Revoke any you do not recognise: the next time it opens the app it will be asked to sign in again, and it cannot read a single rupee until then. Removing one deletes its trust record for good.</p>
+                        <div id="devicesList"></div>
+                      </div>
+                    </section>
+                  </div>
+                </section>
+
+                <div class="receipt-footer-note dash-footer-note own-section">CLOSE THE DAY &bull; TRUSTX LEDGER</div>
+              </div>
+              <div class="receipt-tear-edge" aria-hidden="true"></div>
+            </main>
+
+            <div class="auth-footer-caption">TrustX Ledger &bull; Fast, Offline-First Shop Record</div>
           </div>
         </div>
       </main>
@@ -143,17 +287,27 @@
   </div>
 
   <script type="module">
+    /* The shell, as on every other protected page: it resolves the session
+       and the grant, and answers the admin question by reading the grant's
+       role rather than trusting the page. renderOwnerConsole(ctx) is handed
+       that answer and does nothing but ask for the promotion when it is
+       missing. */
     import { initAppShell } from "./js/shell.js";
-    import { renderAdminPage } from "./js/admin.js";
+    import { renderOwnerConsole } from "./js/admin.js";
 
     initAppShell({
-      /* Second gate: this console needs its own admin role, not just
-         shop access. ctx.isAdmin is false until this browser holds an
-         accessGrants/{uid} grant with role 'admin', and the page then
-         shows the locked card. */
       requireAdmin: true,
+      /* The business day rolls over at 3:30am India time, and a console
+         left open across it would go on reporting yesterday's takings
+         under a "today" heading. The shell owns the clock; it hands us the
+         tick and we re-read whatever is on screen. The Day section's arrow
+         deliberately points at days other than today, so this never moves
+         the date under the owner — only today's figures are re-read. */
+      onDayChange: () => {
+        window.dispatchEvent(new CustomEvent("seva:owner-day-change"));
+      },
       onReady: async (ctx) => {
-        await renderAdminPage(ctx);
+        await renderOwnerConsole(ctx);
       },
     });
   </script>

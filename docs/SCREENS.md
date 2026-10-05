@@ -39,10 +39,10 @@ shop contain real service names, real totals, and real customer names.
 | 08 | `08-history.png` | `transactions.html` in **All time** scope, grouped by day |
 | 09 | `09-sale-form.png` | ⌘N with the service picker open |
 | 10 | `10-receipt-ocr.png` | ⌘⇧N, drop a real receipt photo, capture mid-analysis |
-| 11 | `11-console-services.png` | `admin.html` → ⚙️ Services |
-| 12 | `12-console-devices.png` | `admin.html` → 💻 Trusted browsers |
-| 13 | `13-console-integrity.png` | `admin.html` → ✅ Day integrity |
-| 14 | `14-console-usage.png` | `admin.html` → 📊 Free plan usage |
+| 11 | `11-console-money.png` | `admin.html` → 💵 Money |
+| 12 | `12-console-month.png` | `admin.html` → 📅 Month, with the missing days called out |
+| 13 | `13-console-day.png` | `admin.html` → 🗓️ Day |
+| 14 | `14-console-shop.png` | `admin.html` → 🛒 Shop |
 | 15 | `15-offline.png` | DevTools → Network → **Offline**, then navigate to a page not in the precache |
 | 16 | `16-mobile-dashboard.png` | DevTools → 390 × 844, showing the bottom tab bar |
 
@@ -60,12 +60,12 @@ in with an account on the allowlist. The console labels the current browser *"th
 
 ## 2 · Seed representative data
 
-Via the Developer console (`admin.html`):
+Via the Owner console (`admin.html`):
 
-- **⚙️ Services → Add default services** writes the seeds at ₹0. **Set realistic rates on a
+- **🛒 Shop → Add default services** writes the seeds at ₹0. **Set realistic rates on a
   handful first**, or every screenshot will show `₹0`.
-- **🗄️ All data** has no write path. Record sales through **⌘N** on the dashboard instead, so the
-  atomicity proof is exercised for real rather than faked with a seed script.
+- **💵 Money** and **📅 Month** are read-only. Record sales through **⌘N** on the dashboard instead,
+  so the atomicity proof is exercised for real rather than faked with a seed script.
 - Spread sales across several days, and include:
   - more than one payment method
   - at least one **due** sale left `pending`

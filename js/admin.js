@@ -1,17 +1,42 @@
 /* =========================================================
-   TrustX Ledger — Developer console (admin.html)
+   TrustX Ledger — Owner console (admin.html)
    -----------------------------------------------------------------
-   Not linked from the public navigation and gated by its own admin
-   role: this browser must hold an accessGrants/{uid} grant with
-   role 'admin' (see auth.js / firestore.rules) before any of this
-   renders. Behind the gate the console covers the shop's
-   maintenance — the service catalog, the trust registry and a
-   full-data browser. The dashboard stays operational-only.
+   A shell page like every other protected screen. The sidebar, top
+   bar, user chip, install controls and mobile tab bar come from
+   js/shell.js; the console is reached from the sidebar's Management
+   section rather than from the shop's daily navigation, and behind
+   the same admin role the rules already answer for (see auth.js /
+   firestore.rules).
+
+   WHAT IS ITS OWN IS THE PAPER.
+   Inside the shell, the four sections sit on the receipt sheet the
+   dashboard prints its figures on — same stat cards, same stamp, same
+   tear edge — and the sidebar's one "Owner console" link is enough to
+   get back here. Switching section is a chip inside the receipt, not
+   a page load: the month the owner was reading survives a look at Shop
+   and is still there on the way back.
+
+   FOUR SECTIONS, IN THE ORDER THEY ARE NEEDED
+      money  — today and the month so far, at a glance
+      month  — one month's days, day by day, with the totals
+      day    — close or re-open any day, and check it adds up
+      shop   — the services sold, and the browsers allowed to sell
+
+   What this shares with the rest of the app is the arithmetic, the
+   caches and the rules: this page reads through js/ledger.js rather
+   than talking to Firebase itself, so a rupee shown here is the same
+   rupee the day head holds.
+
+   What an owner does NOT need is deliberately absent: the free-plan
+   usage meter and the all-data transaction browser went when this
+   page was rebuilt, because neither answers a question about the
+   shop. See docs/PAGES.md.
    ========================================================= */
 
 import { toast, confirm, setLoading } from "./app.js";
 import {
   formatINR,
+  formatDateKey,
   formatKolkataTime,
   formatKolkataLong,
   escapeHtml,
@@ -21,15 +46,14 @@ import {
   rateToPaise,
 } from "./utils.js";
 import {
-  fetchServices,
-  createService,
-  seedDefaultServices,
-  updateService,
-  fetchTransactions,
-  fetchExpenses,
-  fetchMonthHeads,
-  repairDayHead,
-} from "./ledger.js";
+  currentYearMonth,
+  shiftMonth,
+  shiftDayKey,
+  monthLabel,
+  monthBounds,
+  dayCellLabel,
+} from "./calendar.js";
+import { DAY_STATE } from "./day-heads.js";
 import {
   auditDayCounters,
   describeAudit,
@@ -37,6 +61,19 @@ import {
   AUDIT_STATUS,
 } from "./day-audit.js";
 import { findMissingCatalogServices, SERVICE_CATALOG } from "./service-catalog.js";
+import {
+  fetchServices,
+  createService,
+  seedDefaultServices,
+  updateService,
+  fetchTransactions,
+  fetchMonthHeads,
+  fetchMonthExpenses,
+  fetchTodaySummary,
+  repairDayHead,
+  closeDay,
+  reopenDay,
+} from "./ledger.js";
 import {
   reportError,
   listAccessGrants,
@@ -46,291 +83,1187 @@ import {
   grantAdminAccess,
   AuthError,
 } from "./auth.js";
-import {
-  SPARK_LIMITS,
-  getUsage,
-  subscribeUsage,
-  resetUsage,
-} from "./quota.js";
 
+/**
+ * Icons, keyed by the chip, the figure and the section they belong to.
+ *
+ * The five figure icons are the dashboard's own paths, copied rather than
+ * invented, so the same rupee carries the same mark on both sheets.
+ */
 function svg(id) {
   const paths = {
+    money: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>',
+    month: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+    day: '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+    shop: '<path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/>',
     services: '<path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/>',
-    data: '<path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/>',
-    devices:
-      '<rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
-    quota:
-      '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    devices: '<rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
+    /* The dashboard's five figure marks, unchanged. */
+    taken: '<path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/>',
+    collected: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10h.01M18 14h.01"/>',
+    due: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    expenses: '<circle cx="12" cy="12" r="9"/><path d="M7 12h10"/><path d="M12 7v10"/>',
+    net: '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>',
   };
   return (
-    '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     (paths[id] || "") +
     "</svg>"
   );
 }
 
 /* =========================================================
-   Free-plan usage
+   State
 
-   Firebase's Spark plan allows 50,000 reads, 20,000 writes and 20,000
-   deletes per day, and — because the project has no billing account —
-   offers no budget alert to warn of them coming. The console's own Usage
-   tab cannot be relied on as a warning either: it reports what was
-   charged, and it deliberately omits zero-result queries and index-entry
-   reads, so it is a floor rather than a total.
-
-   So the console counts what THIS browser spends and shows the headroom.
-   It is explicitly an estimate for one device, and the panel says so: its
-   job is to make the wall visible before the shop hits it, not to be an
-   accountant. The day rolls over at the Pacific midnight that Firestore
-   actually resets on, which is mid-afternoon in India — worth seeing
-   plainly, because a shop that is cut off at 1pm has no obvious reason why.
+   One object, read by every pane. The panes stay in the DOM when
+   the tabs switch, so the month the owner was reading survives a
+   look at the Shop tab and is still there on the way back.
    ========================================================= */
-
-function quotaBar(label, used, cap, pct) {
-  const level = pct >= 85 ? "danger" : pct >= 60 ? "warning" : "ok";
-  return (
-    '<div class="quota-row">' +
-    '<div class="quota-row-head"><span class="quota-row-label">' + escapeHtml(label) + "</span>" +
-    '<span class="quota-row-value">' + used.toLocaleString("en-IN") + " / " + cap.toLocaleString("en-IN") +
-    ' <span class="quota-row-pct">(' + pct.toFixed(pct < 1 ? 2 : 0) + "%)</span></span></div>" +
-    '<div class="quota-track"><div class="quota-fill quota-' + level + '" style="width:' +
-    Math.max(pct, used > 0 ? 1.5 : 0).toFixed(2) + '%"></div></div>' +
-    "</div>"
-  );
-}
-
-/** The panel's static half. */
-function quotaPanelMarkup() {
-  return (
-    '<p class="small muted" style="margin:0 0 .8rem;">This shop runs on Firebase\'s free Spark plan, which allows ' +
-    SPARK_LIMITS.readsPerDay.toLocaleString("en-IN") + " reads, " +
-    SPARK_LIMITS.writesPerDay.toLocaleString("en-IN") + " writes and " +
-    SPARK_LIMITS.deletesPerDay.toLocaleString("en-IN") +
-    " deletes a day. Crossing any of them stops every read and write until the daily reset — there is no partial service and no warning from Firebase, because a Spark project has no billing account to attach a budget alert to.</p>" +
-    '<div id="quotaBars">' + quotaBarsHtml(getUsage()) + "</div>" +
-    '<p class="small muted" id="quotaResetNote" style="margin:.8rem 0 0;"></p>'
-  );
-}
-
-function quotaBarsHtml(usage) {
-  return (
-    quotaBar("Document reads", usage.reads, SPARK_LIMITS.readsPerDay, usage.readsPct) +
-    quotaBar("Document writes", usage.writes, SPARK_LIMITS.writesPerDay, usage.writesPct) +
-    quotaBar("Document deletes", usage.deletes, SPARK_LIMITS.deletesPerDay, usage.deletesPct)
-  );
-}
-
-/** Keep the panel live as this browser spends more. */
-function mountQuotaPanel(mainContent) {
-  const bars = mainContent.querySelector("#quotaBars");
-  const note = mainContent.querySelector("#quotaResetNote");
-  if (!bars || !note) return;
-
-  subscribeUsage((usage) => {
-    bars.innerHTML = quotaBarsHtml(usage);
-
-    const resetAt = usage.resetAt ? usage.resetAt : "shortly";
-    const parts = [
-      "Counted by this browser only, and the Firebase console Usage tab is still the ground truth.",
-      "Resets around " + resetAt + " in India time.",
-    ];
-    if (usage.exhausted) {
-      parts.unshift("Today's limit has already been reached on this device — the app is running read-only until the reset.");
-    }
-    note.textContent = parts.join(" ");
-  });
-
-  const clearBtn = mainContent.querySelector("#quotaResetBtn");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", async () => {
-      const ok = await confirm({
-        title: "Clear today's counter?",
-        message:
-          "This only zeroes the estimate shown above. It does not restore any Firestore quota — if the real daily limit is spent, only the reset brings it back.",
-        confirmText: "Clear counter",
-        cancelText: "Cancel",
-        variant: "secondary",
-      });
-      if (ok) resetUsage();
-    });
-  }
-}
+const state = {
+  /** Which of the four panes is on screen. */
+  tab: "money",
+  /** `YYYY-MM` for the month report and the month-at-a-glance tile row. */
+  month: currentYearMonth(),
+  /** The business day the Day tab is pointed at. */
+  dayKey: todayKolkata(),
+  /** This browser's own grant uid, so the registry can say "this browser". */
+  thisUid: null,
+};
 
 /* =========================================================
-   The admin gate
+   Boot and gate
+
+   The shell has already done the first half of the gate before
+   calling in: it resolved the session, proved an active access grant
+   (requireAccess), drew the sidebar, top bar, user chip and mobile
+   tab bar, and handed us ctx. What is left is the admin role, which
+   the shop code does not carry.
    ========================================================= */
-function renderAdminGate(mainContent) {
-  mainContent.innerHTML =
-    '<div class="state card" style="max-width:460px;margin:2rem auto;padding:2rem;">' +
-    '<svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>' +
-    "<h3>Developer console is locked</h3>" +
-    '<p class="small muted">This console is kept out of the shop&rsquo;s daily screens. ' +
-    "Sign in with an authorised Google admin account to manage services, trusted devices and all data.</p>" +
-    '<div class="flex" style="gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;">' +
-    '<a class="btn btn-primary" href="login.html?reason=not-admin">Switch account</a>' +
-    '<a class="btn btn-secondary" href="dashboard.html">Back to dashboard</a>' +
-    "</div></div>";
-}
 
-/* =========================================================
-   Page
-   ========================================================= */
-export async function renderAdminPage(ctx) {
-  const mainContent = document.getElementById("mainContent");
-  if (!mainContent) return;
+/**
+ * Paint the console into the shell's page. Called by initAppShell().
+ *
+ * Only the admin proof is ours. The rules are the only thing that can
+ * answer "is this account an admin?", because the allowlist is
+ * unreadable by any client — so an admin-scope proof is asked for and
+ * the backend decides. A shop account costs one refused write and no
+ * UI guesswork; an owner arriving with the right Google account is
+ * promoted without leaving the page. ctx.isAdmin is the shell's read
+ * of the grant it already fetched, not an assumption from a session.
+ */
+export async function renderOwnerConsole(ctx) {
+  if (!ctx) return;
 
-  /* Second gate: the shop code opens the ledger, the admin code opens
-     this console. Without the admin role on this browser's own grant we
-     show the unlock card instead — and the rules would refuse the access
-     management anyway.
+  state.thisUid = (ctx.grant && ctx.grant.uid) || null;
+  mountChips();
 
-     The rules are the ONLY thing that can answer "is this account an
-     admin?", because the allowlist is unreadable by any client, so we ask
-     them rather than guessing: an admin-scope proof is accepted only when
-     the signed-in account's OWN verified address carries the admin role in
-     the allowlist, and refused for everybody else. So a non-admin visit
-     costs one refused write and no UI decision, and an owner landing here
-     is promoted without leaving the page.
-
-     The proof is keyed to the verified token email, so this cannot be
-     talked into: naming somebody else's address in a request would be
-     refused, and a shop account cannot ask for the admin scope at all. */
   if (!ctx.isAdmin) {
     try {
       await grantAdminAccess();
-      ctx.isAdmin = true;
-      if (ctx.grant) ctx.grant.role = "admin";
     } catch (err) {
-      /* `not-authorized` is the ordinary answer for a shop account and needs
-         no noise. Anything else is a real fault — say so, rather than
-         letting it read as "you are simply not an admin". */
+      /* `not-authorized` is the ordinary answer for a shop account and
+         needs no noise. Anything else is a real fault — say so, rather
+         than letting it read as "you are simply not the owner". */
       if (!(err instanceof AuthError) || err.code !== "not-authorized") {
         toast(reportError(err), "error");
       }
-      renderAdminGate(mainContent);
+      renderLocked();
       return;
     }
   }
 
-  thisUid = ctx.grant ? ctx.grant.uid : null;
+  showConsole();
+  wireMoney();
+  wireMonth();
+  wireDay();
+  wireShop();
 
-  mainContent.innerHTML =
-    '<div class="dash-head">' +
-    "<div>" +
-    "<h1>Developer console</h1>" +
-    '<p class="small muted">Admin-only: services maintenance, trusted devices and full data access.</p>' +
-    "</div>" +
-    '<span class="pill pill-accent" id="devShopPill">' + escapeHtml(ctx.general ? ctx.general.name || "TrustX Ledger" : "TrustX Ledger") + "</span>" +
-    "</div>" +
+  /* The section the browser came back to, so a reload keeps the owner
+     where they were rather than dropping them on the default one. */
+  const wanted = new URLSearchParams(window.location.search).get("tab");
+  await activateTab(TABS.some((t) => t.id === wanted) ? wanted : state.tab);
 
-    '<section class="card" id="servicesCard">' +
-    '<div class="card-header"><h3>' + svg("services") + "Services</h3>" +
-    '<div class="card-actions">' +
-    '<button type="button" class="btn btn-secondary btn-sm" id="seedSvcBtn" title="Add the default service list (printing, certificates, online work, photos, bill payments)">Add default services</button>' +
+  /* The shell owns the business-day clock and hands us the tick when it
+     rolls over, so a console left open across it cannot go on reporting
+     yesterday's takings under a "today" heading. Only the figures are
+     re-read: the Day section's arrow deliberately points at days other
+     than today and the owner must not be moved off one by the clock. */
+  window.addEventListener("seva:owner-day-change", () => {
+    if (state.tab === "money") refreshPane();
+  });
+}
+
+/** Swap the boot screen out for the console, or for the locked card. */
+function showConsole() {
+  document.getElementById("ownBoot").hidden = true;
+  document.getElementById("ownConsole").hidden = false;
+}
+
+/**
+ * A refused admin proof: the shell stays, the console does not.
+ *
+ * It lands in #mainContent rather than in the boot screen, because the
+ * shell keeps painting this page even after the console has given up —
+ * and the owner must still be able to pick another account from the
+ * user chip instead of hunting for a sign-out button that the console
+ * would have had to draw for itself.
+ */
+function renderLocked() {
+  const boot = document.getElementById("ownBoot");
+  const main = document.getElementById("mainContent");
+  if (boot) boot.hidden = true;
+  const host = main || boot;
+  if (!host) return;
+  host.hidden = false;
+  host.innerHTML =
+    '<div class="ledger-loading-screen"><div class="ledger-loading-card">' +
+    '<div class="ledger-loading-emblem">' +
+    '<div class="emblem-icon own-gate">' +
+    svg("day") +
     "</div></div>" +
-    '<div class="card-body">' +
-    '<div class="rule-row">' +
-    '<div class="field" style="margin:0;flex:1;"><input class="input" id="addSvcName" type="text" maxlength="80" placeholder="New service name" /></div>' +
-    '<div class="field" style="margin:0;width:130px;"><input class="input" id="addSvcPrice" type="text" inputmode="decimal" placeholder="Rate (&curren;)" /></div>' +
-    '<div class="flex" style="gap:0.5rem;">' +
-    '<button type="button" class="btn btn-secondary btn-sm" id="addSvcClear">Clear</button>' +
-    '<button type="button" class="btn btn-primary btn-sm" id="addSvcSave">Add service</button>' +
-    "</div></div>" +
-    '<p class="small muted" id="seedSvcNote" style="margin:.75rem 0 .25rem;">The default list is added automatically the first time a device opens the app &mdash; printing, DTP, CV/resume, certificates, online applications, photos and bill payments. Every service starts at &curren;0, so set your rate on the row below. The button only adds whatever is still missing.</p>' +
-    '<div id="servicesList"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading services<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></div>' +
-    "</div></section>" +
-
-    '<section class="card mt-2" id="quotaCard">' +
-    '<div class="card-header"><h3>' + svg("quota") + "Free plan usage</h3>" +
-    '<div class="card-actions">' +
-    '<button type="button" class="btn btn-sm btn-secondary" id="quotaResetBtn">Clear counter</button>' +
-    "</div></div>" +
-    '<div class="card-body">' +
-    quotaPanelMarkup() +
-    "</div></section>" +
-
-    '<section class="card mt-2" id="devicesCard">' +
-    '<div class="card-header"><h3>' + svg("devices") + "Trusted browsers</h3>" +
-    '<div class="card-actions">' +
-    '<button type="button" class="btn btn-sm btn-secondary" id="devicesRefreshBtn">Refresh</button>' +
-    "</div></div>" +
-    '<div class="card-body">' +
-    '<p class="small muted" style="margin:0 0 .75rem;">These browsers open the ledger with their authorised Google accounts. Only an admin can revoke, restore or remove them, so a stolen Google session alone can never lock you out of your own shop. Revoke any device you do not recognise; the next time it opens the app it will ask to sign in again.</p>' +
-    '<div id="devicesList"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading devices<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></div>' +
-    "</div></section>" +
-
-    '<section class="card mt-2" id="dataCard">' +
-    '<div class="card-header"><h3>' + svg("data") + "All data</h3>" +
-    '<div class="card-actions">' +
-    '<label class="small muted" for="dataDate">Day</label>' +
-    '<input class="input input-sm" id="dataDate" type="date" value="' + escapeHtml(todayKolkata()) + '" />' +
-    '<button type="button" class="btn btn-sm btn-primary" id="dataDayBtn">Day</button>' +
-    '<button type="button" class="btn btn-sm btn-secondary" id="dataAllBtn">All recent</button>' +
-    '<button type="button" class="btn btn-secondary btn-sm" id="dataRefreshBtn">Refresh</button>' +
-    "</div></div>" +
-    '<div class="card-body">' +
-    '<h4 style="margin:0 0 .5rem;">Transactions</h4>' +
-    '<div class="table-wrap"><table class="table txn-table">' +
-    "<thead><tr>" +
-    "<th>Date</th><th>Time</th><th>Customer</th><th>Service</th><th>Payment</th>" +
-    '<th class="text-right">Qty</th><th class="text-right">Rate</th>' +
-    '<th class="text-right">Amount</th>' +
-    "</tr></thead>" +
-    '<tbody id="dataTxnBody"><tr><td colspan="8"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading transactions<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></td></tr></tbody>' +
-    "</table></div>" +
-    '<div class="txn-footer small" id="dataTxnFooter">&nbsp;</div>' +
-    '<h4 style="margin:1rem 0 .5rem;">Expenses</h4>' +
-    '<div class="table-wrap"><table class="table txn-table">' +
-    "<thead><tr>" +
-    "<th>Date</th><th>Title</th><th>Category</th>" +
-    '<th class="text-right">Amount</th>' +
-    "</tr></thead>" +
-    '<tbody id="dataExpBody"><tr><td colspan="4"><div class="state state-table-loading"><div class="state-loading-badge"><span class="spinner spinner-sm"></span><span>Loading expenses<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span></div></div></td></tr></tbody>' +
-    "</table></div>" +
-    '<div class="txn-footer small" id="dataExpFooter">&nbsp;</div>' +
-    "</div></section>" +
-
-    '<section class="card mt-2" id="auditCard">' +
-    '<div class="card-header"><h3>' + svg("check") + "Day integrity</h3>" +
-    '<div class="card-actions">' +
-    '<input class="input input-sm" id="auditDate" type="date" value="' + escapeHtml(todayKolkata()) + '" aria-label="Day to check" />' +
-    '<button type="button" class="btn btn-sm btn-primary" id="auditDayBtn">Check day</button>' +
-    '<button type="button" class="btn btn-sm btn-secondary" id="auditMonthBtn">Check month</button>' +
-    "</div></div>" +
-    '<div class="card-body">' +
-    '<p class="small muted" style="margin:0 0 .75rem;">Adds up a day&rsquo;s sales and compares the total with the counters on that day&rsquo;s head. Checking costs reads and changes nothing. A head that has drifted out of step with its sales refuses every edit, settle and delete on that day, and the shop can only be told &ldquo;not allowed&rdquo; &mdash; so when the difference is one sale wide, this page offers to put the counters back.</p>' +
-    '<div id="auditResult">' + auditPlaceholderMarkup() + "</div>" +
-    "</div></section>";
-
-  wireAddService();
-  wireSeedDefaults();
-  loadServicesList();
-  mountQuotaPanel(mainContent);
-  wireDataBrowser();
-  loadDataBrowser();
-  wireDayAudit();
-  wireDevices();
+    "<h2 class=\"ledger-loading-title\">The owner console is locked</h2>" +
+    '<p class="ledger-loading-sub">This page keeps the shop&rsquo;s money, its service list and the ' +
+    "browsers allowed to open the ledger. Sign in with the owner&rsquo;s Google account to get in.</p>" +
+    '<div class="flex" style="gap:.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;">' +
+    '<a class="btn btn-primary" href="login.html?reason=not-admin">Switch account</a>' +
+    '<a class="btn btn-secondary" href="dashboard.html">Back to dashboard</a>' +
+    "</div></div></div>";
 }
 
 /* =========================================================
-   Services maintenance
+   Sections
+
+   Four receipt chips instead of four pages. They sit inside the sheet
+   under its title, because they are choices about what to read on this
+   sheet, not somewhere else to navigate to — the sidebar already holds
+   the one link that says you are in the console at all.
+
+   The title and the line under it follow the chip, so the sheet always
+   says which question it is answering.
    ========================================================= */
-function wireAddService() {
+
+const TABS = [
+  {
+    id: "money",
+    label: "Money",
+    icon: "money",
+    title: "Money",
+    sub: "Today, and the month so far",
+  },
+  {
+    id: "month",
+    label: "Month",
+    icon: "month",
+    title: "Month",
+    sub: "One month, day by day",
+  },
+  {
+    id: "day",
+    label: "Day",
+    icon: "day",
+    title: "Day",
+    sub: "Close it, re-open it, and check it adds up",
+  },
+  {
+    id: "shop",
+    label: "Shop",
+    icon: "shop",
+    title: "Shop",
+    sub: "What is sold, and who may sell it",
+  },
+];
+
+function mountChips() {
+  const nav = document.getElementById("ownTabs");
+  if (!nav) return;
+  nav.innerHTML = TABS.map(
+    (tab) =>
+      '<button class="own-chip" type="button" data-tab="' + tab.id + '">' +
+      svg(tab.icon) +
+      "<span>" + escapeHtml(tab.label) + "</span>" +
+      "</button>",
+  ).join("");
+  nav.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-tab]");
+    if (btn) activateTab(btn.getAttribute("data-tab"));
+  });
+}
+
+/**
+ * Show one section.
+ *
+ * Only the section being entered is loaded: Month reads a month of day
+ * heads, and an owner flicking to Day to close today and back again
+ * should not pay for the month twice or sit through the report's table
+ * being rebuilt. The chip, the sheet's title and the URL all move
+ * together, so a reload and a bookmark land on the same question.
+ */
+async function activateTab(id) {
+  const tab = TABS.find((t) => t.id === id) || TABS[0];
+  state.tab = tab.id;
+
+  document.querySelectorAll("#ownTabs .own-chip").forEach((btn) => {
+    const active = btn.getAttribute("data-tab") === tab.id;
+    btn.classList.toggle("is-active", active);
+    if (active) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  });
+
+  document.querySelectorAll("#ownConsole .own-pane").forEach((pane) => {
+    pane.hidden = pane.getAttribute("data-pane") !== tab.id;
+  });
+
+  /* The sheet's own header follows the chip, so the receipt always says
+     which question it is answering. */
+  const title = document.getElementById("ownPaneTitle");
+  const sub = document.getElementById("ownPaneSub");
+  if (title) title.textContent = tab.title;
+  if (sub) sub.textContent = tab.sub;
+
+  /* Keep the URL honest: a reload, a bookmark and the back button all
+     land on the section the owner was actually looking at. */
+  const url = new URL(window.location.href);
+  if (tab.id === "money") url.searchParams.delete("tab");
+  else url.searchParams.set("tab", tab.id);
+  window.history.replaceState(null, "", url);
+
+  await refreshPane();
+}
+
+async function refreshPane() {
+  try {
+    if (state.tab === "money") await loadMoney(false);
+    else if (state.tab === "month") await loadMonth(false);
+    else if (state.tab === "day") await loadDay(false);
+    else if (state.tab === "shop") await loadShop();
+  } catch (err) {
+    console.error("[trustx-ledger] owner console pane:", err);
+    toast(reportError(err), "error");
+  }
+}
+
+/* =========================================================
+   Money — today and the month so far
+   -----------------------------------------------------------------
+   Two questions, in this order: how did today go, and how is the
+   month shaping up. Both are answered off the day heads rather than
+   off the sales: a head already carries a day's count and totals, so
+   a month is one ranged read no matter how busy each day was.
+
+   Outstanding dues are NOT totalled across all time here. Doing that
+   honestly means reading every unpaid sale in the ledger, which is the
+   single most expensive thing this app can do; so the tile reports
+   today's dues, which are free, and links to the Sales screen for the
+   full list.
+   ========================================================= */
+
+/**
+ * The five figures the console ever prints, and the dashboard's icon
+ * scheme each one wears. A fixed vocabulary on purpose: every section
+ * answers the same five questions, so a new figure is a new entry here
+ * and in the style sheet, not another colour invented at a call site.
+ */
+const FIGURE = {
+  taken: { icon: "revenue", card: "stat-revenue" },
+  collected: { icon: "cash", card: "" },
+  due: { icon: "due", card: "stat-due" },
+  expenses: { icon: "expenses", card: "stat-expenses" },
+  net: { icon: "net", card: "stat-net" },
+};
+
+/**
+ * A money figure, in the dashboard's own stat card.
+ *
+ * Not a parallel set of styles: it is the same markup the dashboard
+ * prints its figures with, so a rupee looks the same on both sheets and
+ * a change to the card lands on both. `wide` spans two columns, which is
+ * how the two headline figures — what came in, and what is left — get
+ * the room they are read with.
+ */
+function tile(label, value, { kind = "taken", note = "", tone = "", wide = false } = {}) {
+  const figure = FIGURE[kind] || FIGURE.taken;
+  const cls =
+    "stat-card " + figure.card + (wide ? " stat-span-2" : "");
+  const valueCls =
+    "stat-value" + (tone === "accent" ? " stat-emphasis" : "") + (tone === "danger" ? " text-danger" : "");
+  return (
+    '<div class="' + cls + '">' +
+    '<div class="stat-top">' +
+    '<div class="stat-icon-wrap icon-' + figure.icon + '">' +
+    svg(kind) +
+    "</div>" +
+    '<span class="stat-label-text">' +
+    escapeHtml(label) +
+    "</span>" +
+    "</div>" +
+    '<div class="stat-main">' +
+    '<div class="' + valueCls + '">' +
+    escapeHtml(value) +
+    "</div>" +
+    (note ? '<div class="stat-note">' + escapeHtml(note) + "</div>" : "") +
+    "</div>" +
+    "</div>"
+  );
+}
+
+/** How a count reads next to it: 1 sale, 7 sales, nothing recorded. */
+function countNote(n, noun = "sale") {
+  if (!n) return "Nothing recorded";
+  return n + " " + noun + (n === 1 ? "" : "s");
+}
+
+function wireMoney() {
+  document.getElementById("moneyRefreshBtn").addEventListener("click", async (event) => {
+    setLoading(event.currentTarget, true);
+    try {
+      /* force: a button whose whole promise is "read it again" must not be
+         allowed to paint the value it already had. */
+      await loadMoney(true);
+    } finally {
+      setLoading(event.currentTarget, false);
+    }
+  });
+}
+
+async function loadMoney(force) {
+  const todayKey = todayKolkata();
+  const thisMonth = currentYearMonth();
+
+  const [summary, heads] = await Promise.all([
+    fetchTodaySummary(todayKey, { force }),
+    fetchMonthHeads({ yearMonth: thisMonth, force }),
+  ]);
+
+  /* Today — straight from the summary, which already subtracted expenses
+     and reports net. expensesUnavailable means the expenses leg failed
+     while the sales leg succeeded: the net is then too high by exactly the
+     amount nobody could read, so it is withheld rather than printed. */
+  const todayExpensesKnown = !summary.expensesUnavailable;
+  document.getElementById("todayTiles").innerHTML =
+    tile("Taken today", formatINR(summary.amountPaise), {
+      kind: "taken",
+      note: countNote(summary.count),
+      wide: true,
+    }) +
+    tile("Collected", formatINR(summary.paidPaise), { kind: "collected" }) +
+    tile("Due today", formatINR(summary.duePaise), { kind: "due", tone: summary.duePaise ? "danger" : "" }) +
+    tile("Expenses", todayExpensesKnown ? formatINR(summary.expensesPaise) : "Not read", {
+      kind: "expenses",
+      tone: todayExpensesKnown ? "" : "danger",
+      note: todayExpensesKnown ? "" : "could not be read",
+    }) +
+    tile(
+      "Net today",
+      todayExpensesKnown ? formatINR(summary.netPaise) : "—",
+      {
+        kind: "net",
+        note: todayExpensesKnown ? "" : "expenses unknown",
+        tone: todayExpensesKnown ? "accent" : "danger",
+        wide: true,
+      },
+    );
+
+  /* This month — folded off the heads, so it is exact to the last day
+     recorded and costs one query rather than a read per sale. */
+  const days = Object.keys(heads).filter((k) => isValidDateKey(k));
+  let gross = 0;
+  let collected = 0;
+  let due = 0;
+  let sales = 0;
+  for (const key of days) {
+    const c = (heads[key] && heads[key].counters) || {};
+    gross += Number(c.grossPaise) || 0;
+    collected += Number(c.collectedPaise) || 0;
+    due += Number(c.duePaise) || 0;
+    sales += Number(c.txnCount) || 0;
+  }
+
+  /* Expenses for the month-to-date. One ranged Realtime Database query
+     over the day's buckets; it reaches a past month too, which is what
+     makes the Month tab's net a real figure rather than a sales figure. */
+  let monthExpenses = 0;
+  let expensesKnown = true;
+  try {
+    const rows = await fetchMonthExpenses({ yearMonth: thisMonth, force });
+    monthExpenses = rows.reduce((sum, e) => sum + (Number(e.amountPaise) || 0), 0);
+  } catch (err) {
+    /* An out-of-bandwidth refusal is not "no expenses". Say so instead of
+       printing a net that quietly forgot to subtract them. */
+    expensesKnown = false;
+    console.warn("[trustx-ledger] month expenses unavailable:", err);
+  }
+
+  const elapsedDays = days.length;
+  document.getElementById("monthTiles").innerHTML =
+    tile(monthLabel(thisMonth) + " so far", formatINR(gross), { kind: "taken", note: countNote(sales), wide: true }) +
+    tile("Collected", formatINR(collected), { kind: "collected" }) +
+    tile("Due", formatINR(due), { kind: "due", tone: due ? "danger" : "" }) +
+    tile("Expenses", expensesKnown ? formatINR(monthExpenses) : "Not read", {
+      kind: "expenses",
+      tone: expensesKnown ? "" : "danger",
+    }) +
+    tile(
+      "Net this month",
+      expensesKnown ? formatINR(collected - monthExpenses) : "—",
+      {
+        kind: "net",
+        note: elapsedDays + (elapsedDays === 1 ? " day recorded" : " days recorded"),
+        tone: expensesKnown ? "accent" : "danger",
+        wide: true,
+      },
+    );
+
+  const notes = [];
+  notes.push("Everything here is read from the day heads, so a day that has not been recorded shows as nothing rather than as a zero.");
+  if (!todayExpensesKnown) {
+    notes.push("Today's expenses could not be read, so today's net is left out rather than shown too high.");
+  }
+  if (!expensesKnown) {
+    notes.push("This month's expenses could not be read, so the month net is left out rather than shown too high.");
+  }
+  notes.push(
+    "Dues are shown for today and for the month so far. Every unpaid sale in the ledger, from any month, " +
+      "is listed on the Sales screen — an all-time total is deliberately not computed here, because it " +
+      "would cost a read per unpaid sale.",
+  );
+  document.getElementById("moneyNote").textContent = notes.join(" ");
+}
+
+/* =========================================================
+   Month — one month, day by day
+   -----------------------------------------------------------------
+   The shop fills its ledger in the evening, so what an owner actually
+   wants from a month is which days are in it. Rows are the heads, in
+   date order, with the days that have nothing on them called out rather
+   than hidden: a gap is the finding.
+   ========================================================= */
+
+function wireMonth() {
+  document.getElementById("monthPrevBtn").addEventListener("click", () => {
+    state.month = shiftMonth(state.month, -1);
+    refreshPane();
+  });
+  document.getElementById("monthNextBtn").addEventListener("click", () => {
+    state.month = shiftMonth(state.month, 1);
+    refreshPane();
+  });
+  document.getElementById("monthThisBtn").addEventListener("click", () => {
+    state.month = currentYearMonth();
+    refreshPane();
+  });
+  document.getElementById("monthRefreshBtn").addEventListener("click", async (event) => {
+    setLoading(event.currentTarget, true);
+    try {
+      await loadMonth(true);
+    } finally {
+      setLoading(event.currentTarget, false);
+    }
+  });
+}
+
+/**
+ * Add or move `days` on a `YYYY-MM-DD` key.
+ *
+ * js/calendar.js owns the arithmetic (and its unit test), so the stepper
+ * here cannot land on the 31st of a 30-day month or drift a day in a
+ * timezone behind Kolkata's.
+ */
+async function loadMonth(force) {
+  const yearMonth = state.month;
+  document.getElementById("monthLabel").textContent = monthLabel(yearMonth) || yearMonth;
+
+  const thisMonth = currentYearMonth();
+  const isCurrent = yearMonth === thisMonth;
+  const isFuture = yearMonth > thisMonth;
+  document.getElementById("monthThisBtn").hidden = isCurrent;
+  /* Nothing can be recorded in a month that has not started, and walking
+     forward into empty months is a dead end an owner does not need. */
+  document.getElementById("monthNextBtn").disabled = isFuture;
+
+  const todayKey = todayKolkata();
+  const out = document.getElementById("monthDays");
+
+  let heads;
+  try {
+    heads = await fetchMonthHeads({ yearMonth, force });
+  } catch (err) {
+    out.innerHTML = ownErrorMarkup(reportError(err));
+    document.getElementById("monthSummaryTiles").innerHTML = "";
+    return;
+  }
+
+  const recorded = Object.keys(heads).filter((k) => isValidDateKey(k)).sort();
+
+  let gross = 0;
+  let collected = 0;
+  let due = 0;
+  let sales = 0;
+  for (const key of recorded) {
+    const c = (heads[key] && heads[key].counters) || {};
+    gross += Number(c.grossPaise) || 0;
+    collected += Number(c.collectedPaise) || 0;
+    due += Number(c.duePaise) || 0;
+    sales += Number(c.txnCount) || 0;
+  }
+
+  /* Which days could have been worked. A finished month is judged whole:
+     stopping at the last day with something on it would quietly declare the
+     rest of the month outside the ledger, which is precisely the gap an
+     owner opens this screen to find. */
+  const consideredDays = isFuture
+    ? 0
+    : yearMonth === thisMonth
+      ? Number(todayKey.slice(8, 10))
+      : monthBounds(yearMonth).days;
+  const missed = [];
+  for (let day = 1; day <= consideredDays; day++) {
+    const key = yearMonth + "-" + String(day).padStart(2, "0");
+    if (!heads[key]) missed.push(key);
+  }
+
+  /* Expenses per day as well as for the month, grouped from the rows just
+     fetched. The per-day split costs nothing extra — the same query answers
+     both — and without it a month's net cannot be traced to any day, which
+     is the first thing an owner asks when it looks wrong. */
+  let monthExpenses = 0;
+  let expensesKnown = true;
+  const expensesByDay = new Map();
+  try {
+    const expenseRows = await fetchMonthExpenses({ yearMonth, force });
+    for (const e of expenseRows) {
+      const amount = Number(e.amountPaise) || 0;
+      monthExpenses += amount;
+      expensesByDay.set(e.dateKey, (expensesByDay.get(e.dateKey) || 0) + amount);
+    }
+  } catch (err) {
+    expensesKnown = false;
+    console.warn("[trustx-ledger] month expenses unavailable:", err);
+  }
+
+  document.getElementById("monthSummaryTiles").innerHTML =
+    tile("Taken", formatINR(gross), { kind: "taken", note: countNote(sales), wide: true }) +
+    tile("Collected", formatINR(collected), { kind: "collected" }) +
+    tile("Due", formatINR(due), { kind: "due", tone: due ? "danger" : "" }) +
+    tile(
+      "Expenses",
+      expensesKnown ? formatINR(monthExpenses) : "Not read",
+      {
+        kind: "expenses",
+        tone: expensesKnown ? "" : "danger",
+        note: expensesKnown ? "" : "could not be read",
+      },
+    ) +
+    tile("Net", expensesKnown ? formatINR(collected - monthExpenses) : "—", {
+      kind: "net",
+      note: missed.length
+        ? missed.length + (missed.length === 1 ? " day missing" : " days missing")
+        : "every day recorded",
+      tone: expensesKnown && !missed.length ? "accent" : "danger",
+      wide: true,
+    });
+
+  /* Day rows. Sorted oldest first, because a month reads forwards. */
+  const dayRows = recorded
+    .map((key) => {
+      const head = heads[key] || {};
+      const c = head.counters || {};
+      const closed = head.state === DAY_STATE.CLOSED;
+      const dayExpenses = expensesByDay.get(key) || 0;
+      return (
+        "<tr>" +
+        '<td data-label="Day"><strong>' + escapeHtml(dayCellLabel(key)) + "</strong></td>" +
+        '<td class="txn-time" data-label="Date">' + escapeHtml(key) + "</td>" +
+        "<td>" +
+        (closed ? '<span class="badge badge-success">Closed</span>' : '<span class="badge badge-neutral">Open</span>') +
+        "</td>" +
+        '<td class="text-right txn-num" data-label="Sales">' + String(Number(c.txnCount) || 0) + "</td>" +
+        '<td class="text-right txn-num" data-label="Taken">' + formatINR(Number(c.grossPaise) || 0) + "</td>" +
+        '<td class="text-right txn-num" data-label="Collected">' + formatINR(Number(c.collectedPaise) || 0) + "</td>" +
+        '<td class="text-right txn-num" data-label="Expenses">' +
+        (expensesKnown ? formatINR(dayExpenses) : "&mdash;") +
+        "</td>" +
+        '<td class="text-right txn-num' + (expensesKnown && dayExpenses > Number(c.collectedPaise || 0) ? " txn-due" : "") +
+        '" data-label="Net">' +
+        (expensesKnown ? formatINR(Number(c.collectedPaise || 0) - dayExpenses) : "&mdash;") +
+        "</td>" +
+        "</tr>"
+      );
+    })
+    .join("");
+
+  const missedNote = missed.length
+    ? '<p class="small muted" style="margin:.6rem 0 0;">Nothing recorded on ' +
+      missed.map((k) => escapeHtml(dayCellLabel(k))).join(", ") +
+      ". A day with no head was never opened — it is not a day that sold nothing.</p>"
+    : "";
+
+  out.innerHTML = recorded.length
+    ? '<div class="table-wrap"><table class="table txn-table"><thead><tr>' +
+      "<th>Day</th><th>Date</th><th>State</th>" +
+      '<th class="text-right">Sales</th><th class="text-right">Taken</th><th class="text-right">Collected</th>' +
+      '<th class="text-right">Expenses</th><th class="text-right">Net</th>' +
+      "</tr></thead><tbody>" +
+      dayRows +
+      '<tr class="table-total"><td data-label="Total" colspan="3"><strong>' +
+      escapeHtml(monthLabel(yearMonth) || yearMonth) +
+      "</strong></td>" +
+      '<td class="text-right txn-num" data-label="Sales"><strong>' + String(sales) + "</strong></td>" +
+      '<td class="text-right txn-num" data-label="Taken"><strong>' + formatINR(gross) + "</strong></td>" +
+      '<td class="text-right txn-num" data-label="Collected"><strong>' + formatINR(collected) + "</strong></td>" +
+      '<td class="text-right txn-num" data-label="Expenses"><strong>' +
+      (expensesKnown ? formatINR(monthExpenses) : "&mdash;") +
+      "</strong></td>" +
+      '<td class="text-right txn-num" data-label="Net"><strong>' +
+      (expensesKnown ? formatINR(collected - monthExpenses) : "&mdash;") +
+      "</strong></td>" +
+      "</tr></tbody></table></div>" +
+      missedNote
+    : ownStateMarkup(
+        "Nothing recorded in " + (monthLabel(yearMonth) || yearMonth),
+        isFuture ? "This month has not started yet." : "No day in this month has been opened yet.",
+      );
+}
+
+/* =========================================================
+   Day — close, re-open, and check
+   -----------------------------------------------------------------
+   A closed day is one the ledger has finished with: firestore.rules
+   refuses every sale write against it, so closing is the thing that
+   turns "the shopkeeper has gone home" into something the data
+   enforces rather than a promise in someone's head. Re-opening it is
+   how a sale typed against the wrong day gets fixed on the day it
+   belongs to.
+
+   The same tab carries the integrity check, because both are
+   questions about one day and neither is worth a screen of its own.
+   ========================================================= */
+
+function wireDay() {
+  const dateInput = document.getElementById("dayDate");
+  dateInput.value = state.dayKey;
+  dateInput.addEventListener("change", () => {
+    if (!isValidDateKey(dateInput.value)) {
+      dateInput.value = state.dayKey;
+      return;
+    }
+    state.dayKey = dateInput.value;
+    /* The check result belongs to the day it was run on, so it is cleared
+       rather than re-run: every check spends reads, and a stale answer
+       under a freshly picked date is worse than none. */
+    document.getElementById("auditResult").innerHTML = auditPlaceholderMarkup();
+    refreshPane();
+  });
+
+  document.getElementById("dayPrevBtn").addEventListener("click", () => {
+    state.dayKey = shiftDayKey(state.dayKey, -1);
+    dateInput.value = state.dayKey;
+    document.getElementById("auditResult").innerHTML = auditPlaceholderMarkup();
+    refreshPane();
+  });
+  document.getElementById("dayNextBtn").addEventListener("click", () => {
+    state.dayKey = shiftDayKey(state.dayKey, 1);
+    dateInput.value = state.dayKey;
+    document.getElementById("auditResult").innerHTML = auditPlaceholderMarkup();
+    refreshPane();
+  });
+
+  document.getElementById("dayToggleBtn").addEventListener("click", toggleDayState);
+  document.getElementById("auditDayBtn").addEventListener("click", runDayAudit);
+  document.getElementById("auditMonthBtn").addEventListener("click", runMonthAudit);
+
+  /* Delegated: the repair button belongs to a report that is thrown away
+     and rebuilt on every check, so it cannot be wired once. */
+  document.getElementById("auditResult").addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-audit-repair]");
+    if (btn && !btn.disabled) runDayRepair(btn.getAttribute("data-date"), btn);
+  });
+}
+
+async function loadDay() {
+  const dateKey = state.dayKey;
+  const isToday = dateKey === todayKolkata();
+
+  /* The month's heads are read for two reasons: they carry the day's state
+     (which is what decides whether Close or Re-open is the right button),
+     and they are already cached by the month tab, so this is often free. */
+  const [heads, summary] = await Promise.all([
+    fetchMonthHeads({ yearMonth: dateKey.slice(0, 7) }),
+    fetchTodaySummary(dateKey),
+  ]);
+
+  const head = heads[dateKey] || null;
+  const closed = !!(head && head.state === DAY_STATE.CLOSED);
+
+  const pill = document.getElementById("dayStatePill");
+  const note = document.getElementById("dayStateNote");
+  const toggle = document.getElementById("dayToggleBtn");
+
+  if (!head) {
+    pill.className = "pill pill-neutral";
+    pill.textContent = "Nothing recorded";
+    note.textContent = "This day has no head, so there is nothing to close. Close a day once something is on it.";
+    toggle.hidden = true;
+  } else {
+    pill.className = closed ? "pill pill-success" : "pill pill-warning";
+    pill.textContent = closed ? "Closed" : "Open";
+    note.textContent = closed
+      ? "Sales cannot be added, edited or deleted on a closed day. Re-open it to fix a mistake."
+      : "Sales can still be added, edited and deleted on this day.";
+    toggle.hidden = false;
+    toggle.className = "btn btn-sm " + (closed ? "btn-secondary" : "btn-primary");
+    toggle.textContent = closed ? "Re-open day" : "Close day";
+  }
+
+  /* Same rule as the Money pane: a failed expenses read leaves 0 behind, and
+     a net printed off that would be too high by whatever nobody could read. */
+  const expensesKnown = !summary.expensesUnavailable;
+  document.getElementById("dayTiles").innerHTML =
+    tile("Taken", formatINR(summary.amountPaise), {
+      kind: "taken",
+      note: countNote(summary.count),
+      wide: true,
+    }) +
+    tile("Collected", formatINR(summary.paidPaise), { kind: "collected" }) +
+    tile("Due", formatINR(summary.duePaise), { kind: "due", tone: summary.duePaise ? "danger" : "" }) +
+    tile("Expenses", expensesKnown ? formatINR(summary.expensesPaise) : "Not read", {
+      kind: "expenses",
+      tone: expensesKnown ? "" : "danger",
+      note: expensesKnown ? "" : "could not be read",
+    }) +
+    tile(
+      "Net",
+      expensesKnown ? formatINR(summary.netPaise) : "—",
+      {
+        kind: "net",
+        note: expensesKnown ? (isToday ? "Today" : formatDateKey(dateKey)) : "expenses unknown",
+        tone: expensesKnown ? "accent" : "danger",
+        wide: true,
+      },
+    );
+}
+
+/** Close an open day, or re-open a closed one. The exact mirror. */
+async function toggleDayState() {
+  const dateKey = state.dayKey;
+  const btn = document.getElementById("dayToggleBtn");
+
+  /* Re-read here rather than trusting the button label: the answer decides
+     what gets written, and this day may have been closed on another device
+     since the pane was painted. */
+  const heads = await fetchMonthHeads({ yearMonth: dateKey.slice(0, 7), force: true });
+  const head = heads[dateKey];
+  if (!head) {
+    toast("There is nothing recorded on this day yet, so there is no day to close.", "error");
+    return;
+  }
+  const closed = head.state === DAY_STATE.CLOSED;
+
+  if (!closed) {
+    const ok = await confirm({
+      title: "Close " + dateKey + "?",
+      message:
+        "The day is finished with. Sales cannot be added, edited, settled or deleted on it until it is " +
+        "re-opened, and its totals cannot change. A sale you have to fix on this day is the reason to re-open " +
+        "it afterwards.",
+      confirmText: "Close the day",
+      variant: "danger",
+    });
+    if (!ok) return;
+  } else {
+    const ok = await confirm({
+      title: "Re-open " + dateKey + "?",
+      message:
+        "Sales can be added, edited, settled and deleted on this day again. The day's totals stay as they " +
+        "are; only the lock comes off.",
+      confirmText: "Re-open the day",
+    });
+    if (!ok) return;
+  }
+
+  setLoading(btn, true);
+  try {
+    const result = closed ? await reopenDay(dateKey) : await closeDay(dateKey);
+    toast(
+      result && result.closed ? dateKey + " is closed." : dateKey + " is open again.",
+      "success",
+    );
+    /* closeDay/reopenDay invalidate the month cache themselves, so the repaint
+       below reads the day fresh — the pill cannot still say "Open" after a
+       close, and the next click cannot write the state it has just undone. */
+    await loadDay();
+  } catch (err) {
+    console.error("[trustx-ledger] day state:", err);
+    toast(reportError(err), "error");
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+/* =========================================================
+   Day integrity (read-only)
+
+   A day's head is only ever allowed to move by one sale's worth, in
+   that sale's direction — the headSteppedBy check in firestore.rules.
+   So a head that has stopped agreeing with its sales (a sale removed
+   straight from the Firestore console moves no counters) freezes every
+   edit, settle and delete on that day, and the shop can only be told
+   "not allowed to change this sale". js/day-audit.js works out what a
+   head should say; this reads what it does say, and changes nothing
+   until the owner asks for a repair.
+   ========================================================= */
+
+/** One day's sales come back in a single query. Past this there is no answer. */
+const AUDIT_ROW_LIMIT = 1000;
+
+/** A month sweep reads one day at a time, so it is capped at a calendar month. */
+const AUDIT_MONTH_CAP = 31;
+
+function auditPlaceholderMarkup(title = "Nothing checked yet", body = "Check this day to see whether its totals still add up.") {
+  return ownStateMarkup(title, body);
+}
+
+function auditLoadingMarkup(label) {
+  return (
+    '<div class="state state-table-loading"><div class="state-loading-badge">' +
+    '<span class="spinner spinner-sm"></span><span>' + escapeHtml(label) +
+    '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>' +
+    "</div></div>"
+  );
+}
+
+/** A signed rupee figure: what the day is out by, and in which direction. */
+function signedINR(paise) {
+  const n = Number.isFinite(paise) ? Math.round(paise) : 0;
+  if (n === 0) return formatINR(0);
+  return (n > 0 ? "+" : "\u2212") + formatINR(Math.abs(n));
+}
+
+/** Money is formatted with the rupee sign; a sale count is just a count. */
+function auditAmount(field, paise) {
+  return field && field.money ? formatINR(paise) : String(paise);
+}
+
+/**
+ * Read one day: its head (from the month's head read the pane already
+ * makes) and its sales. Both go through the caches the rest of the app
+ * reads through, so checking the same day twice costs nothing the second
+ * time.
+ */
+async function readDayForAudit(dateKey) {
+  const [heads, rows] = await Promise.all([
+    fetchMonthHeads({ yearMonth: dateKey.slice(0, 7) }),
+    fetchTransactions({ dateKey, limit: AUDIT_ROW_LIMIT }),
+  ]);
+
+  const head = heads[dateKey] || null;
+  return auditDayCounters({
+    dateKey,
+    head: head ? { state: head.state, counters: head.counters } : null,
+    rows,
+    /* Hitting the limit means the sum is a floor rather than a total, so
+       the audit is told not to draw a conclusion from it. */
+    truncated: rows.length >= AUDIT_ROW_LIMIT,
+  });
+}
+
+/** The per-field table. Only the fields that disagree are listed. */
+function auditDriftMarkup(audit) {
+  if (!audit.drift.length) return "";
+
+  const rows = audit.drift
+    .map(
+      (d) =>
+        "<tr>" +
+        '<td data-label="Field">' + escapeHtml(d.label) + "</td>" +
+        '<td class="text-right txn-num" data-label="Head says">' + escapeHtml(auditAmount(d, d.head)) + "</td>" +
+        '<td class="text-right txn-num" data-label="Sales add up to">' + escapeHtml(auditAmount(d, d.actual)) + "</td>" +
+        '<td class="text-right txn-num txn-due" data-label="Out by"><strong>' + escapeHtml(signedINR(d.delta)) + "</strong></td>" +
+        "</tr>",
+    )
+    .join("");
+
+  return (
+    '<div class="table-wrap" style="margin-top:.5rem;"><table class="table txn-table"><thead><tr>' +
+    "<th>Field</th>" +
+    '<th class="text-right">Head says</th>' +
+    '<th class="text-right">Sales add up to</th>' +
+    '<th class="text-right">Out by</th>' +
+    "</tr></thead><tbody>" + rows + "</tbody></table></div>"
+  );
+}
+
+function auditPillMarkup(audit) {
+  const tone = describeAudit(audit).tone;
+  const pill = tone === "ok" ? "pill-success" : tone === "warning" ? "pill-warning" : "pill-danger";
+  const label = audit.ok
+    ? "In step"
+    : audit.status === AUDIT_STATUS.INCOMPLETE
+      ? "No verdict"
+      : "Needs attention";
+  return '<span class="pill ' + pill + '">' + label + "</span>";
+}
+
+/**
+ * What can be done about the report, and the button that does it.
+ *
+ * Shown for every verdict that is not "in step", because the most
+ * common follow-up question is not "what is wrong" but "so what do I
+ * do" — and when the answer is "a person has to look at this", saying
+ * so plainly is more use than another table.
+ */
+function auditRepairMarkup(audit) {
+  const plan = planDayRepair(audit);
+  if (!plan || plan.status === "not-needed") return "";
+
+  if (!plan.repairable) {
+    return '<p class="small muted" style="margin:.75rem 0 0;">' + escapeHtml(plan.reason) + "</p>";
+  }
+
+  const lines = plan.steps
+    .map(
+      (s) =>
+        "<li>" + escapeHtml(s.label) + ": " +
+        escapeHtml(auditAmount(s, s.before)) + " &rarr; " +
+        escapeHtml(auditAmount(s, s.after)) + "</li>",
+    )
+    .join("");
+
+  return (
+    '<div class="alert alert-warning" style="margin-top:.75rem;"><div>' +
+    "<strong>This day can be put back in step.</strong>" +
+    '<p class="small" style="margin:.25rem 0 0;">' + escapeHtml(plan.reason) + "</p>" +
+    '<ul class="small" style="margin:.5rem 0 .75rem;padding-left:1.25rem;">' + lines + "</ul>" +
+    '<button type="button" class="btn btn-sm btn-primary" data-audit-repair="1" data-date="' +
+    escapeHtml(audit.dateKey) + '">Repair ' + escapeHtml(audit.dateKey) + "</button>" +
+    "</div></div>"
+  );
+}
+
+function auditReportMarkup(audit) {
+  const { tone, headline, detail } = describeAudit(audit);
+  const alert = tone === "ok" ? "success" : tone === "warning" ? "warning" : "error";
+  const sales = audit.saleCount === 1 ? "1 sale" : audit.saleCount + " sales";
+
+  return (
+    '<div class="alert alert-' + alert + '"><div><strong>' + escapeHtml(headline) + "</strong>" +
+    '<p class="small" style="margin:.25rem 0 0;">' + escapeHtml(detail) + "</p></div></div>" +
+
+    '<div class="flex" style="gap:.5rem;flex-wrap:wrap;margin:.75rem 0 .25rem;align-items:center;">' +
+    auditPillMarkup(audit) +
+    '<span class="pill pill-neutral">' + sales + "</span>" +
+    (audit.state ? '<span class="pill pill-neutral">' + (audit.state === "closed" ? "Day closed" : "Day open") + "</span>" : "") +
+    '<span class="small muted">Read-only: nothing was changed.</span>' +
+    "</div>" +
+    auditDriftMarkup(audit) +
+    auditRepairMarkup(audit)
+  );
+}
+
+async function runDayAudit() {
+  const dateKey = state.dayKey;
+  const btn = document.getElementById("auditDayBtn");
+  const out = document.getElementById("auditResult");
+
+  setLoading(btn, true);
+  out.innerHTML = auditLoadingMarkup("Checking " + dateKey);
+  try {
+    out.innerHTML = auditReportMarkup(await readDayForAudit(dateKey));
+  } catch (err) {
+    console.error("[trustx-ledger] day audit:", err);
+    out.innerHTML = ownErrorMarkup(reportError(err), "Could not check that day");
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+async function runDayRepair(dateKey, btn) {
+  if (!isValidDateKey(dateKey)) {
+    toast("Pick a valid date to repair.", "error");
+    return;
+  }
+
+  /* Re-checked here, not reused from the report on screen: the day may
+     have taken a sale since, and the counters to write are computed from
+     the sales. It costs nothing when the cache is warm. */
+  setLoading(btn, true);
+  let plan;
+  try {
+    plan = planDayRepair(await readDayForAudit(dateKey));
+  } catch (err) {
+    setLoading(btn, false);
+    console.error("[trustx-ledger] repair pre-check:", err);
+    toast(reportError(err), "error");
+    return;
+  }
+
+  if (!plan.repairable) {
+    setLoading(btn, false);
+    toast(plan.reason, "error");
+    return;
+  }
+
+  const ok = await confirm({
+    title: "Put " + dateKey + " back in step?",
+    message:
+      "The day's head will be set to what its " +
+      (plan.target.txnCount === 1 ? "1 sale adds up to" : plan.target.txnCount + " sales add up to") +
+      ". No sale is created, changed or deleted, and the day stays as it is.",
+    confirmText: "Repair the day",
+    cancelText: "Cancel",
+  });
+  if (!ok) {
+    setLoading(btn, false);
+    return;
+  }
+
+  try {
+    await repairDayHead(dateKey, plan.target);
+    toast(dateKey + " is back in step. Its sales can be edited, settled and deleted again.", "success");
+  } catch (err) {
+    console.error("[trustx-ledger] repair day head:", err);
+    toast(reportError(err), "error");
+  }
+
+  /* Shown either way: after a repair the report proves it worked, and
+     after a refusal the reason is on screen instead of in a toast. */
+  try {
+    document.getElementById("auditResult").innerHTML = auditReportMarkup(
+      await readDayForAudit(dateKey),
+    );
+  } catch (err) {
+    document.getElementById("auditResult").innerHTML = ownStateMarkup(
+      "Could not re-check " + dateKey,
+      reportError(err),
+    );
+  }
+  setLoading(btn, false);
+}
+
+/** One row per day checked, in date order. */
+function auditMonthMarkup(audits, skipped) {
+  const broken = audits.filter((a) => !a.ok);
+  const rows = audits
+    .map((a) => {
+      const gross = a.drift.find((d) => d.field === "grossPaise");
+      const headCount =
+        a.headCounters && Number.isFinite(a.headCounters.txnCount) ? a.headCounters.txnCount : "&mdash;";
+      return (
+        "<tr>" +
+        '<td data-label="Day"><strong>' + escapeHtml(a.dateKey) + "</strong></td>" +
+        '<td class="text-right txn-num" data-label="Sales on the head">' + String(headCount) + "</td>" +
+        "<td>" + auditPillMarkup(a) + "</td>" +
+        '<td class="text-right txn-num txn-due" data-label="Out by">' +
+        (gross ? escapeHtml(signedINR(gross.delta)) : "&mdash;") +
+        "</td></tr>"
+      );
+    })
+    .join("");
+
+  return (
+    '<div class="alert alert-' + (broken.length ? "error" : "success") + '"><div><strong>' +
+    (broken.length
+      ? broken.length === 1
+        ? "1 of " + audits.length + " days is out of step."
+        : broken.length + " of " + audits.length + " days are out of step."
+      : "All " + audits.length + " days are in step.") +
+    "</strong><p class=\"small\" style=\"margin:.25rem 0 0;\">" +
+    (broken.length
+      ? "Open a day that is not in step to see which field is wrong. Sales can still be added to any of these days, but they cannot be edited, settled or deleted."
+      : "Every day's head adds up to its own sales.") +
+    "</p></div></div>" +
+    (skipped ? '<p class="small muted">' + skipped + " day(s) with a head were not checked (month cap).</p>" : "") +
+    '<div class="table-wrap"><table class="table txn-table"><thead><tr>' +
+    "<th>Day</th>" +
+    '<th class="text-right">Sales on the head</th>' +
+    "<th>Status</th>" +
+    '<th class="text-right">Out by</th>' +
+    "</tr></thead><tbody>" + rows + "</tbody></table></div>"
+  );
+}
+
+async function runMonthAudit() {
+  const dateKey = state.dayKey;
+  const yearMonth = dateKey.slice(0, 7);
+  const btn = document.getElementById("auditMonthBtn");
+  const out = document.getElementById("auditResult");
+
+  let heads;
+  try {
+    heads = await fetchMonthHeads({ yearMonth });
+  } catch (err) {
+    console.error("[trustx-ledger] month audit:", err);
+    toast(reportError(err), "error");
+    return;
+  }
+
+  const days = Object.keys(heads).filter((k) => isValidDateKey(k)).sort();
+  if (!days.length) {
+    out.innerHTML = ownStateMarkup(
+      "No day heads in " + yearMonth,
+      "Nothing was recorded in this month, so there is nothing to check.",
+    );
+    return;
+  }
+
+  const capped = days.slice(0, AUDIT_MONTH_CAP);
+  const ok = await confirm({
+    title: "Check every day in " + yearMonth,
+    message:
+      "This reads the sales of " + capped.length + " day" + (capped.length === 1 ? "" : "s") +
+      " that have a day head in this month. It reads and adds up; it changes nothing.",
+    confirmText: "Check " + capped.length + " days",
+  });
+  if (!ok) return;
+
+  setLoading(btn, true);
+  const audits = [];
+  try {
+    /* One day at a time, so the reads are spread out rather than fired as a
+       burst, and so the panel can say which day is being read. */
+    for (let i = 0; i < capped.length; i++) {
+      out.innerHTML = auditLoadingMarkup("Checking " + capped[i] + " (" + (i + 1) + " of " + capped.length + ")");
+      audits.push(await readDayForAudit(capped[i]));
+    }
+    out.innerHTML = auditMonthMarkup(audits, days.length - capped.length);
+  } catch (err) {
+    console.error("[trustx-ledger] month audit:", err);
+    out.innerHTML = ownErrorMarkup(reportError(err), "Could not check that month");
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+/* =========================================================
+   Shop — services and trusted browsers
+   -----------------------------------------------------------------
+   The two things an owner maintains rather than reads. Both lists are
+   records the rules will not let anyone else touch, so what happens
+   here is enforced rather than suggested.
+   ========================================================= */
+
+function wireShop() {
   document.getElementById("addSvcSave").addEventListener("click", saveNewService);
   document.getElementById("addSvcClear").addEventListener("click", () => {
     document.getElementById("addSvcName").value = "";
     document.getElementById("addSvcPrice").value = "";
   });
+  wireSeedDefaults();
+  wireDevices();
 }
 
+/** Load both lists when the tab opens. */
+async function loadShop() {
+  await Promise.all([loadServicesList(), loadAccessGrants()]);
+}
+
+/* ---------- Services ---------- */
+
 /**
- * Re-run the default catalog seed. The shell already does this on every
- * protected page, so this button is a repair tool: it reports how much is
- * still missing, never duplicates a service, and disables itself once the
- * catalog covers the list.
+ * Re-run the default catalog seed. Every protected page already does this
+ * on sign-in, so the button is a repair tool: it reports how much is still
+ * missing, never duplicates a service, and disables itself once the catalog
+ * covers the list.
  */
 function wireSeedDefaults() {
   const btn = document.getElementById("seedSvcBtn");
@@ -351,17 +1284,14 @@ function wireSeedDefaults() {
       return;
     }
 
-    const preview = missing
-      .map((m) => escapeHtml(m.name))
-      .join(", ");
     const ok = await confirm({
       title: "Add default services",
-      /* Markup, so htmlMessage rather than the escaped-by-default `message`.
-         Every interpolated value below is either a count or pre-escaped. */
       htmlMessage:
         '<p class="small">This adds ' + missing.length + " of " + SERVICE_CATALOG.length +
         " default services at &curren;0, in counter order. You can rename, re-price or archive any of them afterwards.</p>" +
-        '<p class="small muted" style="margin-bottom:0;">' + preview + "</p>",
+        '<p class="small muted" style="margin-bottom:0;">' +
+        missing.map((m) => escapeHtml(m.name)).join(", ") +
+        "</p>",
       confirmText: "Add " + missing.length,
       variant: "primary",
     });
@@ -399,7 +1329,7 @@ function updateSeedButton(services) {
   if (!btn) return;
   const missing = findMissingCatalogServices(services);
   btn.textContent = missing.length
-    ? "Add " + missing.length + " default service" + (missing.length === 1 ? "" : "s")
+    ? "Add " + missing.length + " default" + (missing.length === 1 ? "" : "s")
     : "Defaults added";
   btn.title = missing.length
     ? "Add the " + missing.length + " default service(s) not in your catalog yet"
@@ -408,9 +1338,12 @@ function updateSeedButton(services) {
 }
 
 async function saveNewService() {
-  const name = document.getElementById("addSvcName").value.trim();
-  const price = document.getElementById("addSvcPrice").value;
+  const nameInput = document.getElementById("addSvcName");
+  const priceInput = document.getElementById("addSvcPrice");
   const btn = document.getElementById("addSvcSave");
+  const name = nameInput.value.trim();
+  const price = priceInput.value;
+
   if (!name) {
     toast("Enter a service name.", "error");
     return;
@@ -419,13 +1352,14 @@ async function saveNewService() {
     toast("Enter a valid rate.", "error");
     return;
   }
+
   setLoading(btn, true);
   try {
     const created = await createService({ name, price });
-    document.getElementById("addSvcName").value = "";
-    document.getElementById("addSvcPrice").value = "";
+    nameInput.value = "";
+    priceInput.value = "";
     toast('Service "' + created.name + '" added.', "success");
-    loadServicesList();
+    await loadServicesList();
   } catch (err) {
     toast(reportError(err), "error");
   } finally {
@@ -436,17 +1370,17 @@ async function saveNewService() {
 function serviceRow(s) {
   const id = escapeHtml(s.serviceId);
   return (
-    '<div class="svc-row">' +
-    '<div class="svc-fields">' +
-    '<input class="input input-sm" data-svc-name="' + id + '" type="text" maxlength="80" value="' + escapeHtml(s.name) + '" />' +
-    '<input class="input input-sm" data-svc-price="' + id + '" type="text" inputmode="decimal" value="' + escapeHtml(paiseToInput(s.pricePaise)) + '" style="width:110px;" />' +
+    '<div class="own-row">' +
+    '<div class="own-row-fields">' +
+    '<input class="input" data-svc-name="' + id + '" type="text" maxlength="80" value="' + escapeHtml(s.name) + '" aria-label="Service name" />' +
+    '<input class="input is-rate" data-svc-price="' + id + '" type="text" inputmode="decimal" value="' + escapeHtml(paiseToInput(s.pricePaise)) + '" aria-label="Rate in rupees" />' +
     "</div>" +
-    '<div class="svc-actions">' +
+    '<div class="own-row-actions">' +
     '<span class="badge ' + (s.active ? "badge-success" : "badge-neutral") + '">' + (s.active ? "Active" : "Archived") + "</span>" +
+    '<div class="own-row-actions-end">' +
     '<button type="button" class="btn btn-primary btn-sm" data-svc-save="' + id + '">Save</button>' +
     '<button type="button" class="btn btn-sm ' + (s.active ? "btn-secondary" : "btn-primary") + '" data-svc-toggle="' + id + '">' + (s.active ? "Archive" : "Restore") + "</button>" +
-    "</div>" +
-    "</div>"
+    "</div></div></div>"
   );
 }
 
@@ -458,24 +1392,27 @@ async function loadServicesList() {
     updateSeedButton(services);
     list.innerHTML =
       services.map(serviceRow).join("") ||
-      '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No services yet &mdash; the default list seeds itself on the next sign-in, or use the button above.</p></div>';
+      '<div class="own-loading">No services yet — use the box above.</div>';
 
     services.forEach((s) => {
+      const saveBtn = list.querySelector('[data-svc-save="' + CSS.escape(s.serviceId) + '"]');
       const nameInput = list.querySelector('[data-svc-name="' + CSS.escape(s.serviceId) + '"]');
       const priceInput = list.querySelector('[data-svc-price="' + CSS.escape(s.serviceId) + '"]');
-      list.querySelector('[data-svc-save="' + CSS.escape(s.serviceId) + '"]').addEventListener("click", async () => {
-        const btn = document.querySelector('[data-svc-save="' + CSS.escape(s.serviceId) + '"]');
-        setLoading(btn, true);
+      if (!saveBtn || !nameInput || !priceInput) return;
+
+      saveBtn.addEventListener("click", async () => {
+        setLoading(saveBtn, true);
         try {
           await updateService(s.serviceId, { name: nameInput.value, price: priceInput.value });
           toast("Service updated.", "success");
-          loadServicesList();
+          await loadServicesList();
         } catch (err) {
           toast(reportError(err), "error");
         } finally {
-          setLoading(btn, false);
+          setLoading(saveBtn, false);
         }
       });
+
       list.querySelector('[data-svc-toggle="' + CSS.escape(s.serviceId) + '"]').addEventListener("click", async () => {
         const nextActive = !s.active;
         const ok = await confirm({
@@ -490,7 +1427,7 @@ async function loadServicesList() {
         try {
           await updateService(s.serviceId, { active: nextActive });
           toast(nextActive ? "Service restored." : "Service archived.", "success");
-          loadServicesList();
+          await loadServicesList();
         } catch (err) {
           toast(reportError(err), "error");
         }
@@ -503,32 +1440,31 @@ async function loadServicesList() {
     const seedBtn = document.getElementById("seedSvcBtn");
     if (seedBtn) {
       setLoading(seedBtn, false);
-      seedBtn.textContent = "Add default services";
+      seedBtn.textContent = "Add defaults";
     }
-    list.innerHTML = ' <div class="state"><p class="muted">' + escapeHtml(reportError(err)) + "</p></div>";
+    list.innerHTML = ownErrorMarkup(reportError(err));
   }
 }
 
-/* =========================================================
-   Trusted browsers
-   -----------------------------------------------------------------
-   These rows are `accessGrants/{uid}` — the same records firestore.rules
-   checks before it serves any money, so Revoke here is not a UI state:
-   the very next read that browser makes is denied by the backend.
-   ========================================================= */
-let thisUid = null;
+/* ---------- Trusted browsers ---------- */
 
+/**
+ * These rows are `accessGrants/{uid}` — the same records firestore.rules
+ * checks before it serves any money, so Revoke here is not a UI state: the
+ * very next read that browser makes is denied by the backend.
+ */
 function wireDevices() {
-  const list = document.getElementById("devicesList");
   document.getElementById("devicesRefreshBtn").addEventListener("click", loadAccessGrants);
 
+  const list = document.getElementById("devicesList");
   list.addEventListener("click", async (event) => {
     const btn = event.target.closest("button[data-grant-action]");
     if (!btn) return;
     const { grantAction, grantUid } = btn.dataset;
     if (!grantUid) return;
 
-    const isThis = grantUid === thisUid;
+    const isThis = grantUid === state.thisUid;
+
     if (grantAction === "revoke") {
       const ok = await confirm({
         title: "Revoke this browser?",
@@ -576,11 +1512,8 @@ function wireDevices() {
         toast(reportError(err), "error");
       }
     }
-    loadAccessGrants();
+    await loadAccessGrants();
   });
-
-  /* Paint the list on open, not only after a button is pressed. */
-  loadAccessGrants();
 }
 
 function fmtTs(ts) {
@@ -591,31 +1524,32 @@ function fmtTs(ts) {
 }
 
 function grantRow(g) {
-  const isThis = g.uid === thisUid;
+  const isThis = g.uid === state.thisUid;
   const isAdmin = g.role === "admin";
   const label = String(g.label || "Unnamed browser").trim() || "Unnamed browser";
   const ua = (g.client && g.client.ua) || "";
   const subBits = [ua, g.client && g.client.lang ? g.client.lang : ""].filter(Boolean);
+
   return (
-    '<div class="dev-row">' +
-    '<div class="dev-main">' +
-    '<div class="dev-title">' + escapeHtml(label) +
+    '<div class="own-row">' +
+    '<div class="own-row-main">' +
+    '<div class="own-row-title">' + escapeHtml(label) +
     (isThis ? ' <span class="badge badge-accent">This browser</span>' : "") +
-    (isAdmin ? ' <span class="badge badge-neutral">Admin</span>' : "") +
+    (isAdmin ? ' <span class="badge badge-neutral">Owner</span>' : "") +
     "</div>" +
-    '<div class="dev-sub">' + escapeHtml(subBits.join(" &middot; ")) + "</div>" +
-    '<div class="dev-sub small muted">Trusted ' + fmtTs(g.createdAt) +
-    ' &middot; Last used ' + fmtTs(g.lastUsedAt) + "</div>" +
+    '<div class="own-row-sub">' + escapeHtml(subBits.join(" &middot; ")) + "</div>" +
+    '<div class="own-row-sub small">' + "Trusted " + fmtTs(g.createdAt) +
+    " &middot; Last used " + fmtTs(g.lastUsedAt) + "</div>" +
     "</div>" +
-    '<div class="dev-side">' +
+    '<div class="own-row-actions">' +
     '<span class="badge ' + (g.active ? "badge-success" : "badge-neutral") + '">' +
     (g.active ? "Active" : "Revoked") + "</span>" +
+    '<div class="own-row-actions-end">' +
     (g.active
       ? '<button type="button" class="btn btn-secondary btn-sm" data-grant-action="revoke" data-grant-uid="' + escapeHtml(g.uid) + '">Revoke</button>'
       : '<button type="button" class="btn btn-primary btn-sm" data-grant-action="restore" data-grant-uid="' + escapeHtml(g.uid) + '">Restore</button>') +
     '<button type="button" class="btn btn-secondary btn-sm" data-grant-action="remove" data-grant-uid="' + escapeHtml(g.uid) + '">Remove</button>' +
-    "</div>" +
-    "</div>"
+    "</div></div></div>"
   );
 }
 
@@ -626,476 +1560,21 @@ async function loadAccessGrants() {
     const grants = await listAccessGrants();
     list.innerHTML = grants.length
       ? grants.map((g) => grantRow(g)).join("")
-      : '<div class="state" style="padding:1rem 0;"><p class="muted" style="margin:0;">No trusted browsers yet. The first browser to sign in with an authorised Google account appears here.</p></div>';
+      : '<div class="own-loading">No trusted browsers yet.</div>';
   } catch (err) {
     console.error("[trustx-ledger] access grants:", err);
-    list.innerHTML = '<div class="state is-error"><p class="muted">' + escapeHtml(reportError(err)) + "</p></div>";
+    list.innerHTML = ownErrorMarkup(reportError(err));
   }
 }
 
 /* =========================================================
-   All-data browser
-   ========================================================= */
-let dataModeState = "day";
-
-function wireDataBrowser() {
-  const dateInput = document.getElementById("dataDate");
-  document.getElementById("dataRefreshBtn").addEventListener("click", loadDataBrowser);
-  document.getElementById("dataDayBtn").addEventListener("click", () => {
-    dataModeState = "day";
-    document.getElementById("dataDayBtn").className = "btn btn-sm btn-primary";
-    document.getElementById("dataAllBtn").className = "btn btn-sm btn-secondary";
-    loadDataBrowser();
-  });
-  document.getElementById("dataAllBtn").addEventListener("click", () => {
-    dataModeState = "all";
-    document.getElementById("dataAllBtn").className = "btn btn-sm btn-primary";
-    document.getElementById("dataDayBtn").className = "btn btn-sm btn-secondary";
-    loadDataBrowser();
-  });
-  dateInput.addEventListener("change", () => {
-    if (dataModeState === "day") loadDataBrowser();
-  });
-}
-
-function methodChip(t) {
-  return '<span class="badge badge-method badge-' + escapeHtml(t.paymentMethod) + '">' +
-    escapeHtml(t.methodLabel) +
-    (t.status === "pending" ? ' <span class="badge badge-warning" style="margin-left:2px;">Pending</span>' : "") +
-    "</span>";
-}
-
-async function loadDataBrowser() {
-  const txnBody = document.getElementById("dataTxnBody");
-  const expBody = document.getElementById("dataExpBody");
-  const txnFooter = document.getElementById("dataTxnFooter");
-  const expFooter = document.getElementById("dataExpFooter");
-  const dateKey = dataModeState === "day" ? document.getElementById("dataDate").value : null;
-
-  try {
-    const [txns, exps] = await Promise.all([
-      fetchTransactions({ dateKey, limit: 300 }),
-      fetchExpenses({ dateKey, limit: 300 }),
-    ]);
-
-    const txnTotal = txns.reduce((sum, t) => sum + t.totalPaise, 0);
-    const paidTotal = txns.reduce((sum, t) => sum + t.collectedPaise, 0);
-    const dueTotal = txns.reduce((sum, t) => sum + t.duePaise, 0);
-
-    txnBody.innerHTML = txns.length
-      ? txns
-          .map(
-            (t) =>
-              "<tr>" +
-              '<td class="txn-time" data-label="Day">' + escapeHtml(t.dateKey) + "</td>" +
-              '<td class="txn-time" data-label="Time">' + escapeHtml(formatKolkataTime(t.createdAt)) + "</td>" +
-              '<td class="txn-customer"><div class="txn-clip">' + escapeHtml(t.customerName || "Walk-in") + "</div></td>" +
-              '<td class="txn-service"><div class="txn-clip">' + escapeHtml(t.serviceName) + (t.quantity > 1 ? " &times; " + String(t.quantity) : "") + "</div></td>" +
-              '<td data-label="Payment">' + methodChip(t) + "</td>" +
-              '<td class="text-right txn-num" data-label="Qty">' + String(t.quantity) + "</td>" +
-              '<td class="text-right txn-num" data-label="Rate">' + formatINR(t.ratePaise) + "</td>" +
-              '<td class="text-right txn-num txn-total" data-label="Amount">' + formatINR(t.totalPaise) + "</td>" +
-              "</tr>"
-          )
-          .join("") +
-          '<tr class="table-total"><td class="text-right" colspan="7" data-label="Sales"><strong>Total (' + txns.length + ")</strong></td>" +
-          '<td class="text-right txn-num" data-label="Amount"><strong>' + formatINR(txnTotal) + "</strong></td></tr>"
-      : '<tr><td colspan="8"><div class="state"><h3>No transactions</h3>' +
-        "<p>" + (dateKey ? "Nothing recorded on this day." : "No transactions yet.") + "</p></div></td></tr>";
-
-    txnFooter.innerHTML =
-      "<strong>" + (txns.length === 1 ? "1 transaction" : txns.length + " transactions") + "</strong>" +
-      " &middot; Total " + formatINR(txnTotal) +
-      " &middot; Collected " + formatINR(paidTotal) +
-      " &middot; Due " + formatINR(dueTotal);
-
-    expBody.innerHTML = exps.length
-      ? exps
-          .map(
-            (e) =>
-              "<tr>" +
-              '<td class="txn-time" data-label="Day">' + escapeHtml(e.date) + "</td>" +
-              '<td class="txn-service"><div class="txn-clip">' + escapeHtml(e.title) + "</div></td>" +
-              '<td data-label="Category">' + escapeHtml(e.category || "—") + "</td>" +
-              '<td class="text-right txn-num txn-total" data-label="Amount">' + formatINR(e.amountPaise) + "</td>" +
-              "</tr>"
-          )
-          .join("")
-      : '<tr><td colspan="4"><div class="state"><h3>No expenses</h3>' +
-        "<p>" + (dateKey ? "Nothing recorded on this day." : "No expenses yet.") + "</p></div></td></tr>";
-
-    const expTotal = exps.reduce((sum, e) => sum + e.amountPaise, 0);
-    expFooter.innerHTML = "<strong>Total expenses " + formatINR(expTotal) + "</strong>" +
-      (dateKey ? " &middot; " + escapeHtml(dateKey) : " &middot; most recent first");
-  } catch (err) {
-    console.error("[trustx-ledger] all-data:", err);
-    txnBody.innerHTML =
-      '<tr><td colspan="8"><div class="state is-error"><h3>Could not load data</h3><p>' + escapeHtml(reportError(err)) + "</p></div></td></tr>";
-    expBody.innerHTML = "";
-  }
-}
-
-/* =========================================================
-   Day integrity (read-only)
-   ------------------------------------------------------------
-   A day's head is only ever allowed to move by one sale's worth,
-   in that sale's direction — that is the headSteppedBy check in
-   firestore.rules. So a head that has stopped agreeing with its
-   sales (a sale removed straight from the Firestore console
-   moves no counters) freezes every edit, settle and delete on
-   that day, and the shop can only be told "not allowed to
-   change this sale". js/day-audit.js works out what a head
-   should say; this reads what it does say, and changes nothing.
+   Small shared blocks of markup
    ========================================================= */
 
-/** One day's sales come back in a single query. Past this there is no answer. */
-const AUDIT_ROW_LIMIT = 1000;
-
-/** A month sweep reads one day at a time, so it is capped at a calendar month. */
-const AUDIT_MONTH_CAP = 31;
-
-function wireDayAudit() {
-  const dateInput = document.getElementById("auditDate");
-  document.getElementById("auditDayBtn").addEventListener("click", runDayAudit);
-  document.getElementById("auditMonthBtn").addEventListener("click", runMonthAudit);
-  /* Delegated, because the repair button is part of a report that is
-     thrown away and rebuilt on every check. */
-  document.getElementById("auditResult").addEventListener("click", (event) => {
-    const btn = event.target.closest("button[data-audit-repair]");
-    if (btn && !btn.disabled) runDayRepair(btn.getAttribute("data-date"), btn);
-  });
-  dateInput.addEventListener("change", () => {
-    /* Cleared rather than re-run: every check spends reads, and a stale
-       answer sitting under a freshly picked date is worse than none. */
-    document.getElementById("auditResult").innerHTML = auditPlaceholderMarkup();
-  });
+function ownStateMarkup(title, body) {
+  return '<div class="state"><h3>' + escapeHtml(title) + "</h3><p>" + escapeHtml(body) + "</p></div>";
 }
 
-function auditPlaceholderMarkup(title = "Nothing checked yet", body = "Pick a day and check it.") {
-  return (
-    '<div class="state"><h3>' + escapeHtml(title) + "</h3><p>" +
-    escapeHtml(body) + "</p></div>"
-  );
-}
-
-function auditLoadingMarkup(label) {
-  return (
-    '<div class="state state-table-loading"><div class="state-loading-badge">' +
-    '<span class="spinner spinner-sm"></span><span>' + escapeHtml(label) +
-    '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></span>' +
-    "</div></div>"
-  );
-}
-
-/** A signed rupee figure: what the day is out by, and in which direction. */
-function signedINR(paise) {
-  const n = Number.isFinite(paise) ? Math.round(paise) : 0;
-  if (n === 0) return formatINR(0);
-  return (n > 0 ? "+" : "\u2212") + formatINR(Math.abs(n));
-}
-
-/** Money is formatted with the rupee sign; a sale count is just a count. */
-function auditAmount(field, paise) {
-  return field.money ? formatINR(paise) : String(paise);
-}
-
-/**
- * Read one day: its head (from the month's head read the calendar already
- * makes) and its sales. Both go through the caches the rest of the console
- * reads through, so checking the same day twice costs nothing the second time.
- */
-async function readDayForAudit(dateKey) {
-  const [heads, rows] = await Promise.all([
-    fetchMonthHeads({ yearMonth: dateKey.slice(0, 7) }),
-    fetchTransactions({ dateKey, limit: AUDIT_ROW_LIMIT }),
-  ]);
-
-  const head = heads[dateKey] || null;
-  return auditDayCounters({
-    dateKey,
-    head: head ? { state: head.state, counters: head.counters } : null,
-    rows,
-    /* Hitting the limit means the sum is a floor rather than a total, so the
-       audit is told not to draw a conclusion from it. */
-    truncated: rows.length >= AUDIT_ROW_LIMIT,
-  });
-}
-
-/** The per-field table. Only the fields that disagree are listed. */
-function auditDriftMarkup(audit) {
-  if (!audit.drift.length) return "";
-
-  const rows = audit.drift
-    .map(
-      (d) =>
-          '<tr><td data-label="Field">' + escapeHtml(d.label) + "</td>" +
-          '<td class="text-right txn-num" data-label="Head says">' + escapeHtml(auditAmount(d, d.head)) + "</td>" +
-          '<td class="text-right txn-num" data-label="Sales add up to">' + escapeHtml(auditAmount(d, d.actual)) + "</td>" +
-          '<td class="text-right txn-num txn-due" data-label="Out by"><strong>' + escapeHtml(signedINR(d.delta)) + "</strong></td></tr>"
-    )
-    .join("");
-
-  return (
-    '<div class="table-wrap" style="margin-top:.5rem;"><table class="table txn-table"><thead><tr>' +
-    "<th>Field</th>" +
-    '<th class="text-right">Head says</th>' +
-    '<th class="text-right">Sales add up to</th>' +
-    '<th class="text-right">Out by</th>' +
-    "</tr></thead><tbody>" + rows + "</tbody></table></div>"
-  );
-}
-
-function auditPillMarkup(audit) {
-  const tone = describeAudit(audit).tone;
-  const pill = tone === "ok" ? "pill-success" : tone === "warning" ? "pill-warning" : "pill-danger";
-  const label = audit.ok
-    ? "In step"
-    : audit.status === AUDIT_STATUS.INCOMPLETE
-      ? "No verdict"
-      : "Needs attention";
-  return '<span class="pill ' + pill + '">' + label + "</span>";
-}
-
-/**
- * What can be done about the report, and the button that does it.
- *
- * Shown for every verdict that is not "in step", because the most
- * common follow-up question is not "what is wrong" but "so what do
- * I do" — and when the answer is "a person has to look at this",
- * saying so plainly is more use than another table.
- */
-function auditRepairMarkup(audit) {
-  const plan = planDayRepair(audit);
-  if (!plan || plan.status === "not-needed") return "";
-
-  if (!plan.repairable) {
-    return (
-      '<p class="small muted" style="margin:.75rem 0 0;">' + escapeHtml(plan.reason) + "</p>"
-    );
-  }
-
-  const lines = plan.steps
-    .map(
-      (s) =>
-        "<li>" + escapeHtml(s.label) + ": " +
-        escapeHtml(auditAmount(s, s.before)) + " &rarr; " +
-        escapeHtml(auditAmount(s, s.after)) + "</li>"
-    )
-    .join("");
-
-  return (
-    '<div class="alert alert-warning" style="margin-top:.75rem;"><div>' +
-    "<strong>This day can be put back in step.</strong>" +
-    '<p class="small" style="margin:.25rem 0 0;">' + escapeHtml(plan.reason) + "</p>" +
-    '<ul class="small" style="margin:.5rem 0 .75rem;padding-left:1.25rem;">' + lines + "</ul>" +
-    '<button type="button" class="btn btn-sm btn-primary" data-audit-repair="1" data-date="' +
-    escapeHtml(audit.dateKey) + '">Repair ' + escapeHtml(audit.dateKey) + "</button>" +
-    "</div></div>"
-  );
-}
-
-async function runDayRepair(dateKey, btn) {
-  if (!isValidDateKey(dateKey)) {
-    toast("Pick a valid date to repair.", "error");
-    return;
-  }
-
-  /* Re-checked here, not reused from the report on screen: the day may
-     have taken a sale since, and the counters to write are computed from
-     the sales. It costs nothing when the cache is warm. */
-  setLoading(btn, true);
-  let plan;
-  try {
-    plan = planDayRepair(await readDayForAudit(dateKey));
-  } catch (err) {
-    setLoading(btn, false);
-    console.error("[trustx-ledger] repair pre-check:", err);
-    toast(reportError(err), "error");
-    return;
-  }
-
-  if (!plan.repairable) {
-    setLoading(btn, false);
-    toast(plan.reason, "error");
-    return;
-  }
-
-  const ok = await confirm({
-    title: "Put " + dateKey + " back in step?",
-    message:
-      "The day's head will be set to what its " +
-      (plan.target.txnCount === 1 ? "1 sale adds up to" : plan.target.txnCount + " sales add up to") +
-      ". No sale is created, changed or deleted, and the day stays open.",
-    confirmText: "Repair the day",
-    cancelText: "Cancel",
-  });
-  if (!ok) {
-    setLoading(btn, false);
-    return;
-  }
-
-  try {
-    await repairDayHead(dateKey, plan.target);
-    toast(dateKey + " is back in step. Its sales can be edited, settled and deleted again.", "success");
-  } catch (err) {
-    console.error("[trustx-ledger] repair day head:", err);
-    toast(reportError(err), "error");
-  }
-
-  /* Shown either way: after a repair the report proves it worked, and
-     after a refusal the reason is on screen instead of in a toast. */
-  try {
-    document.getElementById("auditResult").innerHTML = auditReportMarkup(await readDayForAudit(dateKey));
-  } catch (err) {
-    document.getElementById("auditResult").innerHTML = auditPlaceholderMarkup(
-      "Could not re-check " + dateKey,
-      reportError(err)
-    );
-  }
-}
-
-function auditReportMarkup(audit) {
-  const { tone, headline, detail } = describeAudit(audit);
-  const alert = tone === "ok" ? "success" : tone === "warning" ? "warning" : "error";
-  const sales = audit.saleCount === 1 ? "1 sale" : audit.saleCount + " sales";
-
-  return (
-    '<div class="alert alert-' + alert + '"><div><strong>' + escapeHtml(headline) + "</strong>" +
-    '<p class="small" style="margin:.25rem 0 0;">' + escapeHtml(detail) + "</p></div></div>" +
-
-    '<div class="flex" style="gap:.5rem;flex-wrap:wrap;margin:.75rem 0 .25rem;align-items:center;">' +
-    auditPillMarkup(audit) +
-    '<span class="pill pill-neutral">' + sales + "</span>" +
-    (audit.state ? '<span class="pill pill-neutral">' + (audit.state === "closed" ? "Day closed" : "Day open") + "</span>" : "") +
-    '<span class="small muted">Read-only: nothing was changed.</span>' +
-    "</div>" +
-    auditDriftMarkup(audit) +
-    auditRepairMarkup(audit)
-  );
-}
-
-async function runDayAudit() {
-  const dateKey = document.getElementById("auditDate").value;
-  const btn = document.getElementById("auditDayBtn");
-  const out = document.getElementById("auditResult");
-
-  if (!isValidDateKey(dateKey)) {
-    toast("Pick a valid date to check.", "error");
-    return;
-  }
-
-  setLoading(btn, true);
-  out.innerHTML = auditLoadingMarkup("Checking " + dateKey);
-  try {
-    out.innerHTML = auditReportMarkup(await readDayForAudit(dateKey));
-  } catch (err) {
-    console.error("[trustx-ledger] day audit:", err);
-    out.innerHTML =
-      '<div class="state is-error"><h3>Could not check that day</h3><p>' +
-      escapeHtml(reportError(err)) + "</p></div>";
-  } finally {
-    setLoading(btn, false);
-  }
-}
-
-/** One row per day checked, worst news first would be nicer but is not worth it. */
-function auditMonthMarkup(audits, skipped) {
-  const broken = audits.filter((a) => !a.ok);
-  const rows = audits
-    .map((a) => {
-      const tone = describeAudit(a).tone;
-      const badge = tone === "ok" ? "badge-success" : tone === "warning" ? "badge-warning" : "badge-danger";
-      const gross = a.drift.find((d) => d.field === "grossPaise");
-      const headCount = a.headCounters && Number.isFinite(a.headCounters.txnCount) ? a.headCounters.txnCount : "&mdash;";
-
-      return (
-        "<tr><td data-label=\"Day\">" + escapeHtml(a.dateKey) + "</td>" +
-        '<td class="text-right txn-num" data-label="Sales on the head">' + String(headCount) + "</td>" +
-        '<td data-label="Status">' + auditPillMarkup(a) + "</td>" +
-        '<td class="text-right txn-num txn-due" data-label="Out by">' + (gross ? escapeHtml(signedINR(gross.delta)) : "&mdash;") + "</td></tr>"
-      );
-    })
-    .join("");
-
-  return (
-    '<div class="alert alert-' + (broken.length ? "error" : "success") + '"><div><strong>' +
-    (broken.length
-      ? broken.length === 1
-        ? "1 of " + audits.length + " days is out of step."
-        : broken.length + " of " + audits.length + " days are out of step."
-      : "All " + audits.length + " days are in step.") +
-    "</strong><p class=\"small\" style=\"margin:.25rem 0 0;\">" +
-    (broken.length
-      ? "Open a day that is not in step to see which field is wrong. Sales can still be added to any of these days, but they cannot be edited, settled or deleted."
-      : "Every day's head adds up to its own sales.") +
-    "</p></div></div>" +
-    (skipped ? '<p class="small muted">' + skipped + " day(s) with a head were not checked (month cap).</p>" : "") +
-    '<div class="table-wrap"><table class="table txn-table"><thead><tr>' +
-    "<th>Day</th>" +
-    '<th class="text-right">Sales on the head</th>' +
-    "<th>Status</th>" +
-    '<th class="text-right">Out by</th>' +
-    "</tr></thead><tbody>" + rows + "</tbody></table></div>"
-  );
-}
-
-async function runMonthAudit() {
-  const dateKey = document.getElementById("auditDate").value;
-  const btn = document.getElementById("auditMonthBtn");
-  const out = document.getElementById("auditResult");
-
-  if (!isValidDateKey(dateKey)) {
-    toast("Pick a valid date to check.", "error");
-    return;
-  }
-  const yearMonth = dateKey.slice(0, 7);
-
-  let heads;
-  try {
-    heads = await fetchMonthHeads({ yearMonth });
-  } catch (err) {
-    console.error("[trustx-ledger] month audit:", err);
-    toast(reportError(err), "error");
-    return;
-  }
-
-  const days = Object.keys(heads).filter((k) => isValidDateKey(k)).sort();
-  if (!days.length) {
-    out.innerHTML = auditPlaceholderMarkup(
-      "No day heads in " + yearMonth,
-      "Nothing was recorded in this month, so there is nothing to check.",
-    );
-    return;
-  }
-
-  const capped = days.slice(0, AUDIT_MONTH_CAP);
-  const ok = await confirm({
-    title: "Check every day in " + yearMonth,
-    message:
-      "This reads the sales of " + capped.length + " day" + (capped.length === 1 ? "" : "s") +
-      " that have a day head in this month. It reads and adds up; it changes nothing.",
-    confirmText: "Check " + capped.length + " days",
-  });
-  if (!ok) return;
-
-  setLoading(btn, true);
-  const audits = [];
-  try {
-    /* One day at a time, so the reads are spread out rather than fired as a
-       burst, and so the panel can say which day is being read. */
-    for (let i = 0; i < capped.length; i++) {
-      out.innerHTML = auditLoadingMarkup(
-        "Checking " + capped[i] + " (" + (i + 1) + " of " + capped.length + ")",
-      );
-      audits.push(await readDayForAudit(capped[i]));
-    }
-    out.innerHTML = auditMonthMarkup(audits, days.length - capped.length);
-  } catch (err) {
-    console.error("[trustx-ledger] month audit:", err);
-    out.innerHTML =
-      '<div class="state is-error"><h3>Could not check that month</h3><p>' +
-      escapeHtml(reportError(err)) + "</p></div>";
-  } finally {
-    setLoading(btn, false);
-  }
+function ownErrorMarkup(message, title = "Could not load that") {
+  return '<div class="state is-error"><h3>' + escapeHtml(title) + "</h3><p>" + escapeHtml(message) + "</p></div>";
 }

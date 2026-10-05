@@ -30,7 +30,10 @@
 
    The meter below is an ESTIMATE for this browser, not an accountant. It
    exists to turn a hard wall into an early, actionable warning; the
-   console remains the ground truth.
+   Firebase console's Usage tab remains the ground truth. Nothing renders
+   the counters — they are counted so the "quota is gone" notice can be
+   raised the moment a wall is actually hit, and so the wall's size is a
+   named constant rather than a number spread through the code.
    ========================================================= */
 
 /* ---------- The walls themselves ---------- */
@@ -245,7 +248,6 @@ function loadUsage() {
 
 let usage = loadUsage();
 let persistTimer = null;
-const usageListeners = [];
 
 /** Persist, coalesced: a page load issues dozens of queries, not dozens of writes. */
 function persistUsage() {
@@ -274,13 +276,6 @@ function bump(field, n) {
   rollOverIfNeeded();
   usage[field] += count;
   persistUsage();
-  for (const cb of usageListeners.slice()) {
-    try {
-      cb(getUsage());
-    } catch (listenerErr) {
-      console.warn("[trustx-ledger] usage listener failed:", listenerErr);
-    }
-  }
 }
 
 /**
@@ -319,58 +314,13 @@ export function noteDeletes(n = 1) {
 /**
  * Reset the counters when the Pacific day has turned over.
  *
- * Centralised so every entry point — counting an operation, and reading the
- * meter for display — agrees on when "today" changed, including clearing the
- * exhausted notice. Kept in step with `blankUsage()`, which is what the
- * rollover resets to.
+ * Centralised so every entry point agrees on when "today" changed,
+ * including clearing the exhausted notice. Kept in step with
+ * `blankUsage()`, which is what the rollover resets to.
  */
 function rollOverIfNeeded() {
   if (usage.dayKey === pacificDayKey()) return false;
   usage = blankUsage();
   quotaAnnounced = false;
   return true;
-}
-
-/** Today's counters, plus how close each wall is. */
-export function getUsage() {
-  rollOverIfNeeded();
-  const pct = (value, cap) => (cap > 0 ? Math.min(100, (value / cap) * 100) : 0);
-  return {
-    dayKey: usage.dayKey,
-    reads: usage.reads,
-    writes: usage.writes,
-    deletes: usage.deletes,
-    readsPct: pct(usage.reads, SPARK_LIMITS.readsPerDay),
-    writesPct: pct(usage.writes, SPARK_LIMITS.writesPerDay),
-    deletesPct: pct(usage.deletes, SPARK_LIMITS.deletesPerDay),
-    resetAt: quotaResetTime(),
-    exhausted: quotaAnnounced,
-  };
-}
-
-/** Notified whenever a counter moves. Returns an unsubscribe. */
-export function subscribeUsage(cb) {
-  usageListeners.push(cb);
-  try {
-    cb(getUsage());
-  } catch (err) {
-    console.warn("[trustx-ledger] usage listener failed:", err);
-  }
-  return () => {
-    const i = usageListeners.indexOf(cb);
-    if (i !== -1) usageListeners.splice(i, 1);
-  };
-}
-
-/** Zero today's counters. Only ever used by the Developer console. */
-export function resetUsage() {
-  usage = blankUsage();
-  persistUsage();
-  for (const cb of usageListeners.slice()) {
-    try {
-      cb(getUsage());
-    } catch (listenerErr) {
-      console.warn("[trustx-ledger] usage listener failed:", listenerErr);
-    }
-  }
 }
