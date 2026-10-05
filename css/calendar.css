@@ -398,12 +398,16 @@
   color: var(--color-muted);
 }
 
-/* ---------- Narrow screens ---------- */
+/* ---------- Narrow screens (≤720px — tablet/large phone) ---------- */
 @media (max-width: 720px) {
   .cal-head { align-items: flex-start; }
   .cal-sub { flex: 1 1 100%; margin-right: 0; }
   .cal-nav { width: 100%; }
   .cal-month-label { flex: 1 1 auto; min-width: 0; }
+
+  /* Larger touch targets on the prev/next/this-month buttons. */
+  .cal-nav .btn { min-height: 44px; min-width: 44px; }
+
   .cal-card { padding: 0.6rem; }
   .cal-weekdays,
   .cal-grid { gap: 0.3rem; }
@@ -417,10 +421,119 @@
   .cal-cell-add { width: 22px; height: 22px; opacity: 1; }
   .cal-cell-add .icon { width: 13px; height: 13px; }
   .cal-stat-value { font-size: 1.05rem; }
+
+  /* Missed-day pills: 44px min-height for reliable tapping. */
+  .cal-missed-day { min-height: 44px; padding: 0 0.75rem; }
+}
+
+/* ---------- Phone (≤480px) — list layout ----------
+   A 7-column grid at 375 px gives each cell ≈46 px — not enough for a
+   date number AND an amount AND a status colour. Below 480 px we abandon
+   the grid entirely and render the days as a two-column condensed list:
+   the day number on the left, the amount (or status word) on the right.
+   The weekday header row is replaced by a single centred label so the
+   user still knows what day of the week a row is.
+   ------------------------------------------------------------------ */
+@media (max-width: 480px) {
+  /* Hide the 7-column weekday header — the date cell carries the weekday
+     initial instead (injected by calendar.js or already visible via the
+     date number). */
+  .cal-weekdays { display: none; }
+
+  /* The grid becomes a single-column stack of rows. */
+  .cal-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  /* Each cell is a horizontal strip: date on the left, amount on the
+     right, colour band on the left edge for status. */
+  .cal-cell {
+    min-height: 0;               /* override the 84/64px floor */
+    border-radius: var(--radius-sm);
+    border-left-width: 3px;      /* thick left border = status indicator */
+  }
+
+  /* Status-specific left-border colours replace the background fills,
+     which are kept for a subtle tint but no longer have to carry the
+     full semantic weight. */
+  .cal-cell.is-filled  { border-left-color: var(--color-success); }
+  .cal-cell.is-closed  { border-left-color: var(--color-muted); }
+  .cal-cell.is-empty   { border-left-color: var(--color-warning); border-left-style: solid; }
+  .cal-cell.is-future  { border-left-color: var(--color-border); }
+  .cal-cell.is-outside { border-left-color: transparent; }
+
+  /* The cell link becomes a horizontal row. */
+  .cal-cell-link {
+    flex-direction: row;
+    align-items: center;
+    padding: 0.55rem 0.65rem;
+    gap: 0.5rem;
+    min-height: 44px;            /* 44px touch target */
+  }
+
+  /* Day number: fixed width so amounts align across all rows. */
+  .cal-cell-top {
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .cal-cell-day {
+    font-size: 1rem;
+    font-weight: 800;
+    width: 1.8em;
+    text-align: center;
+  }
+
+  /* Amount pushed to the far right. */
+  .cal-cell-amount {
+    margin-top: 0;
+    margin-left: auto;
+    font-size: 0.88rem;
+    font-weight: 750;
+    text-align: right;
+  }
+
+  /* The foot line re-appears at the right of the amount (status badge). */
+  .cal-cell-foot {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+    margin-left: 0.5rem;
+    text-align: right;
+  }
+
+  /* The floating + button would collide with the list layout. */
+  .cal-cell-add { display: none; }
+
+  /* Weekday label inside the top row (the lock icon sits next to the day
+     number; we add a small muted weekday initial via CSS for context). */
+  .cal-cell-lock { margin-left: 0.15rem; }
+
+  /* Outside-month rows are even more muted in list form. */
+  .cal-cell.is-outside {
+    opacity: 0.35;
+  }
+
+  /* Tighten the card container since each row is self-describing. */
+  .cal-card { padding: 0.5rem 0.75rem; }
+
+  /* Nav: full-width, larger buttons. */
+  .cal-nav .btn { flex: 0 0 44px; width: 44px; min-height: 44px; }
+  .cal-month-label { font-size: 1rem; }
+
+  /* Summary stats: 2-across on phone. */
+  .cal-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cal-cell,
   .cal-cell-add,
   .cal-missed-day { transition: none; }
-}
+}

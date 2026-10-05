@@ -228,7 +228,7 @@
 
                   <div class="own-receipt-label own-section">Integrity</div>
                   <p class="small muted own-note" style="margin:0;">Adds up the day&rsquo;s sales and compares the total with the counters on its head. Checking reads and changes nothing.</p>
-                  <div class="own-controls own-section">
+                  <div class="own-audit-row own-section">
                     <button type="button" class="btn btn-secondary btn-sm" id="auditDayBtn">Check this day</button>
                     <button type="button" class="btn btn-secondary btn-sm" id="auditMonthBtn">Check this month</button>
                   </div>
@@ -294,6 +294,7 @@
        missing. */
     import { initAppShell } from "./js/shell.js";
     import { renderOwnerConsole } from "./js/admin.js";
+    import { mountInstallOnboarding } from "./js/pwa.js";
 
     initAppShell({
       requireAdmin: true,
@@ -308,6 +309,12 @@
       },
       onReady: async (ctx) => {
         await renderOwnerConsole(ctx);
+
+        /* Offered once, on this device, the first time the owner opens the
+           console — and only here. The dialog is built over the top of the
+           finished page and never navigates, so asking is not the same
+           gesture as being sent to the dashboard. See js/pwa.js. */
+        mountInstallOnboarding();
       },
     });
   </script>

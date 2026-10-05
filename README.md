@@ -137,7 +137,7 @@ TrustX Ledger/
 │   ├── utils.js            paise · Asia/Kolkata dates · validation
 │   ├── quota.js            Spark-plan usage metering + quota wall
 │   ├── read-cache.js       stale-while-revalidate read cache
-│   ├── pwa.js              service-worker registration + install/update
+│   ├── pwa.js              service-worker registration + install/update + first-visit install dialog
 │   ├── ai-config.js        Gemini model config (key is a placeholder)
 │   └── read-cache / quota / …  no cycles — leaves → firebase → auth/ledger → UI
 │
@@ -437,7 +437,7 @@ A write refused by the rules is **never** reported as a sign-in failure — quot
 ### 📊 Dashboard — `dashboard.html`
 
 **Route** `/dashboard.html` · **Access** signed-in + trusted · **713 lines**
-**Also the PWA `start_url` and `id`** — this is the app's home.
+**The PWA `id`, and the `Today` shortcut's target** — `id` stays here deliberately, so an app that was already installed keeps updating in place instead of appearing twice. The app now *launches* into the Owner console (`start_url: /admin.html`).
 
 > Today's workspace. Eight figures for the current Kolkata business day, the most recent sales, and a grid of the twelve most-used services that pre-fill the sale dialog on tap.
 
@@ -557,6 +557,7 @@ The dashboard reads the day head, which is why the counters must be provably cor
 
 **Route** `/admin.html` · **Access** **`admin` role only** · **315 lines shell + `js/admin.js`**
 **One sidebar link.** Under Management, after the shop's own four screens.
+**The PWA `start_url`** — the installed app launches here.
 
 > Not a settings page, and not a developer page. This is the screen a shop owner opens
 > on a phone to answer four questions: how did today go, which days of this month are
@@ -1075,6 +1076,11 @@ The original bug this replaced: a day whose head has drifted out of step with it
 - Only `200` and non-opaque responses are stored. Navigations fall back network → cache → **`offline.html`**, so an installed app never shows a blank void.
 - **`skipWaiting()` is never called on its own.** The worker only activates on an explicit `SKIP_WAITING` message, which the app sends from an `Update ready` button the user clicks. A deploy is noticed within the hour by a `registration.update()` poll.
 - `Install app` appears only when the browser actually offered a prompt; if it did not, the button says so instead of silently failing.
+- **`start_url` is `/admin.html`, so the installed app opens straight into the Owner console.** `id` is left at `/dashboard.html` on purpose — `id` is the app's *identity*, and changing it would make every existing install a second, separate app on the same phone.
+- **First-visit install dialog — `admin.html` only.** `mountInstallOnboarding()` puts a receipt-styled dialog over the finished console on the owner's first visit, remembers the answer in `localStorage` (`trustx.install-offered.v1`), and asks once. Three properties are deliberate:
+  - **It never navigates.** No assignment to `location`, no `href` — *"an install prompt that had to navigate to do its job would make 'install the app' and 'go to the dashboard' the same gesture."*
+  - **It does not wait for `beforeinstallprompt`.** That event is Chromium-only and iOS Safari never fires it, so gating on it would mean an iPhone is never offered the app at all. The dialog renders regardless; the button calls the held prompt, or replaces itself with the two-tap route for that browser.
+  - **It is suppressed outright when the app is already installed**, and the default focus is `Not now`, so a stray <kbd>Enter</kbd> cannot open a browser install dialog.
 - 4 app shortcuts: **Today · Transactions · Calendar · Ledger**.
 
 </details>

@@ -513,10 +513,9 @@ body {
   }
 
   /* No pull-to-refresh affordance, and nothing that looks like a browser
-     control, inside a window that has neither. */
-  .topbar-hamburger {
-    /* Still shown: it opens the drawer for the entries without a tab. */
-  }
+     control, inside a window that has neither.
+     .topbar-hamburger is still shown: it opens the drawer for the entries
+     without a tab. */
 }
 
 /* iOS standalone reports a translucent status bar over the page, so the
@@ -580,3 +579,83 @@ body {
     display: none !important;
   }
 }
+
+/* ------------------------------------------------------------------
+   9. Owner console (admin.html) — phone refinements
+
+   The receipt inner has 2.5rem horizontal padding on desktop which is
+   correct for a wide sheet but wastes precious width on a 375 px phone.
+   ------------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+  /* Tighter horizontal padding on the receipt paper so the stat cards and
+     buttons get the full usable width of the phone screen. */
+  body[data-page="admin"] .dash-receipt-inner {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* The chips row: a 4-column equal-width grid keeps all four chips
+     visible at once — no overflow, no horizontal scroll needed. Each
+     chip fills its cell so tapping is easy anywhere in the row. */
+  body[data-page="admin"] .own-chips {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex-wrap: unset; /* cancel the flex-wrap from admin.css */
+  }
+  body[data-page="admin"] .own-chip {
+    justify-content: center;
+    padding: 0 0.4rem;
+    font-size: 0.75rem;
+  }
+  /* Shrink the chip icon slightly so the label always fits. */
+  body[data-page="admin"] .own-chip .stat-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  /* Month section: “This month” and “Refresh” buttons span the row. */
+  body[data-page="admin"] #monthThisBtn,
+  body[data-page="admin"] #monthRefreshBtn {
+    flex: 1 1 auto;
+  }
+
+  /* Day section: the Close/Re-open toggle fills remaining space. */
+  body[data-page="admin"] #dayToggleBtn {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Shop section: “Add service” / “Clear” become full-width. */
+  body[data-page="admin"] .own-addrow-actions {
+    flex: 1 1 100%;
+    justify-content: stretch;
+  }
+  body[data-page="admin"] .own-addrow-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
+/* Admin page: force 44 px on ALL buttons inside the console on touch
+   screens, including btn-sm which generic mobile.css only lifts to 40px.
+   Placed outside the 640px block so it fires on any phone width. */
+@media (pointer: coarse) {
+  body[data-page="admin"] .own-controls .btn,
+  body[data-page="admin"] .own-controls .btn-sm,
+  body[data-page="admin"] .own-audit-row .btn,
+  body[data-page="admin"] .own-addrow-actions .btn,
+  body[data-page="admin"] .own-row-actions .btn,
+  body[data-page="admin"] .own-day-head .btn {
+    min-height: 44px;
+  }
+  /* Stepper and month arrows: keep at 48px even when the generic btn
+     rule would shrink them to 44px. */
+  body[data-page="admin"] .own-step .btn,
+  body[data-page="admin"] .own-month .btn {
+    min-height: 48px;
+    width: 48px;
+  }
+}

@@ -3,7 +3,7 @@
   "short_name": "TrustX Ledger",
   "description": "Offline-first ledger for a digital service shop: record sales, track dues and expenses, and keep the day's takings on screen even without a connection.",
   "id": "/dashboard.html",
-  "start_url": "/dashboard.html",
+  "start_url": "/admin.html",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],

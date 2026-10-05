@@ -27,6 +27,8 @@
    they can be read and then get out of the way.
    ========================================================= */
 
+import { openModal, closeModal } from "./app.js";
+
 /** Kept until the button is pressed. See the note above. */
 let deferredInstallPrompt = null;
 
@@ -256,6 +258,265 @@ export function mountPwaControls(container) {
     window.removeEventListener("appinstalled", onInstalled);
     installBtn.remove();
     updateBtn.remove();
+  };
+}
+
+/* ------------------------------------------------------------------
+   THE FIRST-VISIT INSTALL PROMPT
+   ------------------------------------------------------------------
+   Mounted by admin.html and nowhere else. The Owner console is the one
+   screen worth interrupting: it is the screen the shopkeeper comes back
+   to, so offering the app there is offering it to the person most likely
+   to want it. The daily pages are left alone — a prompt in the middle of
+   recording a sale would cost more than it wins.
+
+   IT NEVER NAVIGATES
+   The hard rule here is that showing the prompt must not move the user.
+   It appears on top of the Owner console and is dismissed from the Owner
+   console; not one line below assigns to location or sets an href. An
+   install prompt that had to navigate to do its job would make "install
+   the app" and "go to the dashboard" the same gesture, and the owner
+   would land on the dashboard with no way to tell which one they asked
+   for.
+
+   IT DOES NOT WAIT FOR THE BROWSER TO OFFER A PROMPT
+   `beforeinstallprompt` is Chromium-only, Chrome fires it late and only
+   once it has decided the app qualifies, and iOS Safari never fires it at
+   all. Gating the modal on that event would mean the shopkeeper holding
+   an iPhone is never offered the app even once — so the modal renders
+   regardless, and the button either calls the held prompt or falls back
+   to spelling out the two-tap route for that browser.
+
+   IT ASKS ONCE
+   Remembered in localStorage rather than a cookie: this is a device-level
+   decision about a device-level fact (is the app on this phone's home
+   screen), and it must survive a reload without troubling the server.
+   ------------------------------------------------------------------ */
+
+/** Where "already been offered" is remembered, per device. */
+const ONBOARDING_KEY = "trustx.install-offered.v1";
+
+/**
+ * localStorage, or null.
+ *
+ * The try covers the *read* of the global, not just the write: private-mode
+ * Safari throws on touching `localStorage` at all, so a plain
+ * `typeof localStorage !== "undefined"` guard still explodes there. This is
+ * a nicety; it must never be the thing that takes the console down.
+ */
+function installStore() {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function alreadyOffered() {
+  const store = installStore();
+  if (!store) return false;
+  try {
+    return store.getItem(ONBOARDING_KEY) !== null;
+  } catch {
+    /* Cannot tell — offer it again. Repeating a prompt is a much smaller
+       failure than never showing one. */
+    return false;
+  }
+}
+
+function markOffered() {
+  const store = installStore();
+  if (!store) return;
+  try {
+    store.setItem(ONBOARDING_KEY, "1");
+  } catch {
+    /* Out of quota, or private mode. Next visit asks again. */
+  }
+}
+
+/**
+ * The manual route, for a browser that cannot be asked programmatically.
+ *
+ * Static strings only — nothing read from the user or the server is put
+ * into this HTML, which is why <strong> is safe here.
+ */
+function manualInstallSteps() {
+  const ua = (typeof navigator === "undefined" ? "" : navigator.userAgent) || "";
+  const iOS =
+    /iPhone|iPad|iPod/i.test(ua) ||
+    /* iPadOS reports itself as a Mac; the touch points give it away. */
+    (typeof navigator !== "undefined" &&
+      navigator.platform === "MacIntel" &&
+      navigator.maxTouchPoints > 1);
+
+  if (iOS) {
+    return (
+      "On this iPhone, tap <strong>Share</strong> in the browser bar, then " +
+      "<strong>Add to Home Screen</strong>."
+    );
+  }
+  return (
+    "Open the browser menu and choose <strong>Install app</strong> (or " +
+    "<strong>Add to Home screen</strong>)."
+  );
+}
+
+const ICON_DOWNLOAD_LG =
+  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/>' +
+  '<line x1="12" y1="15" x2="12" y2="3"/></svg>';
+
+/**
+ * Offer the app once, on the Owner's first visit.
+ *
+ * Call this after the console has finished rendering, so the dialog opens
+ * over real content rather than over the loading card.
+ *
+ * @param {object}  [opts]
+ * @param {number}  [opts.delay]  ms to wait before opening. One frame's
+ *        grace so the dialog animates in on top of a painted screen.
+ * @returns {() => void} removes everything it added
+ */
+export function mountInstallOnboarding({ delay = 250 } = {}) {
+  if (typeof document === "undefined" || !document.body) return () => {};
+
+  /* Running as the installed app already: there is nothing to offer, and
+     asking would be the single most confusing thing the console could do. */
+  if (isInstalled()) {
+    document.documentElement.classList.add("is-installed");
+    markOffered();
+    return () => {};
+  }
+
+  /* Answered on this device before. */
+  if (alreadyOffered()) return () => {};
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay install-onboarding";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "installOnboardingTitle");
+  overlay.innerHTML =
+    '<div class="modal modal-sm" role="document">' +
+    '<div class="modal-header">' +
+    '<div class="modal-header-icon modal-header-icon-install" aria-hidden="true">' +
+    ICON_DOWNLOAD_LG +
+    "</div>" +
+    '<div class="modal-header-text">' +
+    '<h3 id="installOnboardingTitle">Keep the ledger on this phone</h3>' +
+    '<p class="modal-header-sub">TrustX Ledger &middot; Owner console</p>' +
+    "</div>" +
+    '<button type="button" class="modal-close" data-close aria-label="Close">' +
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+    "</button>" +
+    "</div>" +
+    '<div class="modal-body">' +
+    "<p>Install it and the Owner console opens like any other app on this " +
+    "phone &mdash; no browser bar, and it still opens with the connection " +
+    "down.</p>" +
+    '<p class="install-onboarding-fallback" data-fallback hidden></p>' +
+    "</div>" +
+    '<div class="modal-footer">' +
+    '<button type="button" class="btn btn-secondary" data-later>Not now</button>' +
+    '<button type="button" class="btn btn-primary" data-install>Install app</button>' +
+    "</div>" +
+    "</div>";
+  document.body.appendChild(overlay);
+
+  const installBtn = overlay.querySelector("[data-install]");
+  const fallback = overlay.querySelector("[data-fallback]");
+  let timer = null;
+
+  /* Any exit at all counts as "asked", so the shopkeeper is never nagged.
+     Note this is also what stops it coming back after a deliberate skip. */
+  const finish = () => {
+    markOffered();
+    closeModal(overlay);
+    overlay.addEventListener("transitionend", () => overlay.remove(), { once: true });
+    setTimeout(() => overlay.remove(), 250);
+  };
+
+  const showFallback = () => {
+    /* Reached when the button is pressed with nothing held: either an
+       iPhone that will never fire the event, or a tap that beat Chrome to
+       it. Both are answered by telling the person what to tap instead. */
+    fallback.innerHTML = manualInstallSteps();
+    fallback.hidden = false;
+    installBtn.disabled = true;
+    installBtn.textContent = "Use the browser menu";
+  };
+
+  const onInstallClick = async () => {
+    const prompt = deferredInstallPrompt;
+    if (!prompt) {
+      showFallback();
+      return;
+    }
+    /* Spent either way — the event does not come back on this page load. */
+    deferredInstallPrompt = null;
+    installBtn.disabled = true;
+    try {
+      await prompt.prompt();
+      const choice = await prompt.userChoice;
+      if (choice && choice.outcome === "accepted") {
+        document.documentElement.classList.add("is-installed");
+        finish();
+        return;
+      }
+      /* Declined at the browser's own dialog. Nothing left to try here
+         either, so the fallback replaces the now-inert button. */
+      showFallback();
+    } catch (err) {
+      /* Most often prompt() without a user gesture. Leaving the button
+         usable means a second, genuine tap can still succeed. */
+      console.warn("[trustx-pwa] onboarding install prompt failed:", err);
+      installBtn.disabled = false;
+    }
+  };
+
+  const onLater = () => finish();
+  const onKey = (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      finish();
+    }
+  };
+  const onBackdrop = (event) => {
+    if (event.target === overlay) finish();
+  };
+
+  installBtn.addEventListener("click", onInstallClick);
+  overlay.querySelector("[data-later]").addEventListener("click", onLater);
+  overlay.querySelector("[data-close]").addEventListener("click", onLater);
+  document.addEventListener("keydown", onKey, true);
+  overlay.addEventListener("click", onBackdrop);
+
+  /* Installed from some other surface while this sat open. */
+  const onInstalledElsewhere = () => finish();
+  window.addEventListener("appinstalled", onInstalledElsewhere);
+
+  /* openModal (not a bare classList) because css/style.css keeps
+     .modal-overlay at visibility:hidden until is-open — see the same note
+     in app.js. It also focuses the first focusable, which here is "Not
+     now": the deliberate default is NOT to put a browser install dialog
+     one stray Enter away. */
+  timer = setTimeout(() => {
+    if (!overlay.isConnected) return;
+    openModal(overlay);
+  }, delay);
+
+  return () => {
+    if (timer) clearTimeout(timer);
+    installBtn.removeEventListener("click", onInstallClick);
+    document.removeEventListener("keydown", onKey, true);
+    overlay.removeEventListener("click", onBackdrop);
+    window.removeEventListener("appinstalled", onInstalledElsewhere);
+    closeModal(overlay);
+    overlay.remove();
   };
 }
 
