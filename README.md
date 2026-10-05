@@ -107,8 +107,8 @@ TrustX Ledger/
 │   ├── ledger.html           746 lines   One business day · filters · totals · close & reopen
 │   └── transactions.html     623 lines   All-time or single-day history · search · grouped
 │
-├── ADMIN  (admin role only · deliberately NOT in the nav)
-│   └── admin.html            231 lines   Owner console → js/admin.js · no app shell
+├── ADMIN  (admin role only · one link in the nav)
+│   └── admin.html            315 lines   Owner console → js/admin.js, on the app shell
 │                                            Money · Month · Day · Shop
 │
 ├── OVERLAYS  (modals, not pages)
@@ -131,7 +131,7 @@ TrustX Ledger/
 │   ├── day-heads.js        day counters + per-method split             (pure)
 │   ├── day-ledger.js       single-day view logic                       (pure)
 │   ├── day-audit.js        day-integrity check + repair plan          (pure)
-│   ├── admin.js            Owner console (4 tabs, own layout, no shell)
+│   ├── admin.js            Owner console (4 receipt chips, dashboard stat cards)
 │   ├── shell.js            shared protected-page bootstrap
 │   ├── app.js              toasts · modals · sidebar · global errors
 │   ├── utils.js            paise · Asia/Kolkata dates · validation
@@ -342,7 +342,7 @@ Every page except `index.html`, `login.html` and `offline.html` redirects to the
 ║  📒  Daily Ledger ················ ledger.html        /ledger      [open]  ║
 ║  🧾  Transaction history ········ transactions.html  /transactions[open]  ║
 ║                                                                          ║
-║  ADMIN — admin role only, deliberately not in the nav                    ║
+║  ADMIN — admin role only                                                 ║
 ║  🛡️  Owner console ··············· admin.html         /admin       [open]  ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 ```
@@ -555,26 +555,31 @@ The dashboard reads the day head, which is why the counters must be provably cor
 
 ### 🛡️ Owner Console — `admin.html`
 
-**Route** `/admin.html` · **Access** **`admin` role only** · **231 lines shell + `js/admin.js`**
-**Deliberately not in the sidebar nav.** Reached by URL.
+**Route** `/admin.html` · **Access** **`admin` role only** · **315 lines shell + `js/admin.js`**
+**One sidebar link.** Under Management, after the shop's own four screens.
 
 > Not a settings page, and not a developer page. This is the screen a shop owner opens
 > on a phone to answer four questions: how did today go, which days of this month are
 > missing, can I close a day and is that day in step, and who still has access.
 
-**The one page with no app shell.** It builds its own top bar and a fixed four-tab bottom
-bar instead of calling `initAppShell()`. Inheriting the daily navigation would put sale
-entry one tap away from day-close and integrity actions, and the console has no business
-being the shop's front door. `initOwnerConsole()` drives it.
+**A shell page, like every other protected screen.** It calls `initAppShell({ requireAdmin:
+true })` and renders into `#mainContent` from `renderOwnerConsole(ctx)`, so it inherits the
+sidebar, the top bar, the user chip, the install controls and the mobile tab bar. What is
+its own is the paper: the four sections sit on the same receipt sheet the dashboard prints
+its figures on, using the dashboard's own stat cards, so a rupee looks the same on both
+pages. Sale entry stays out of reach — the chip row is the console's only navigation, and
+it never becomes the shop's front door.
 
-**Gate** `requireAccess()` with `grantAdminAccess()`, which promotes a browser holding
-active `shop` trust by presenting an `admin`-scope proof — and, more importantly, every
-read and write below is refused by `firestore.rules` unless
-`accessGrants/{uid}.role == 'admin'`. A non-admin gets a locked gate, not a page.
+**Gate** the shell's `requireAccess()` and `requireAdmin: true` resolve the grant and the
+role into `ctx`, then `renderOwnerConsole(ctx)` asks for `grantAdminAccess()` when the role
+is missing, which promotes a browser holding active `shop` trust by presenting an
+`admin`-scope proof — and, more importantly, every read and write below is refused by
+`firestore.rules` unless `accessGrants/{uid}.role == 'admin'`. A non-admin gets a locked
+gate, not a page.
 
-**Four tabs**
+**Four receipt chips**
 
-| Tab | What it answers |
+| Chip | What it answers |
 |---|---|
 | **Money** | Today's taken, collected, due, expenses and net — then the same five for the month to date |
 | **Month** | Which days this month contains, what each day took and netted, and which days have nothing on them |
@@ -603,7 +608,7 @@ The same holds for the month.
 
 **Removed, not moved:** the **Free plan usage** card (the quota layer still counts and
 still raises its own exhausted banner — the owner is not asked to manage a meter's read
-budget) and **All data** (it read every recent sale in the app; the Money and Month tabs
+budget) and **All data** (it read every recent sale in the app; the Money and Month sections
 answer the same question off day heads).
 
 **Dues stop at the month, on purpose.** Money shows what is due today and what is due this
@@ -678,9 +683,11 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["admin.html<br/>requireAccess · grantAdminAccess"] --> B{"grant.role is admin?"}
-    B -- no --> C["Owner console locked"]
-    B -- yes --> D["Four tabs · own top bar and bottom bar"]
+    A["admin.html<br/>initAppShell requireAdmin"] --> B{"ctx.isAdmin?"}
+    B -- no --> B2["grantAdminAccess proof"]
+    B2 -- refused --> C["Owner console locked"]
+    B2 -- granted --> D
+    B -- yes --> D["Four chips on the receipt"]
     D --> E["Money<br/>today and month to date<br/>folded off day heads"]
     D --> F["Month<br/>each day's taken · expenses · net<br/>plus the days with nothing on them"]
     D --> G["Day<br/>open or close · any date"]
@@ -698,7 +705,7 @@ flowchart TD
 Two things the diagram leaves out on purpose. **Free plan usage is gone** — the quota layer
 still counts and still raises its own exhausted banner, but no card asks the owner to
 manage a meter's read budget. **All data is gone** — it read every recent sale in the app,
-and the Money and Month tabs answer the same question off day heads for one query per
+and the Money and Month sections answer the same question off day heads for one query per
 month instead of a read per sale.
 
 ### <a id="auth-flow"></a>Authentication Flow

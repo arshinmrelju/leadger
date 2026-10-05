@@ -31,7 +31,7 @@ never the control; the rules are.
 | Calendar | `calendar.html` | `/calendar.html` | trusted | 538 |
 | Daily Ledger | `ledger.html` | `/ledger.html?date=YYYY-MM-DD` | trusted | 746 |
 | Transaction History | `transactions.html` | `/transactions.html[?date=YYYY-MM-DD]` | trusted | 623 |
-| Owner Console | `admin.html` | `/admin.html` | admin | 231 |
+| Owner Console | `admin.html` | `/admin.html` | admin | 315 |
 | Offline Fallback | `offline.html` | `/offline.html` | public | 112 |
 
 ---
@@ -180,15 +180,18 @@ Scope is derived from the URL: a `date` param means **day**, otherwise **all tim
 
 ### 🛡️ Owner Console — `admin.html`
 
-`requireAccess()` + `grantAdminAccess()` · **not in the sidebar nav** · **no app shell**
+`initAppShell({ requireAdmin: true })` + `grantAdminAccess()` · **one sidebar link, under
+Management** · **on the app shell**
 
-The one page that does not use `js/app.js`. It carries its own top bar and a fixed
-four-tab bottom bar, because the console is a different job from the shop screens and
-inheriting the daily navigation would put day-to-day entry one tap away from day-close
-and integrity actions. `initOwnerConsole()` in `js/admin.js` drives it; the HTML is a
-231-line shell.
+A shell page, like every other protected screen: it inherits the sidebar, top bar, user
+chip, install controls and mobile tab bar, and `renderOwnerConsole(ctx)` in `js/admin.js`
+paints into `#mainContent`. What is its own is the paper — the four sections sit on the
+same receipt sheet as the dashboard's, using its stat cards, its stamp and its tear edge,
+so a rupee looks the same on both pages. The sections are chips inside the receipt, not
+sidebar links: the sidebar's one "Owner console" entry already says where you are, and
+day-close never sits one tap from sale entry. The HTML is a 315-line shell.
 
-| Tab | What it answers | Reads |
+| Chip | What it answers | Reads |
 |---|---|---|
 | **Money** | What did we take today, and how is this month going? | today's summary · the month's day heads · the month's expenses |
 | **Month** | Which days are in this month, and where is it out of step? | the month's day heads · the month's expenses |

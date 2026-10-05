@@ -39,10 +39,10 @@ shop contain real service names, real totals, and real customer names.
 | 08 | `08-history.png` | `transactions.html` in **All time** scope, grouped by day |
 | 09 | `09-sale-form.png` | ⌘N with the service picker open |
 | 10 | `10-receipt-ocr.png` | ⌘⇧N, drop a real receipt photo, capture mid-analysis |
-| 11 | `11-console-money.png` | `admin.html` → 💵 Money |
-| 12 | `12-console-month.png` | `admin.html` → 📅 Month, with the missing days called out |
-| 13 | `13-console-day.png` | `admin.html` → 🗓️ Day |
-| 14 | `14-console-shop.png` | `admin.html` → 🛒 Shop |
+| 11 | `11-console-money.png` | `admin.html`, sidebar → Owner console → 💵 Money chip |
+| 12 | `12-console-month.png` | same shell → 📅 Month chip, with the missing days called out |
+| 13 | `13-console-day.png` | same shell → 🗓️ Day chip |
+| 14 | `14-console-shop.png` | same shell → 🛒 Shop chip |
 | 15 | `15-offline.png` | DevTools → Network → **Offline**, then navigate to a page not in the precache |
 | 16 | `16-mobile-dashboard.png` | DevTools → 390 × 844, showing the bottom tab bar |
 

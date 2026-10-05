@@ -126,19 +126,18 @@ and register the service worker even if the SDK never loads.
 | `calendar.html` | `app`, `utils`, `calendar`, `ledger`, `day-ledger`, `auth`, `shell`, `sale-form` |
 | `ledger.html` | `app`, `utils`, `day-heads`, `ledger`, `day-ledger`, `txn-actions`, `auth`, `shell`, `sale-form`, `calendar` |
 | `transactions.html` | `app`, `utils`, `ledger`, `auth`, `shell`, `sale-form`, `txn-actions`, `calendar` |
-| `admin.html` | `admin` only — it does not import `app` or `shell` |
+| `admin.html` | `admin`, `app`, `utils`, `calendar`, `day-heads`, `day-audit`, `service-catalog`, `ledger`, `auth`, `shell` |
 | `offline.html` | none — a static page, by design |
 
 Firebase itself is loaded by an **import map** pinned to `12.18.0`, so every module that needs the
 SDK imports the bare specifier `firebase/firestore` and gets the pinned URL.
 
-`admin.html` is the deliberate exception in that table. It builds its own layout and its own
-`requireAccess()` gate instead of `initAppShell()`, which is what lets the console carry a
-different information architecture from the shop screens. The cost is real and is worth naming:
-`js/app.js` is what wires the sidebar, so a page that skips `app` also skips `shell` — and with
-it the shared page chrome that every other protected page gets for free. Anything the console needs
-that used to arrive through the shell (toasts, confirm dialogs, the PWA controls) it now mounts
-itself.
+`admin.html` is in that table like the rest, and it is the reason the console's information
+architecture could stay different while its chrome did not. `initAppShell({ requireAdmin:
+true })` draws the sidebar, top bar, user chip and mobile tab bar and resolves the grant;
+`renderOwnerConsole(ctx)` then owns only what the shell cannot: the admin proof and the
+promotion, the four receipt chips and the figures on the sheet. A different navigation inside
+the page is no longer a different page frame.
 
 ---
 
