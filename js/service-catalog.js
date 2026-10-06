@@ -104,10 +104,9 @@ const GROUPS = [
       ["Building Tax", "BT"],
       ["E-Challan", "EC"],
       ["PAN Card Work", "PN"],
-      ["Legal Document Work", "LG"],
+      ["Legal Heir", "LH"],
       ["PVC Card", "PV"],
       ["Passport Application", "PP"],
-      ["Legal Letter", "LL"],
     ],
   },
   {
