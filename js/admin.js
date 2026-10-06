@@ -232,8 +232,8 @@ function renderLocked() {
     '<p class="ledger-loading-sub">This page keeps the shop&rsquo;s money, its service list and the ' +
     "browsers allowed to open the ledger. Sign in with the owner&rsquo;s Google account to get in.</p>" +
     '<div class="flex" style="gap:.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;">' +
-    '<a class="btn btn-primary" href="login.html?reason=not-admin">Switch account</a>' +
-    '<a class="btn btn-secondary" href="dashboard.html">Back to dashboard</a>' +
+    '<a class="btn btn-primary" href="admin-login.html?reason=not-admin">Switch account</a>' +
+    '<a class="btn btn-secondary" href="admin-login.html">Sign in to the Owner console</a>' +
     "</div></div></div>";
 }
 

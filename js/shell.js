@@ -53,7 +53,7 @@ function initialsOf(name, email) {
     .toUpperCase() || "?";
 }
 
-function renderUserChip(user) {
+function renderUserChip(user, loginPage = "login.html") {
   const chip = document.getElementById("userChip");
   if (!chip) return;
   const name = user.displayName || user.email || "Shop user";
@@ -84,7 +84,7 @@ function renderUserChip(user) {
     } catch (err) {
       console.error(err);
     }
-    window.location.replace("login.html?reason=signedout");
+    window.location.replace(loginPage + "?reason=signedout");
   });
 }
 
@@ -267,15 +267,15 @@ function registerGlobalKeys() {
  * @param {boolean} [opts.requireAdmin]  also resolve the Developer-console
  *        admin role into ctx.isAdmin (one extra read, console only)
  */
-export async function initAppShell({ onReady, onDayChange, requireAdmin = false } = {}) {
-  const grant = await requireAccess("login.html");
+export async function initAppShell({ onReady, onDayChange, requireAdmin = false, loginPage = "login.html" } = {}) {
+  const grant = await requireAccess(loginPage);
   if (!grant) return; // redirect handled inside requireAccess
 
-  guardPage("login.html");
+  guardPage(loginPage);
   registerGlobalKeys();
 
   const real = getCurrentUser();
-  renderUserChip(real);
+  renderUserChip(real, loginPage);
 
   try {
     /* Every signed-in browser shares the shop; create its record once. */

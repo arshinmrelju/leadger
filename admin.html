@@ -49,28 +49,6 @@
       </div>
 
       <nav class="sidebar-nav" aria-label="Main navigation">
-        <div class="nav-section-title">Workspace</div>
-
-        <a class="nav-link" data-nav="dashboard" href="dashboard.html">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-          Dashboard
-        </a>
-
-        <a class="nav-link" data-nav="transactions" href="transactions.html">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17h10"/><path d="M4 5h16v14H4z"/><path d="M4 5l2-2h12l2 2"/></svg>
-          Transactions
-        </a>
-
-        <a class="nav-link" data-nav="ledger" href="ledger.html">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
-          Daily Ledger
-        </a>
-
-        <a class="nav-link" data-nav="calendar" href="calendar.html">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          Calendar
-        </a>
-
         <div class="nav-section-title">Management</div>
 
         <a class="nav-link is-active" data-nav="admin" href="admin.html">
@@ -179,8 +157,6 @@
                   <div class="own-controls fin-refreshrow">
                     <button type="button" class="btn btn-secondary btn-sm" id="moneyRefreshBtn">Refresh</button>
                     <span class="own-controls-spacer"></span>
-                    <a class="btn btn-secondary btn-sm receipt-pill-btn" href="transactions.html">Sales</a>
-                    <a class="btn btn-secondary btn-sm receipt-pill-btn" href="dashboard.html">Dashboard</a>
                   </div>
 
                   <div class="fin-sectionhead">
@@ -376,6 +352,7 @@
 
     initAppShell({
       requireAdmin: true,
+      loginPage: "admin-login.html",
       onDayChange: () => {
         window.dispatchEvent(new CustomEvent("seva:owner-day-change"));
       },

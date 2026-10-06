@@ -80,6 +80,7 @@ const SHELL_FILES = [
   "calendar.html",
   "ledger.html",
   "admin.html",
+  "admin-login.html",
   "offline.html",
   "manifest.webmanifest",
 
