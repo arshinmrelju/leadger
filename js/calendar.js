@@ -197,12 +197,15 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
        never has to remember to special-case next week. Positive means
        the cell is AFTER today. */
     if (today && daysBetweenDateKeys(today, dateKey) > 0) {
-      cells.push(blankCell(dateKey, inMonth, true, isToday));
+      const cell = blankCell(dateKey, inMonth, true, isToday);
+      cell.isHoliday = isSunday(dateKey) && inMonth;
+      cells.push(cell);
       continue;
     }
 
     const raw = inMonth ? table[dateKey] : null;
     const head = raw ? readHead(raw) : null;
+    const holiday = isSunday(dateKey);
 
     if (!head) {
       /* No head, or one whose counters do not add up. Those are different
@@ -215,6 +218,7 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
          to type sales into a day that refuses them. */
       const closed = isClosedHead(raw);
       const cell = blankCell(dateKey, inMonth, false, isToday);
+      cell.isHoliday = holiday && inMonth;
       if (closed) {
         cell.status = DAY_STATUS.CLOSED;
         cell.closed = true;
@@ -234,6 +238,7 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
       collectedPaise: head.collectedPaise,
       duePaise: head.duePaise,
       closed: head.closed,
+      isHoliday: holiday && inMonth,
     });
   }
   return cells;
@@ -243,6 +248,14 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
 function weekdayIndex(dateKey) {
   const day = dateKeyToUTC(dateKey).getUTCDay(); // Sunday = 0
   return (day + 6) % 7;
+}
+
+/**
+ * Every Sunday is a holiday: the shop is shut that day, so a Sunday with
+ * nothing recorded is expected — it is not a day the books are missing.
+ */
+export function isSunday(dateKey) {
+  return isValidDateKey(dateKey) && weekdayIndex(dateKey) === 6;
 }
 
 /**
@@ -280,6 +293,7 @@ function blankCell(dateKey, inMonth, isFuture, isToday) {
     duePaise: 0,
     closed: false,
     figuresUnreadable: false,
+    isHoliday: false,
   };
 }
 
@@ -368,11 +382,16 @@ export function monthTotals(cells) {
     daysRecorded: 0,
     daysClosed: 0,
     daysMissed: 0,
+    daysHoliday: 0,
   };
 
   for (const cell of Array.isArray(cells) ? cells : []) {
     if (!cell || !cell.inMonth || cell.isFuture) continue;
     totals.daysInMonth += 1;
+    if (cell.isHoliday && cell.status !== DAY_STATUS.FILLED && cell.status !== DAY_STATUS.CLOSED) {
+      totals.daysHoliday += 1;
+      continue;
+    }
     if (cell.status === DAY_STATUS.FILLED || cell.status === DAY_STATUS.CLOSED) {
       totals.daysRecorded += 1;
       totals.grossPaise += toCount(cell.grossPaise) || 0;
@@ -401,6 +420,7 @@ export function missedDays(cells, limit = 10) {
   const list = [];
   for (const cell of Array.isArray(cells) ? cells : []) {
     if (!cell || !cell.inMonth) continue;
+    if (cell.isHoliday) continue;
     if (cell.status !== DAY_STATUS.EMPTY) continue;
     list.push(cell.dateKey);
   }

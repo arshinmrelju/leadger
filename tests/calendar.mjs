@@ -142,6 +142,17 @@ test("buildGrid: today is marked exactly once", () => {
   assert.equal(cells.find((c) => c.isToday).dateKey, "2026-09-15");
 });
 
+test("buildGrid: every Sunday is a holiday, and holidays are not missed", () => {
+  const cells = buildGrid({ yearMonth: "2026-09", todayKey: "2026-09-30" });
+  const sundays = inMonthCells(cells).filter((c) => c.dateKey === "2026-09-06" || c.dateKey === "2026-09-13" || c.dateKey === "2026-09-20" || c.dateKey === "2026-09-27");
+
+  assert.equal(sundays.length, 4);
+  assert.ok(sundays.every((c) => c.isHoliday === true));
+  assert.ok(inMonthCells(cells).filter((c) => c.isHoliday).every((c) => new Date(c.dateKey).getDay() === 0 || c.status === "filled" || c.status === "closed"));
+  assert.ok(!missedDays(cells).includes("2026-09-06"));
+  assert.ok(!missedDays(cells).includes("2026-09-13"));
+});
+
 test("buildGrid: a day with sales is FILLED, and a closed one is CLOSED", () => {
   const cells = buildGrid({
     yearMonth: "2026-09",
@@ -311,7 +322,9 @@ test("monthTotals: sums the recorded days and counts the rest as missing", () =>
   /* The tenth is the last day that has happened; the rest of the month
      is not yet owed to anyone. */
   assert.equal(t.daysInMonth, 10);
-  assert.equal(t.daysMissed, 8);
+  /* Sept 6 2026 was a Sunday holiday, so it is not owed. */
+  assert.equal(t.daysHoliday, 1);
+  assert.equal(t.daysMissed, 7);
 });
 
 test("monthTotals: a month with nothing in it is all missing, not zero-sold", () => {

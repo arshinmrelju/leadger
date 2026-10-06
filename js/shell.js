@@ -208,6 +208,10 @@ function mountTabBar() {
      "this is a shell page" — it is what admin.html has too, and the
      Developer console deserves the same quick way back out. */
   if (!document.querySelector(".sidebar")) return;
+  /* admin.html ships its own in-sheet quick nav (.fin-tabbar). Mounting the
+     shell's fixed tab bar on top of it would cover it, and every tap meant
+     for a console section would land on one of these page links instead. */
+  if (document.querySelector(".fin-tabbar")) return;
 
   const page = document.body.dataset.page || "";
 

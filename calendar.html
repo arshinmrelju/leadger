@@ -211,6 +211,7 @@
           '<span class="cal-legend-item"><i class="cal-dot is-closed"></i>Closed</span>' +
           '<span class="cal-legend-item"><i class="cal-dot is-empty"></i>Nothing entered</span>' +
           '<span class="cal-legend-item"><i class="cal-dot is-future"></i>Not yet</span>' +
+          '<span class="cal-legend-item"><i class="cal-dot is-holiday"></i>Sunday holiday</span>' +
         "</div>" +
 
         '<div class="card cal-card">' +
@@ -246,14 +247,15 @@
       const classes = ["cal-cell", "is-" + cell.status];
       if (!cell.inMonth) classes.push("is-outside");
       if (cell.isToday) classes.push("is-today");
+      if (cell.isHoliday) classes.push("is-holiday");
 
       const dayNumber = Number(cell.dateKey.slice(8, 10));
       const classesAttr = classes.join(" ");
 
       const statusWord =
         cell.status === DAY_STATUS.CLOSED ? "Closed" :
-        cell.status === DAY_STATUS.FUTURE ? "Not yet" :
-        cell.status === DAY_STATUS.EMPTY ? "Nothing entered" :
+        cell.status === DAY_STATUS.FUTURE ? (cell.isHoliday ? "Holiday" : "Not yet") :
+        cell.status === DAY_STATUS.EMPTY ? (cell.isHoliday ? "Holiday" : "Nothing entered") :
         cell.txnCount === 1 ? "1 sale" : cell.txnCount + " sales";
 
       const heading = cell.inMonth

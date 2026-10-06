@@ -84,6 +84,7 @@
 .cal-dot.is-closed { background: #ece5d6; border-color: var(--color-muted); }
 .cal-dot.is-empty { background: transparent; border-style: dashed; }
 .cal-dot.is-future { background: var(--color-bg); border-color: var(--color-border); opacity: 0.6; }
+.cal-dot.is-holiday { background: #fbe4e0; border-color: #d96a5b; }
 
 /* ---------- Grid frame ---------- */
 .cal-card {
@@ -231,6 +232,18 @@
 
 .cal-cell.is-future .cal-cell-day { color: var(--color-faint); font-weight: 700; }
 .cal-cell.is-future .cal-cell-foot { color: var(--color-faint); }
+
+/* Sunday holiday: the shop is shut, so the day is expected to be empty.
+   Soft red wash, distinct from the dashed "nothing entered" warning. */
+.cal-cell.is-holiday {
+  background: linear-gradient(160deg, #fdf3f1 0%, #fbe4e0 100%);
+  border-color: #f0b8b0;
+  border-style: solid;
+}
+
+.cal-cell.is-holiday .cal-cell-day { color: #b3402f; }
+.cal-cell.is-holiday .cal-cell-amount { color: #b3402f; }
+.cal-cell.is-holiday .cal-cell-foot { color: #c05749; }
 
 .cal-cell.is-outside {
   opacity: 0.5;
@@ -462,6 +475,7 @@
   .cal-cell.is-closed  { border-left-color: var(--color-muted); }
   .cal-cell.is-empty   { border-left-color: var(--color-warning); border-left-style: solid; }
   .cal-cell.is-future  { border-left-color: var(--color-border); }
+  .cal-cell.is-holiday { border-left-color: #d96a5b; border-left-style: solid; }
   .cal-cell.is-outside { border-left-color: transparent; }
 
   /* The cell link becomes a horizontal row. */
