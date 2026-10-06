@@ -37,7 +37,7 @@
    ========================================================= */
 
 /** Bump to invalidate every cached file on the next activate. */
-const CACHE_VERSION = "v7";
+const CACHE_VERSION = "v8";
 
 const SHELL_CACHE = `trustx-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `trustx-vendor-${CACHE_VERSION}`;
@@ -83,6 +83,7 @@ const SHELL_FILES = [
   "admin-login.html",
   "offline.html",
   "manifest.webmanifest",
+  "manifest-admin.webmanifest",
 
   "css/style.css",
   "css/forms.css",

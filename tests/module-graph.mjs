@@ -348,15 +348,38 @@ const PAGES = [
 
 test("every page links the manifest and declares a theme colour", () => {
   const problems = [];
-  for (const page of PAGES) {
-    const html = fs.readFileSync(path.join(ROOT, page), "utf8");
+  /* Shop surfaces install to the dashboard; the Owner console is a second
+     installable app with its own manifest so desktop shop installs never
+     launch into admin.html. */
+  const OWNER_PAGES = new Set(["admin.html", "admin-login.html"]);
+  for (const page of [...PAGES, "admin-login.html", "offline.html"]) {
+    let html;
+    try {
+      html = fs.readFileSync(path.join(ROOT, page), "utf8");
+    } catch {
+      problems.push(`${page}: page not found`);
+      continue;
+    }
     if (!/rel="manifest"/.test(html)) problems.push(`${page}: no <link rel="manifest">`);
     if (!/name="theme-color"/.test(html)) problems.push(`${page}: no theme-color meta`);
-    if (!/manifest\.webmanifest/.test(html)) {
-      problems.push(`${page}: manifest link does not point at manifest.webmanifest`);
+    const want = OWNER_PAGES.has(page) ? "manifest-admin.webmanifest" : "manifest.webmanifest";
+    if (!html.includes(want)) {
+      problems.push(`${page}: manifest link must point at ${want}`);
     }
   }
   assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("the two manifests launch into their own app", () => {
+  const shop = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.webmanifest"), "utf8"));
+  const owner = JSON.parse(
+    fs.readFileSync(path.join(ROOT, "manifest-admin.webmanifest"), "utf8"),
+  );
+  assert.equal(shop.start_url, "/dashboard.html", "shop manifest must launch the shop");
+  assert.equal(shop.id, "/dashboard.html", "shop manifest id must stay stable");
+  assert.equal(owner.start_url, "/admin.html", "owner manifest must launch the console");
+  assert.equal(owner.id, "/admin.html", "owner manifest needs its own id, or installs collide");
+  assert.notEqual(shop.id, owner.id, "sharing one id merges the two apps into one install");
 });
 
 test("the install prompt is captured before any async shell init can run", () => {

@@ -239,7 +239,7 @@ migration is recorded in `firestore.rules:616-619`.
 
 | Piece | File | Behaviour |
 |---|---|---|
-| Precaching | `sw.js` | cache `v7`, 52 files (48 app + 4 pinned Firebase SDK bundles), install-time |
+| Precaching | `sw.js` | cache `v8`, 52 files (48 app + 4 pinned Firebase SDK bundles), install-time |
 | Navigation | `sw.js` | network first, cache fallback, then `offline.html` |
 | App data | Firestore | `persistentLocalCache` + multi-tab, so an open shop keeps reading while offline |
 | Writes while offline | — | not queued. A sale needs the rules to approve it, and the rules are server-side |
@@ -251,15 +251,17 @@ connection.**
 
 ## PWA
 
-| Field | Value |
-|---|---|
-| `id` / `start_url` | `/dashboard.html` |
-| `scope` | `/` |
-| `display` | `standalone` |
-| `theme_color` | `#0f1115` |
-| `background_color` | `#0f1115` |
-| Icons | `icon-192`, `icon-512`, `icon-maskable-512`, plus SVG |
-| Shortcuts | Today · Transactions · Calendar · Day ledger |
+| Field | Shop (`manifest.webmanifest`) | Owner (`manifest-admin.webmanifest`) |
+|---|---|---|
+| `id` / `start_url` | `/dashboard.html` | `/admin.html` |
+| `scope` | `/` | `/` |
+| `display` | `standalone` | `standalone` |
+| `theme_color` | `#132b1e` | `#5b5bd6` |
+| `background_color` | `#f7f3ea` | `#f7f3ea` |
+| Icons | `icon-192`, `icon-512`, `icon-maskable-512`, plus SVG | same set |
+| Shortcuts | Today · Transactions · Calendar · Day ledger | — |
+
+Shop pages link the shop manifest; `admin.html` + `admin-login.html` link the owner manifest, so a desktop shop install opens the dashboard and an owner install opens the console.
 
 Icons are derived from `assets/logo.svg` and are rebuildable with `node tools/make-icons.mjs`
 (needs headless Chrome). See [`DEVELOPMENT.md`](DEVELOPMENT.md).
