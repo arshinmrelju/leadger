@@ -1228,23 +1228,32 @@ test("a day of legacy sales reads as in step to the client and unusable to the r
     amounts: { gross: total, cash: total },
   }));
 
-  /* What the client believes, and what it would compute for the head. */
+  /* What the client believes: its tolerant reader fills the absent
+     buckets with zero, so the day still totals. */
   const clientSum = headFor(legacy);
   assert.equal(clientSum.txnCount, 3);
   assert.equal(clientSum.grossPaise, 75000);
 
+  /* The same three sales with every bucket present. collected is what
+     the cash actually collected, not a zero: collected = gross - due
+     is one of the invariants the head is held to, so filling it with
+     zero would be a head no rule accepts, and the day could never
+     read as fine. */
+  const filled = legacy.map((d) => ({ ...d, amounts: splitAmounts(d.total, d.paymentMethod) }));
+  const head = { state: DAY_STATE.OPEN, counters: headFor(filled) };
+
   /* So the head is in step, and the old check said so: nothing to do. */
   const trusting = auditDayCounters({
     dateKey: "2026-10-03",
-    head: { state: DAY_STATE.OPEN, counters: clientSum },
-    rows: legacy.map((d) => ({ ...d, amounts: { ...d.amounts, upi: 0, card: 0, due: 0, collected: 0 } })),
+    head,
+    rows: filled,
   });
   assert.equal(trusting.status, AUDIT_STATUS.OK, "with the fields filled in, the day is genuinely fine");
 
   /* The real documents are refused, and the report has to say so. */
   const audit = auditDayCounters({
     dateKey: "2026-10-03",
-    head: { state: DAY_STATE.OPEN, counters: clientSum },
+    head,
     rows: legacy,
   });
   assert.equal(audit.status, AUDIT_STATUS.UNREADABLE);
@@ -1797,8 +1806,16 @@ test("a cached value goes stale in the background without blocking the page", as
   /* Wide margins on purpose: these tests assert WHICH branch of the TTL
      logic runs, so the gaps between steps are far larger than the jitter of
      a busy test runner. A tight boundary here would make this test fail
-     occasionally and teach nobody anything. */
-  const cache = createReadCache({ freshTtlMs: 100, staleTtlMs: 1000 });
+     occasionally and teach nobody anything.
+
+     The window that matters is the one right after the background refresh:
+     settle() has to land inside freshTtlMs of that refresh's fetch, or the
+     next read is served as stale, kicks a SECOND refresh, and the final call
+     count comes out one too high. On Windows setTimeout(1) is clamped to
+     about 15ms, so settle()'s five sleeps alone cost roughly 75ms — against
+     a 100ms budget that was never the wide margin it looked like, and the
+     test failed about a run in three. 600ms is. */
+  const cache = createReadCache({ freshTtlMs: 600, staleTtlMs: 1500 });
   const loader = async () => {
     calls += 1;
     return { n: calls };
@@ -1820,7 +1837,7 @@ test("a cached value goes stale in the background without blocking the page", as
   /* Past the fresh window but still inside the stale window the reader gets
      the old value AT ONCE — the shop sees today's total rather than a
      spinner — and the re-check happens off to the side. */
-  await tick(200);
+  await tick(900);
   assert.deepEqual(await cache.read("k", loader), { n: 1 });
   assert.equal(calls, 2, "the re-check should have started in the background");
 
@@ -1830,7 +1847,7 @@ test("a cached value goes stale in the background without blocking the page", as
 
   /* Past the stale window the caller waits for the server again rather than
      being shown something arbitrarily old. */
-  await tick(1200);
+  await tick(2200);
   assert.deepEqual(await cache.read("k", loader), { n: 3 });
 });
 

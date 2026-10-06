@@ -17,7 +17,7 @@
 [![Build step](https://img.shields.io/badge/build-none-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![Dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![PWA](https://img.shields.io/badge/PWA-installable-2d8a4e?style=flat-square)](https://web.dev/progressive-web-apps/)
-[![Tests](https://img.shields.io/badge/tests-176%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
+[![Tests](https://img.shields.io/badge/tests-177%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
 [![Security rules](https://img.shields.io/badge/firestore.rules-923%20lines-c0392b?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/firestore.rules)
 
 <br/>
@@ -84,12 +84,12 @@ The interesting engineering is not the CRUD. It is that **a browser is treated a
 
 | Pages | JS modules | CSS files | Rules | Tests | Runtime deps |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| **8** | **21** | **9** | **978** | **176** | **0** |
+| **8** | **21** | **9** | **978** | **177** | **0** |
 
 </div>
 
 `978` = 923 lines of `firestore.rules` + 55 lines of `database.rules.json`.
-`176` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
+`177` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
 
 <details>
 <summary><b>📦 What is actually in the repository</b> (70 tracked files)</summary>
@@ -1746,28 +1746,27 @@ npm run test:rules # Firestore emulator harness — requires `firebase emulators
 
 | Suite | Lines | What it covers |
 |---|---:|---|
-| `tests/ledger.mjs` | 2,010 | paise maths, validation, day-view logic, catalog seeding, day-head counters — **and it reads `firestore.rules` off disk to assert the client constants still match the rules** |
-| `tests/calendar.mjs` | 352 | month bounds, totals, missed-day detection, backfilled-row marking |
-| `tests/receipt-scan.mjs` | 263 | a scanned bill read as a **list** of lines, priced the way `createTransaction()` recomputes them, with an unknown name offered as suggestions instead of refused — **and a source guard on the Gemini prompt, because that instruction is what used to collapse a bill to its largest line** |
-| `tests/module-graph.mjs` | 486 | every named import resolves to a real export; no dead exports; `sw.js`'s `FIREBASE_VERSION` matches all 8 import maps |
-| `tests/owner-console.mjs` | 456 | the admin console's figures, chips and half-scoped guard |
+| `tests/ledger.mjs` | 2,307 | paise maths, validation, day-view logic, catalog seeding, day-head counters — **and it reads `firestore.rules` off disk to assert the client constants still match the rules** |
+| `tests/calendar.mjs` | 428 | month bounds, totals, missed-day detection, backfilled-row marking |
+| `tests/receipt-scan.mjs` | 303 | a scanned bill read as a **list** of lines, priced the way `createTransaction()` recomputes them, with an unknown name offered as suggestions instead of refused — **and a source guard on the Gemini prompt, because that instruction is what used to collapse a bill to its largest line** |
+| `tests/module-graph.mjs` | 557 | every named import resolves to a real export; no dead exports; `sw.js`'s `FIREBASE_VERSION` matches all 8 import maps |
+| `tests/owner-console.mjs` | 506 | the admin console's figures, chips and half-scoped guard |
 
 ### Current result — stated honestly
 
 ```
-ℹ tests 176     ℹ pass 175     ℹ fail 1     ℹ skipped 0     ℹ todo 0
+ℹ tests 177     ℹ pass 177     ℹ fail 0     ℹ skipped 0     ℹ todo 0
 ```
 
-**One test is failing** on `main` right now, and it was already failing before the receipt work:
+**The suite is green.** The one case that used to fail here — *a day of legacy sales reads as in
+step to the client and unusable to the rules* — was fixed at its cause rather than relaxed:
 
-```text
-✖ a day of legacy sales reads as in step to the client and unusable to the rules
-  tests/ledger.mjs:1221
-  AssertionError: with the fields filled in, the day is genuinely fine
-  'bad-head' !== 'ok'
-```
-
-`auditDayCounters` classifies a day of legacy sales as `bad-head` where the test expects `ok`. Reported rather than papered over; no badge in this README claims a green suite.
+- Its fixture filled the missing `amounts` buckets with zeros, which is a head no rule accepts —
+  `collectedPaise` must equal `grossPaise - duePaise` (`firestore.rules:417`), so the day could never
+  read as `ok`. The fixture now carries a real `splitAmounts()` split.
+- `describeRefusal()` quoted only the verdict's headline, so the shop was never told *which* sale the
+  rules stumbled over, nor that this is **not** a head out of step. It now quotes the diagnosis with
+  the headline, and points at the integrity card only when a head repair is actually the answer.
 
 ### The rules harness
 
@@ -1874,7 +1873,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 | HTML pages | 8 · 3,228 lines |
 | JS modules | 21 · 12,278 lines |
 | CSS files | 9 · 5,418 lines |
-| Tests | 5 files · 3,567 lines · 176 cases |
+| Tests | 5 files · 4,101 lines · 177 cases |
 | Tools | 7 Node scripts |
 | Assets | 10 files |
 | Security rules | 978 lines |
@@ -1952,7 +1951,7 @@ Security ................. ✓           rules matrix · authz · 3-layer valida
                                         sensitive data · 6 known gaps
 Installation ............. ✓           verified against package.json and real tools
 Configuration ............ ✓           3 real config points, placeholders only
-Testing ................. ✓           176 tests · 175 pass / 1 fail reported
+Testing ................. ✓           177 tests · 177 pass / 0 fail
 Statistics ............... ✓           all badges dynamic, none hardcoded
 Developer ................ ✓            from repository metadata only
 Secrets exposed .......... 0 ✓         no key, token or credential reproduced
@@ -1969,7 +1968,7 @@ Fabricated content ....... 0 ✓         no invented pages, features, stats or m
 
 ### Verification performed
 
-- `npm test` executed — **176 tests, 175 pass, 1 fail**; the failure is reproduced verbatim above rather than hidden behind a green badge
+- `npm test` executed — **177 tests, 177 pass, 0 fail**; the long-standing legacy-sales failure is fixed at its cause (fixture + refusal diagnosis), not skipped or weakened
 - All 8 deployed page URLs requested — **HTTP 200** each
 - **All 10 Mermaid diagrams** (7 here, 3 in `docs/`) parsed with the `mermaid@11` parser that GitHub uses — every one renders
 - **Anchor, fence and HTML-tag balance machine-checked** across this README and all 6 `docs/` files — every internal anchor resolves, every fence closes, every `<details>` pairs

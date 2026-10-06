@@ -25,13 +25,15 @@ dependencies.
 
 ## Tests
 
-142 cases across three files.
+177 cases across five files.
 
 | File | Lines | Covers |
 |---|---|---|
-| [`tests/ledger.mjs`](../tests/ledger.mjs) | 2 290 | paise arithmetic, `splitAmounts`, date keys, day-audit diagnosis and repair planning, OCR normalisation, catalog matching, quota arithmetic |
-| [`tests/calendar.mjs`](../tests/calendar.mjs) | 416 | `buildGrid`, `monthBounds`, `monthTotals`, `missedDays`, `dayCellLabel` |
+| [`tests/ledger.mjs`](../tests/ledger.mjs) | 2 307 | paise arithmetic, `splitAmounts`, date keys, day-audit diagnosis and repair planning, OCR normalisation, catalog matching, quota arithmetic |
+| [`tests/calendar.mjs`](../tests/calendar.mjs) | 428 | `buildGrid`, `monthBounds`, `monthTotals`, `missedDays`, `dayCellLabel` |
 | [`tests/module-graph.mjs`](../tests/module-graph.mjs) | 557 | import edges — no cycles, no bare specifiers, import-map version consistency |
+| [`tests/receipt-scan.mjs`](../tests/receipt-scan.mjs) | 303 | a bill read as lines, priced as `createTransaction()` prices it, unknown names offered as suggestions |
+| [`tests/owner-console.mjs`](../tests/owner-console.mjs) | 506 | the owner console's figures, chips and guard |
 
 The pure-logic modules import nothing from Firebase, so Node can test them directly:
 
@@ -48,12 +50,19 @@ import { splitAmounts } from "../js/day-heads.js";
 ### Current status
 
 ```text
-142 tests · 141 pass · 1 fail
+177 tests · 177 pass · 0 fail
 ```
 
-The failing case is `tests/ledger.mjs:1221`, *"a day of legacy sales reads as in step to the client
-and unusable to the rules"*, asserting `'bad-head' !== 'ok'`. It is a known failure in the
-repository at `v0.13.1` and is reported here rather than hidden.
+The case that was failing at `v0.13.1` — `tests/ledger.mjs:1221`, *"a day of legacy sales reads as
+in step to the client and unusable to the rules"*, asserting `'bad-head' !== 'ok'` — is fixed. Two
+causes, both at the source rather than in the assertion:
+
+- The fixture filled the missing `amounts` buckets with zeros, which is a counter set no rule
+  accepts: `collectedPaise == grossPaise - duePaise` (`firestore.rules:417`). The fixture now carries
+  a real `splitAmounts()` split, so "with the fields filled in" means filled *correctly*.
+- `describeRefusal()` returned only the verdict's headline, so the shop was never told which sale
+  the rules could not read, nor that this is not a head out of step. It now quotes the diagnosis with
+  the headline, and offers the integrity card only when a head repair is genuinely the answer.
 
 ---
 

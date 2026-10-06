@@ -477,16 +477,31 @@ export function describeRefusal(audit, plan) {
     );
   }
 
+  /* The headline names the verdict. The detail is where the cause is
+     actually named: which sale the rules stumbled over, and that this
+     is not a head out of step. A refusal that quotes only the headline
+     sends the shop to repair a head that is already correct, so the
+     detail is quoted with it. */
   let remedy;
   if (p.status === REPAIR_STATUS.CLOSED) {
     remedy = "Reopen " + day + " in the ledger, then fix its totals and close it again.";
+  } else if (p.repairable) {
+    remedy = "The Developer console's Day integrity card can put it back in one step.";
+  } else if (a.truncated || (Array.isArray(a.unreadable) && a.unreadable.length)) {
+    /* There is no difference for the integrity card to show: either a
+       document has to be completed or the read was partial, and the
+       head is not what is wrong. The detail says which. */
+    remedy = "";
   } else {
-    remedy = p.repairable
-      ? "The Developer console's Day integrity card can put it back in one step."
-      : "The Developer console's Day integrity card will show the difference in full.";
+    remedy = "The Developer console's Day integrity card will show the difference in full.";
   }
 
-  return (
-    said.headline + " Nothing on " + day + " can be changed until that is put right. " + remedy
-  );
+  return [
+    said.headline,
+    "Nothing on " + day + " can be changed until that is put right.",
+    said.detail,
+    remedy,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
