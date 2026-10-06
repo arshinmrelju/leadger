@@ -1117,7 +1117,7 @@ async function loadDay() {
       ? "Sales cannot be added, edited or deleted on a closed day. Re-open it to fix a mistake."
       : "Sales can still be added, edited and deleted on this day.";
     toggle.hidden = false;
-    toggle.className = "btn btn-sm " + (closed ? "btn-secondary" : "btn-primary");
+    toggle.className = "btn btn-sm fin-daytoggle " + (closed ? "btn-secondary" : "btn-primary");
     toggle.textContent = closed ? "Re-open day" : "Close day";
   }
 

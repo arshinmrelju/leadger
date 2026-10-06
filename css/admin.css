@@ -571,7 +571,7 @@ body[data-page="admin"].fin-login-page {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin: 0;
+  margin: 12px 0 0;
 }
 .own-money .stat-span-2 { grid-column: span 2; }
 #ownConsole .own-money .stat-card {
@@ -740,6 +740,92 @@ body[data-page="admin"].fin-login-page {
   border: 1px solid #e7eaf2;
   border-radius: 16px;
 }
+
+/* ---------- Day section ---------- */
+
+.fin-daycard {
+  padding: 16px;
+}
+
+.fin-daystep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fin-stepbtn {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid #e7eaf2;
+  background: #fff;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--fin-ink);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fin-datebox {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #e7eaf2;
+  background: #fff;
+  color: var(--fin-muted);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
+}
+
+.fin-dateinput {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  height: auto;
+  text-align: center;
+  font-weight: 800;
+  color: var(--fin-ink);
+}
+
+.fin-dateinput:focus { box-shadow: none; }
+
+.fin-daystatus {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #f4f6fb;
+  border: 1px solid #e9ecf4;
+}
+
+.fin-daynote {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #6b7488;
+}
+
+.fin-daytoggle {
+  width: 100%;
+  margin-top: 12px;
+  min-height: 46px;
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.fin-daytoggle.btn-primary {
+  background: var(--fin-primary);
+}
+
+.fin-daytoggle.btn-primary:hover { background: var(--fin-primary-dark); }
 .own-audit-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .own-audit-row .btn { flex: 1 1 140px; min-height: 44px; border-radius: 14px; justify-content: center; }
 .own-loading { display: flex; align-items: center; justify-content: center; padding: 1.5rem 1rem; color: var(--fin-muted); font-size: 0.9rem; }
