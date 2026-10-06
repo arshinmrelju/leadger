@@ -72,6 +72,7 @@ import {
   fetchMonthHeads,
   fetchMonthExpenses,
   fetchTodaySummary,
+  fetchDayState,
   repairDayHead,
   closeDay,
   reopenDay,
@@ -184,6 +185,7 @@ export async function renderOwnerConsole(ctx) {
   wireMonth();
   wireDay();
   wireShop();
+  wireBell();
 
   /* The section the browser came back to, so a reload keeps the owner
      where they were rather than dropping them on the default one. */
@@ -417,6 +419,32 @@ function tile(label, value, { kind = "taken", note = "", tone = "", wide = false
 function countNote(n, noun = "sale") {
   if (!n) return "Nothing recorded";
   return n + " " + noun + (n === 1 ? "" : "s");
+}
+
+function wireBell() {
+  const bell = document.getElementById("finBellBtn");
+  if (!bell) return;
+  bell.addEventListener("click", async () => {
+    /* Reading the bell clears the unread mark, even if the read fails. */
+    bell.querySelector(".fin-dot")?.remove();
+    try {
+      const todayKey = todayKolkata();
+      const [summary, dayState] = await Promise.all([
+        fetchTodaySummary(todayKey),
+        fetchDayState(todayKey),
+      ]);
+      toast(
+        "Today is " + (dayState.closed ? "closed" : "open") + ": " +
+        formatINR(summary.amountPaise) + " taken in " + summary.count +
+        (summary.count === 1 ? " sale" : " sales") + ", " +
+        formatINR(summary.duePaise) + " still due.",
+        "info",
+        5200
+      );
+    } catch (err) {
+      toast(reportError(err), "error");
+    }
+  });
 }
 
 function wireMoney() {
