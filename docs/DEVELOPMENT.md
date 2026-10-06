@@ -25,11 +25,11 @@ dependencies.
 
 ## Tests
 
-177 cases across five files.
+178 cases across five files.
 
 | File | Lines | Covers |
 |---|---|---|
-| [`tests/ledger.mjs`](../tests/ledger.mjs) | 2 307 | paise arithmetic, `splitAmounts`, date keys, day-audit diagnosis and repair planning, OCR normalisation, catalog matching, quota arithmetic |
+| [`tests/ledger.mjs`](../tests/ledger.mjs) | 2 336 | paise arithmetic, `splitAmounts`, date keys, day-audit diagnosis and repair planning, OCR normalisation, catalog matching, quota arithmetic |
 | [`tests/calendar.mjs`](../tests/calendar.mjs) | 428 | `buildGrid`, `monthBounds`, `monthTotals`, `missedDays`, `dayCellLabel` |
 | [`tests/module-graph.mjs`](../tests/module-graph.mjs) | 557 | import edges — no cycles, no bare specifiers, import-map version consistency |
 | [`tests/receipt-scan.mjs`](../tests/receipt-scan.mjs) | 303 | a bill read as lines, priced as `createTransaction()` prices it, unknown names offered as suggestions |
@@ -50,7 +50,7 @@ import { splitAmounts } from "../js/day-heads.js";
 ### Current status
 
 ```text
-177 tests · 177 pass · 0 fail
+178 tests · 178 pass · 0 fail
 ```
 
 The case that was failing at `v0.13.1` — `tests/ledger.mjs:1221`, *"a day of legacy sales reads as

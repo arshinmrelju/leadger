@@ -1581,6 +1581,35 @@ test("every refused change in txn-actions.js is told its cause, not just reporte
   assert.match(src, /if \(!found\) return plain;/);
 });
 
+test("saveEdit's refusal diagnosis passes the row from module state, not an out-of-scope name", () => {
+  const src = fs.readFileSync(path.join(ROOT, "js", "txn-actions.js"), "utf8");
+
+  /* The catch block of saveEdit() used to hand describeRefusedWrite the
+     bare identifier `row`, which no longer exists in that function —
+     the row lives in module state as `editing`. In strict mode the
+     catch itself then threw a ReferenceError, so a refused edit-saving
+     never reached the diagnosis. settleRow and deleteRow build their
+     own `row`, and must be left alone. */
+  const guard = "export async function editRow";
+  const saveEdit = src.slice(src.indexOf("async function saveEdit"), src.indexOf(guard));
+
+  assert.match(
+    saveEdit,
+    /await describeRefusedWrite\(err, false, editing\)/,
+    "saveEdit must diagnose with the row in module state (editing)",
+  );
+  assert.equal(
+    /await describeRefusedWrite\(err, false, row\)/.test(saveEdit),
+    false,
+    "saveEdit must not diagnose with an out-of-scope row",
+  );
+
+  /* The two sibling writers pass a local row, and that is deliberate. */
+  for (const name of ["settleRow", "deleteRow"]) {
+    assert.match(src, new RegExp(name + "\\(row,"), name + " builds its own row");
+  }
+});
+
 /* =========================================================
    Free-plan survival kit
    -----------------------------------------------------------------

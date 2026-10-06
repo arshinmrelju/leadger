@@ -17,7 +17,7 @@
 [![Build step](https://img.shields.io/badge/build-none-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![Dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![PWA](https://img.shields.io/badge/PWA-installable-2d8a4e?style=flat-square)](https://web.dev/progressive-web-apps/)
-[![Tests](https://img.shields.io/badge/tests-177%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
+[![Tests](https://img.shields.io/badge/tests-178%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
 [![License](https://img.shields.io/badge/license-MIT-2d8a4e?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/LICENSE)
 [![Security rules](https://img.shields.io/badge/firestore.rules-923%20lines-c0392b?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/firestore.rules)
 
@@ -85,12 +85,12 @@ The interesting engineering is not the CRUD. It is that **a browser is treated a
 
 | Pages | JS modules | CSS files | Rules | Tests | Runtime deps |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| **8** | **21** | **9** | **978** | **177** | **0** |
+| **8** | **21** | **9** | **978** | **178** | **0** |
 
 </div>
 
 `978` = 923 lines of `firestore.rules` + 55 lines of `database.rules.json`.
-`177` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
+`178` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
 
 <details>
 <summary><b>📦 What is actually in the repository</b> (70 tracked files)</summary>
@@ -1394,21 +1394,14 @@ There is **no server-side or client-side rate limiter** for Firestore reads or w
 </details>
 
 <details>
-<summary><b>5 · A latent bug in the edit-save error path</b></summary>
-
-In `js/txn-actions.js`, `saveEdit` reads `row` inside its `catch` block, but `row` is not in that function's scope — the row lives in module state as `editing`. If an edit save is refused, the `catch` itself throws a `ReferenceError`, so the drift diagnosis never reaches the dialog. `settleRow` and `deleteRow` pass their own `row` correctly, so those paths work. Reported, not fixed.
-
-</details>
-
-<details>
-<summary><b>6 · Phishing residual risk</b></summary>
+<summary><b>5 · Phishing residual risk</b></summary>
 
 `js/auth.js` states it in a comment: a Google account can still be phished, and **Firebase App Check** (or moving the check into a callable function) is the production control. What the ruleset buys is that the ledger is no longer open to every Google user in existence.
 
 </details>
 
 <details>
-<summary><b>7 · Two more stale comments about the Realtime Database</b></summary>
+<summary><b>6 · Two more stale comments about the Realtime Database</b></summary>
 
 The catalog moved out of the RTDB and into Firestore so the rules could verify a sale's service exists and is active at write time (`firestore.rules:616-619`). Two comments were never updated:
 
@@ -1747,7 +1740,7 @@ npm run test:rules # Firestore emulator harness — requires `firebase emulators
 
 | Suite | Lines | What it covers |
 |---|---:|---|
-| `tests/ledger.mjs` | 2,307 | paise maths, validation, day-view logic, catalog seeding, day-head counters — **and it reads `firestore.rules` off disk to assert the client constants still match the rules** |
+| `tests/ledger.mjs` | 2,336 | paise maths, validation, day-view logic, catalog seeding, day-head counters — **and it reads `firestore.rules` off disk to assert the client constants still match the rules** |
 | `tests/calendar.mjs` | 428 | month bounds, totals, missed-day detection, backfilled-row marking |
 | `tests/receipt-scan.mjs` | 303 | a scanned bill read as a **list** of lines, priced the way `createTransaction()` recomputes them, with an unknown name offered as suggestions instead of refused — **and a source guard on the Gemini prompt, because that instruction is what used to collapse a bill to its largest line** |
 | `tests/module-graph.mjs` | 557 | every named import resolves to a real export; no dead exports; `sw.js`'s `FIREBASE_VERSION` matches all 8 import maps |
@@ -1756,7 +1749,7 @@ npm run test:rules # Firestore emulator harness — requires `firebase emulators
 ### Current result — stated honestly
 
 ```
-ℹ tests 177     ℹ pass 177     ℹ fail 0     ℹ skipped 0     ℹ todo 0
+ℹ tests 178     ℹ pass 178     ℹ fail 0     ℹ skipped 0     ℹ todo 0
 ```
 
 **The suite is green.** The one case that used to fail here — *a day of legacy sales reads as in
@@ -1874,7 +1867,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 | HTML pages | 8 · 3,228 lines |
 | JS modules | 21 · 12,278 lines |
 | CSS files | 9 · 5,418 lines |
-| Tests | 5 files · 4,101 lines · 177 cases |
+| Tests | 5 files · 4,130 lines · 178 cases |
 | Tools | 7 Node scripts |
 | Assets | 10 files |
 | Security rules | 978 lines |
@@ -1952,7 +1945,7 @@ Security ................. ✓           rules matrix · authz · 3-layer valida
                                         sensitive data · 6 known gaps
 Installation ............. ✓           verified against package.json and real tools
 Configuration ............ ✓           3 real config points, placeholders only
-Testing ................. ✓           177 tests · 177 pass / 0 fail
+Testing ................. ✓           178 tests · 178 pass / 0 fail
 Statistics ............... ✓           all badges dynamic, none hardcoded
 Developer ................ ✓            from repository metadata only
 Secrets exposed .......... 0 ✓         no key, token or credential reproduced
@@ -1969,7 +1962,7 @@ Fabricated content ....... 0 ✓         no invented pages, features, stats or m
 
 ### Verification performed
 
-- `npm test` executed — **177 tests, 177 pass, 0 fail**; the long-standing legacy-sales failure is fixed at its cause (fixture + refusal diagnosis), not skipped or weakened
+- `npm test` executed — **178 tests, 178 pass, 0 fail**; the long-standing legacy-sales failure is fixed at its cause (fixture + refusal diagnosis), not skipped or weakened
 - All 8 deployed page URLs requested — **HTTP 200** each
 - **All 10 Mermaid diagrams** (7 here, 3 in `docs/`) parsed with the `mermaid@11` parser that GitHub uses — every one renders
 - **Anchor, fence and HTML-tag balance machine-checked** across this README and all 6 `docs/` files — every internal anchor resolves, every fence closes, every `<details>` pairs

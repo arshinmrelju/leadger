@@ -594,7 +594,7 @@ async function saveEdit(event) {
   } catch (err) {
     console.error("[trustx-ledger] edit:", err);
     setLoading(saveBtn, false);
-    showEditError(await describeRefusedWrite(err, false, row));
+    showEditError(await describeRefusedWrite(err, false, editing));
     return false;
   } finally {
     saving = false;
