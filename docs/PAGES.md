@@ -193,22 +193,30 @@ day-close never sits one tap from sale entry. The HTML is a 315-line shell.
 
 | Chip | What it answers | Reads |
 |---|---|---|
-| **Money** | What did we take today, and how is this month going? | today's summary · the month's day heads · the month's expenses |
+| **Money** | What did we take today, and how is this month going? | today's summary · this + last month's day heads · the month's expenses |
 | **Month** | Which days are in this month, and where is it out of step? | the month's day heads · the month's expenses |
-| **Day** | Is this day finished, and does its head add up? | the day's head · the day's summary · head + rows for the integrity check |
+| **Day** | Is this day finished, and does its head add up? | the day's head · the day's summary with its recent sales · head + rows for the integrity check |
 | **Shop** | What do we sell, and who may open the ledger? | service catalog · access grants |
 
-**Money** shows today's taken, collected, due, expenses and net, then the same five for
-the month to date. Every figure is folded off day heads rather than summed from sales,
-so it costs one query per month instead of a read per sale.
+**Money** opens with a greeting over the month's hero net, with the change
+against last month's collections underneath it, then today's tiles and the
+month-to-date tiles. Below them sit the collection mix (cash / UPI / card /
+due with each one's share) and the spending overview: a donut of the month's
+expenses by their own category field with budget-style bars. Every figure is
+folded off day heads rather than summed from sales, so it costs one query per
+month instead of a read per sale; the hero's delta costs one extra cached
+month of heads, and the mix, donut and day-sales list cost nothing at all.
 
-**Month** lists the month's recorded days with sales, taken, collected, expenses and net
-per day, a total row, and the days with nothing on them called out by name. A finished
+**Month** lists the month's recorded days as one row per day — date block,
+sales, state, taken, spent and net — with the month's own total as a closing
+row, and the days with nothing on them called out by name. A finished
 month is scanned whole (`monthBounds(yearMonth).days`): stopping at the last day with
 something on it would declare the rest of the month outside the ledger, which is the
 exact gap the screen exists to find. Future months cannot be walked into.
 
-**Day** takes any date, opens or closes it, and checks it. Closing is enforced by
+**Day** takes any date, opens or closes it, lists that day's sales newest
+first (the summary already carries the rows, so the list is free), and
+checks it. Closing is enforced by
 `firestore.rules`, not by the UI: every sale write against a closed day is refused.
 Re-opening is how a sale typed against the wrong day gets fixed. The integrity check
 recomputes the day's counters from its rows and offers a one-step repair when the

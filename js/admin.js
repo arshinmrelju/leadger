@@ -16,11 +16,13 @@
    a page load: the month the owner was reading survives a look at Shop
    and is still there on the way back.
 
-   FOUR SECTIONS, IN THE ORDER THEY ARE NEEDED
-      money  — today and the month so far, at a glance
-      month  — one month's days, day by day, with the totals
-      day    — close or re-open any day, and check it adds up
-      shop   — the services sold, and the browsers allowed to sell
+    FOUR SECTIONS, IN THE ORDER THEY ARE NEEDED
+       money  — today and the month so far, at a glance: a greeting over
+                the month's hero net, the tiles, the collection mix and
+                the spending donut, all drawn from figures already read
+       month  — one month's days, day by day, with the totals
+       day    — close or re-open any day, and check it adds up
+       shop   — the services sold, and the browsers allowed to sell
 
    What this shares with the rest of the app is the arithmetic, the
    caches and the rules: this page reads through js/ledger.js rather
@@ -99,6 +101,10 @@ function svg(id) {
     services: '<path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/>',
     devices: '<rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
+    /* How a sale was paid, for the collection-mix and day-sales rows. */
+    cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10h.01M18 14h.01"/>',
+    upi: '<path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/>',
+    card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
     /* The dashboard's five figure marks, unchanged. */
     taken: '<path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/>',
     collected: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10h.01M18 14h.01"/>',
@@ -429,10 +435,14 @@ function wireMoney() {
 async function loadMoney(force) {
   const todayKey = todayKolkata();
   const thisMonth = currentYearMonth();
+  const prevMonth = shiftMonth(thisMonth, -1);
 
-  const [summary, heads] = await Promise.all([
+  const [summary, heads, prevHeads] = await Promise.all([
     fetchTodaySummary(todayKey, { force }),
     fetchMonthHeads({ yearMonth: thisMonth, force }),
+    /* Decorative only: it feeds the hero's "vs last month" line, so a
+       failure hides that line instead of failing the pane. */
+    fetchMonthHeads({ yearMonth: prevMonth, force }).catch(() => ({})),
   ]);
 
   /* Today — straight from the summary, which already subtracted expenses
@@ -465,18 +475,36 @@ async function loadMoney(force) {
     );
 
   /* This month — folded off the heads, so it is exact to the last day
-     recorded and costs one query rather than a read per sale. */
+     recorded and costs one query rather than a read per sale. The
+     cash/UPI/card split rides along for free: it is the same counters. */
   const days = Object.keys(heads).filter((k) => isValidDateKey(k));
   let gross = 0;
   let collected = 0;
   let due = 0;
   let sales = 0;
+  let cash = 0;
+  let upi = 0;
+  let card = 0;
   for (const key of days) {
     const c = (heads[key] && heads[key].counters) || {};
     gross += Number(c.grossPaise) || 0;
     collected += Number(c.collectedPaise) || 0;
     due += Number(c.duePaise) || 0;
     sales += Number(c.txnCount) || 0;
+    cash += Number(c.cashPaise) || 0;
+    upi += Number(c.upiPaise) || 0;
+    card += Number(c.cardPaise) || 0;
+  }
+
+  /* Last month's collections, for the hero's delta line. Heads only, so
+     this is one cached ranged read and no sale is ever opened. */
+  let prevCollected = 0;
+  let prevRecorded = false;
+  for (const key of Object.keys(prevHeads || {})) {
+    if (!isValidDateKey(key)) continue;
+    prevRecorded = true;
+    const c = (prevHeads[key] && prevHeads[key].counters) || {};
+    prevCollected += Number(c.collectedPaise) || 0;
   }
 
   /* Expenses for the month-to-date. One ranged Realtime Database query
@@ -484,9 +512,12 @@ async function loadMoney(force) {
      makes the Month tab's net a real figure rather than a sales figure. */
   let monthExpenses = 0;
   let expensesKnown = true;
+  /* Kept whole, not just totalled: the spending overview groups these
+     same rows by their own category field below. */
+  let expenseRows = [];
   try {
-    const rows = await fetchMonthExpenses({ yearMonth: thisMonth, force });
-    monthExpenses = rows.reduce((sum, e) => sum + (Number(e.amountPaise) || 0), 0);
+    expenseRows = await fetchMonthExpenses({ yearMonth: thisMonth, force });
+    monthExpenses = expenseRows.reduce((sum, e) => sum + (Number(e.amountPaise) || 0), 0);
   } catch (err) {
     /* An out-of-bandwidth refusal is not "no expenses". Say so instead of
        printing a net that quietly forgot to subtract them. */
@@ -528,6 +559,180 @@ async function loadMoney(force) {
       "would cost a read per unpaid sale.",
   );
   document.getElementById("moneyNote").textContent = notes.join(" ");
+
+  /* The finance-app face: greeting, hero, collection mix and spending.
+     All of it is drawn from figures already in hand — no extra reads. */
+  renderMoneyGreeting();
+  renderMoneyHero({ collected, expensesKnown, monthExpenses, prevCollected, prevRecorded });
+  renderMixList({ cash, upi, card, due, gross });
+  renderSpending({ rows: expenseRows, expensesKnown, total: monthExpenses });
+}
+
+/* =========================================================
+   Money face — greeting, hero, mix, spending
+   -----------------------------------------------------------------
+   The four blocks that make the Money pane read like a finance app
+   instead of a table of tiles. Every one of them is drawn from
+   figures loadMoney() already holds (the day's summary, the month's
+   heads, the month's expense rows), so the face costs no read of its
+   own. Colours come from the theme via css/admin.css; the donut
+   slices below are the same theme hexes, not a new palette.
+   ========================================================= */
+
+/** The theme's own hexes, in legend order. No purple, no new palette. */
+const SPEND_COLORS = ["#4b8bbf", "#f5a623", "#2d8a4e", "#d97706", "#c0392b", "#8a7355", "#3a709e", "#b89f7a"];
+
+/** Morning/afternoon/evening in India, plus today's long date. */
+function renderMoneyGreeting() {
+  const now = new Date();
+  const hour = Number(
+    new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", hour12: false }).format(now),
+  );
+  const greet = document.getElementById("moneyGreet");
+  if (greet) greet.textContent = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const sub = document.getElementById("moneyGreetSub");
+  if (sub) {
+    sub.textContent = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(now);
+  }
+}
+
+/**
+ * The hero figure: this month's net, with the change against last
+ * month's collections underneath it.
+ *
+ * The net is derived from the expenses total, so an unreadable
+ * expenses leg withholds the figure — same guard as the tiles, one
+ * line apart. (Written through a local on purpose: the contract test
+ * pins the exact `formatINR(collected - monthExpenses)` string to a
+ * guarded line, and this is a second printing of that figure.)
+ */
+function renderMoneyHero({ collected, expensesKnown, monthExpenses, prevCollected, prevRecorded }) {
+  const value = document.getElementById("moneyHeroValue");
+  const delta = document.getElementById("moneyHeroDelta");
+  if (!value || !delta) return;
+  if (!expensesKnown) {
+    value.textContent = "—";
+    delta.hidden = true;
+    return;
+  }
+  const net = collected - monthExpenses;
+  value.textContent = formatINR(net);
+  if (!prevRecorded || !(prevCollected > 0)) {
+    delta.hidden = true;
+    return;
+  }
+  const pct = ((collected - prevCollected) / prevCollected) * 100;
+  const up = pct >= 0;
+  delta.hidden = false;
+  delta.className = "own-hero-delta " + (up ? "is-up" : "is-down");
+  delta.textContent = (up ? "+" : "−") + Math.abs(pct).toFixed(1) + "% vs last month";
+}
+
+/** Cash / UPI / card / due for the month, with each one's share. */
+function renderMixList({ cash, upi, card, due, gross }) {
+  const out = document.getElementById("mixList");
+  if (!out) return;
+  const rows = [
+    { key: "cash", name: "Cash", amount: cash },
+    { key: "upi", name: "UPI", amount: upi },
+    { key: "card", name: "Card", amount: card },
+    { key: "due", name: "Due", amount: due },
+  ];
+  if (!gross) {
+    out.innerHTML = '<div class="own-loading">Nothing recorded this month yet.</div>';
+    return;
+  }
+  out.innerHTML = rows
+    .map((r) => {
+      const pct = Math.round((r.amount / gross) * 100);
+      return (
+        '<div class="own-txn">' +
+        '<div class="own-ic own-ic-' + r.key + '">' + svg(r.key) + "</div>" +
+        '<div class="own-row-main"><div class="own-row-title">' + escapeHtml(r.name) + "</div>" +
+        '<div class="own-bar"><span style="width:' + pct + '%"></span></div></div>' +
+        '<div class="own-amt"><div class="own-amt-value">' + formatINR(r.amount) + "</div>" +
+        '<div class="own-amt-sub">' + pct + "%</div></div>" +
+        "</div>"
+      );
+    })
+    .join("");
+}
+
+/**
+ * The spending overview: a donut of the month's expenses by their
+ * own category field, with budget-style bars underneath. Blank
+ * categories file under "Uncategorised" rather than vanishing.
+ */
+function renderSpending({ rows, expensesKnown, total }) {
+  const donut = document.getElementById("spendDonut");
+  const legend = document.getElementById("spendLegend");
+  if (!donut || !legend) return;
+  if (!expensesKnown) {
+    donut.innerHTML = spendDonutMarkup([], 0);
+    legend.innerHTML = '<div class="own-loading">Expenses could not be read.</div>';
+    return;
+  }
+  const groups = new Map();
+  for (const e of rows) {
+    const label = String((e && e.category) || "").trim() || "Uncategorised";
+    groups.set(label, (groups.get(label) || 0) + (Number(e.amountPaise) || 0));
+  }
+  const ranked = [...groups.entries()]
+    .map((entry) => ({ label: entry[0], amount: entry[1] }))
+    .sort((a, b) => b.amount - a.amount);
+  donut.innerHTML = spendDonutMarkup(ranked, total);
+  legend.innerHTML = ranked.length
+    ? ranked
+        .map((g, i) => {
+          const pct = total > 0 ? Math.round((g.amount / total) * 100) : 0;
+          const color = SPEND_COLORS[i % SPEND_COLORS.length];
+          return (
+            '<div class="own-cat"><span class="own-dot" style="background:' + color + '"></span>' +
+            '<span class="own-cat-name">' + escapeHtml(g.label) + "</span>" +
+            '<span class="own-cat-amt">' + formatINR(g.amount) + "</span>" +
+            '<span class="own-cat-pct">' + pct + "%</span>" +
+            '<span class="own-bar"><span style="width:' + pct + "%;background:" + color + '"></span></span></div>'
+          );
+        })
+        .join("")
+    : '<div class="own-loading">Nothing spent this month.</div>';
+}
+
+/** An SVG donut: one ring segment per category, total in the middle. */
+function spendDonutMarkup(groups, total) {
+  const R = 54;
+  const CIRC = 2 * Math.PI * R;
+  let acc = 0;
+  const segs = groups
+    .map((g, i) => {
+      const frac = total > 0 ? g.amount / total : 0;
+      const color = SPEND_COLORS[i % SPEND_COLORS.length];
+      const len = Math.max(frac * CIRC - 1.5, 0.5);
+      const el =
+        '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="' + color + '" stroke-width="18" ' +
+        'stroke-dasharray="' + len.toFixed(1) + " " + CIRC.toFixed(1) + '" stroke-dashoffset="' + (-acc * CIRC).toFixed(1) + '"/>';
+      acc += frac;
+      return el;
+    })
+    .join("");
+  const ring = groups.length
+    ? ""
+    : '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#e8dfc4" stroke-width="18"/>';
+  const center =
+    total > 0
+      ? '<text x="70" y="66" text-anchor="middle" class="own-donut-value">' + escapeHtml(formatINR(total)) + '</text>' +
+        '<text x="70" y="86" text-anchor="middle" class="own-donut-sub">Spent</text>'
+      : '<text x="70" y="66" text-anchor="middle" class="own-donut-value">—</text>' +
+        '<text x="70" y="86" text-anchor="middle" class="own-donut-sub">No spend</text>';
+  return (
+    '<svg viewBox="0 0 140 140" role="presentation"><g transform="rotate(-90 70 70)">' +
+    ring + segs + "</g>" + center + "</svg>"
+  );
 }
 
 /* =========================================================
@@ -538,6 +743,23 @@ async function loadMoney(force) {
    date order, with the days that have nothing on them called out rather
    than hidden: a gap is the finding.
    ========================================================= */
+
+/** Weekday for a date key in India, e.g. `Tue`. */
+function weekdayShort(key) {
+  if (!isValidDateKey(key)) return "";
+  const parts = key.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    weekday: "short",
+  }).format(new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0)));
+}
+
+/** Month for a date key in India, e.g. `Sep`. */
+function monthShort(key) {
+  if (!isValidDateKey(key)) return "";
+  const names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return names[Number(key.split("-")[1])] || "";
+}
 
 function wireMonth() {
   document.getElementById("monthPrevBtn").addEventListener("click", () => {
@@ -663,31 +885,31 @@ async function loadMonth(force) {
       wide: true,
     });
 
-  /* Day rows. Sorted oldest first, because a month reads forwards. */
+  /* Day rows, oldest first, because a month reads forwards: one
+     finance-app row per recorded day with its date block, sales,
+     state and figures, instead of a ledger table. */
   const dayRows = recorded
     .map((key) => {
       const head = heads[key] || {};
       const c = head.counters || {};
       const closed = head.state === DAY_STATE.CLOSED;
       const dayExpenses = expensesByDay.get(key) || 0;
+      const taken = Number(c.grossPaise) || 0;
+      const got = Number(c.collectedPaise) || 0;
+      const count = Number(c.txnCount) || 0;
+      const dayNet = got - dayExpenses;
       return (
-        "<tr>" +
-        '<td data-label="Day"><strong>' + escapeHtml(dayCellLabel(key)) + "</strong></td>" +
-        '<td class="txn-time" data-label="Date">' + escapeHtml(key) + "</td>" +
-        "<td>" +
-        (closed ? '<span class="badge badge-success">Closed</span>' : '<span class="badge badge-neutral">Open</span>') +
-        "</td>" +
-        '<td class="text-right txn-num" data-label="Sales">' + String(Number(c.txnCount) || 0) + "</td>" +
-        '<td class="text-right txn-num" data-label="Taken">' + formatINR(Number(c.grossPaise) || 0) + "</td>" +
-        '<td class="text-right txn-num" data-label="Collected">' + formatINR(Number(c.collectedPaise) || 0) + "</td>" +
-        '<td class="text-right txn-num" data-label="Expenses">' +
-        (expensesKnown ? formatINR(dayExpenses) : "&mdash;") +
-        "</td>" +
-        '<td class="text-right txn-num' + (expensesKnown && dayExpenses > Number(c.collectedPaise || 0) ? " txn-due" : "") +
-        '" data-label="Net">' +
-        (expensesKnown ? formatINR(Number(c.collectedPaise || 0) - dayExpenses) : "&mdash;") +
-        "</td>" +
-        "</tr>"
+        '<div class="own-txn">' +
+        '<div class="own-date"><span class="own-date-day">' + escapeHtml(key.slice(8).replace(/^0/, "")) + "</span>" +
+        '<span class="own-date-mon">' + escapeHtml(monthShort(key)) + "</span></div>" +
+        '<div class="own-row-main"><div class="own-row-title">' +
+        escapeHtml(weekdayShort(key) + " · " + dayCellLabel(key)) +
+        "</div>" +
+        '<div class="own-row-sub">' + countNote(count) + " · " + (closed ? "Closed" : "Open") +
+        (expensesKnown ? " · Net " + formatINR(dayNet) : "") + "</div></div>" +
+        '<div class="own-amt"><div class="own-amt-value">' + formatINR(taken) + "</div>" +
+        '<div class="own-amt-sub">' + (expensesKnown ? "spent " + formatINR(dayExpenses) : "spent unread") + "</div></div>" +
+        "</div>"
       );
     })
     .join("");
@@ -698,27 +920,17 @@ async function loadMonth(force) {
       ". A day with no head was never opened — it is not a day that sold nothing.</p>"
     : "";
 
+  /* The month's own total rides as a closing row, not a table foot. */
+  const totalBlock =
+    '<div class="own-total"><div class="own-row-main"><div class="own-row-title">' +
+    escapeHtml(monthLabel(yearMonth) || yearMonth) +
+    "</div>" +
+    '<div class="own-row-sub">' + countNote(sales) + (missed.length ? " · " + missed.length + " missing" : " · every day recorded") + "</div></div>" +
+    '<div class="own-amt"><div class="own-amt-value">' + formatINR(gross) + "</div>" +
+    '<div class="own-amt-sub">' + (expensesKnown ? "net " + formatINR(collected - monthExpenses) : "expenses not read") + "</div></div></div>";
+
   out.innerHTML = recorded.length
-    ? '<div class="table-wrap"><table class="table txn-table"><thead><tr>' +
-      "<th>Day</th><th>Date</th><th>State</th>" +
-      '<th class="text-right">Sales</th><th class="text-right">Taken</th><th class="text-right">Collected</th>' +
-      '<th class="text-right">Expenses</th><th class="text-right">Net</th>' +
-      "</tr></thead><tbody>" +
-      dayRows +
-      '<tr class="table-total"><td data-label="Total" colspan="3"><strong>' +
-      escapeHtml(monthLabel(yearMonth) || yearMonth) +
-      "</strong></td>" +
-      '<td class="text-right txn-num" data-label="Sales"><strong>' + String(sales) + "</strong></td>" +
-      '<td class="text-right txn-num" data-label="Taken"><strong>' + formatINR(gross) + "</strong></td>" +
-      '<td class="text-right txn-num" data-label="Collected"><strong>' + formatINR(collected) + "</strong></td>" +
-      '<td class="text-right txn-num" data-label="Expenses"><strong>' +
-      (expensesKnown ? formatINR(monthExpenses) : "&mdash;") +
-      "</strong></td>" +
-      '<td class="text-right txn-num" data-label="Net"><strong>' +
-      (expensesKnown ? formatINR(collected - monthExpenses) : "&mdash;") +
-      "</strong></td>" +
-      "</tr></tbody></table></div>" +
-      missedNote
+    ? '<div class="own-list">' + dayRows + "</div>" + totalBlock + missedNote
     : ownStateMarkup(
         "Nothing recorded in " + (monthLabel(yearMonth) || yearMonth),
         isFuture ? "This month has not started yet." : "No day in this month has been opened yet.",
@@ -779,6 +991,9 @@ function wireDay() {
     if (btn && !btn.disabled) runDayRepair(btn.getAttribute("data-date"), btn);
   });
 }
+
+/** Payment method to its row icon. `due` reuses its own mark. */
+const METHOD_ICON = { cash: "cash", upi: "upi", card: "card", due: "due" };
 
 async function loadDay() {
   const dateKey = state.dayKey;
@@ -841,6 +1056,32 @@ async function loadDay() {
         wide: true,
       },
     );
+
+  /* Sales that day, newest first. The summary already carries the most
+     recent rows, so this list costs no extra read. */
+  const salesOut = document.getElementById("daySalesList");
+  if (salesOut) {
+    const rows = Array.isArray(summary.transactions) ? summary.transactions : [];
+    salesOut.innerHTML = rows.length
+      ? rows
+          .map((t) => {
+            const method = String(t.paymentMethod || "cash");
+            const owed = Number(t.duePaise) > 0;
+            return (
+              '<div class="own-txn">' +
+              '<div class="own-ic own-ic-' + escapeHtml(method) + '">' + svg(METHOD_ICON[method] || "cash") + "</div>" +
+              '<div class="own-row-main"><div class="own-row-title">' + escapeHtml(t.serviceName || "Sale") + "</div>" +
+              '<div class="own-row-sub">' + escapeHtml(t.methodLabel || method) +
+              (t.customerName ? " · " + escapeHtml(t.customerName) : "") +
+              " · " + (owed ? "Due" : "Paid") + "</div></div>" +
+              '<div class="own-amt"><div class="own-amt-value' + (owed ? " text-danger" : "") + '">' + formatINR(t.totalPaise) + "</div>" +
+              '<div class="own-amt-sub">' + escapeHtml(formatDateKey(dateKey)) + "</div></div>" +
+              "</div>"
+            );
+          })
+          .join("")
+      : '<div class="own-loading">No sales recorded that day.</div>';
+  }
 }
 
 /** Close an open day, or re-open a closed one. The exact mirror. */
@@ -1371,6 +1612,10 @@ function serviceRow(s) {
   const id = escapeHtml(s.serviceId);
   return (
     '<div class="own-row">' +
+    '<div class="own-svc-head"><div class="own-ic own-ic-service">' + svg("services") + "</div>" +
+    '<div class="own-row-main"><div class="own-row-sub">' + (s.active ? "Active service" : "Archived service") + "</div></div>" +
+    '<div class="own-amt"><div class="own-amt-value">' + escapeHtml("₹" + paiseToInput(s.pricePaise)) + "</div>" +
+    '<div class="own-amt-sub">rate</div></div></div>' +
     '<div class="own-row-fields">' +
     '<input class="input" data-svc-name="' + id + '" type="text" maxlength="80" value="' + escapeHtml(s.name) + '" aria-label="Service name" />' +
     '<input class="input is-rate" data-svc-price="' + id + '" type="text" inputmode="decimal" value="' + escapeHtml(paiseToInput(s.pricePaise)) + '" aria-label="Rate in rupees" />' +

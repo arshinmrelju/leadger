@@ -173,6 +173,14 @@
                 <hr class="receipt-divider" />
 
                 <!-- ---------- Money ---------- -->
+                <!-- The home screen: a greeting over the month's hero
+                     figure, today's tiles, the month's tiles, the
+                     collection mix (the mock's "Accounts"), and the
+                     spending overview with its donut and category
+                     bars (the mock's "Spending Overview" and
+                     "Budget"). Every block below the hero is drawn by
+                     js/admin.js from day heads and the month's
+                     expenses. -->
                 <section class="own-pane" data-pane="money" hidden>
                   <div class="own-controls">
                     <button type="button" class="btn btn-secondary btn-sm" id="moneyRefreshBtn">Refresh</button>
@@ -181,16 +189,36 @@
                     <a class="btn btn-secondary btn-sm receipt-pill-btn" href="dashboard.html">Dashboard</a>
                   </div>
 
+                  <div class="own-hero">
+                    <p class="own-greet" id="moneyGreet">Good morning</p>
+                    <p class="own-hero-sub" id="moneyGreetSub"></p>
+                    <p class="own-hero-eyebrow">Net this month</p>
+                    <div class="own-hero-value" id="moneyHeroValue">&mdash;</div>
+                    <p class="own-hero-delta" id="moneyHeroDelta" hidden></p>
+                  </div>
+
                   <div class="own-receipt-label">Today</div>
                   <div class="dash-grid own-money" id="todayTiles"></div>
 
                   <div class="own-receipt-label own-section">This month</div>
                   <div class="dash-grid own-money" id="monthTiles"></div>
 
+                  <div class="own-receipt-label own-section">How it was paid</div>
+                  <div class="own-list" id="mixList"></div>
+
+                  <div class="own-receipt-label own-section">Spending overview</div>
+                  <div class="own-spend">
+                    <div class="own-donut" id="spendDonut" role="img" aria-label="Expenses by category"></div>
+                    <div class="own-legend" id="spendLegend"></div>
+                  </div>
+
                   <p class="small muted own-section own-note" id="moneyNote"></p>
                 </section>
 
                 <!-- ---------- Month ---------- -->
+                <!-- The transactions screen: the month's days as one
+                     row per day in date order, drawn by js/admin.js
+                     into #monthDays. -->
                 <section class="own-pane" data-pane="month" hidden>
                   <div class="own-month">
                     <button type="button" class="btn btn-secondary" id="monthPrevBtn" aria-label="Previous month">&lsaquo;</button>
@@ -226,6 +254,9 @@
                   </div>
 
                   <div class="dash-grid own-money" id="dayTiles"></div>
+
+                  <div class="own-receipt-label own-section">Sales that day</div>
+                  <div class="own-list" id="daySalesList"></div>
 
                   <div class="own-receipt-label own-section">Integrity</div>
                   <p class="small muted own-note" style="margin:0;">Adds up the day&rsquo;s sales and compares the total with the counters on its head. Checking reads and changes nothing.</p>

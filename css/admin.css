@@ -380,3 +380,228 @@
   .install-onboarding .modal-footer { flex-direction: column-reverse; }
   .install-onboarding .modal-footer .btn { width: 100%; }
 }
+
+/* ---------- Finance-app face ----------
+   The Money pane's hero, the app-style rows (collection mix, month
+   days, day sales, service heads) and the spending overview. Shaped
+   like a modern finance app; painted strictly in the theme's own
+   colours, so it still reads as the same receipt sheet. */
+
+/* The hero: one tinted card for the month's net, under a greeting. */
+.own-hero {
+  margin-top: 0.85rem;
+  padding: 1.1rem 1.15rem 1rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--color-primary-soft, #dceefa), #f3ecdb 90%);
+  border: 1px solid var(--color-border, #e8dfc4);
+}
+.own-greet {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--color-text, #2d2416);
+}
+.own-hero-sub {
+  margin: 0.1rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-muted, #8a7355);
+}
+.own-hero-eyebrow {
+  margin: 0.85rem 0 0;
+  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Consolas, monospace);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted, #8a7355);
+}
+.own-hero-value {
+  font-size: 2rem;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--color-text, #2d2416);
+}
+.own-hero-delta {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+.own-hero-delta.is-up { color: var(--color-success, #2d8a4e); }
+.own-hero-delta.is-down { color: var(--color-danger, #c0392b); }
+
+/* App-style rows: icon bubble, title lines, amount right. */
+.own-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.own-txn {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--color-surface, #fffdf7);
+  border: 1px solid var(--color-border, #e8dfc4);
+  border-radius: 14px;
+}
+.own-ic {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--color-primary-soft, #dceefa);
+  color: var(--color-primary-dark, #3a709e);
+}
+.own-ic .stat-icon { width: 20px; height: 20px; }
+.own-ic-cash { background: var(--color-success-soft, #d4f0de); color: var(--color-success, #2d8a4e); }
+.own-ic-upi { background: var(--color-info-soft, #dceefa); color: var(--color-info, #4b8bbf); }
+.own-ic-card { background: var(--color-warning-soft, #fef3c7); color: var(--color-warning, #d97706); }
+.own-ic-due { background: var(--color-danger-soft, #fde8e6); color: var(--color-danger, #c0392b); }
+.own-ic-service { background: var(--color-primary-soft, #dceefa); color: var(--color-primary-dark, #3a709e); }
+
+.own-row-main { flex: 1 1 auto; min-width: 0; }
+.own-txn .own-row-title,
+.own-svc-head .own-row-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.own-amt { flex: 0 0 auto; text-align: right; }
+.own-amt-value {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--color-text, #2d2416);
+}
+.own-amt-sub {
+  font-size: 0.72rem;
+  color: var(--color-muted, #8a7355);
+}
+
+/* Slim share bars under mix rows and category rows. */
+.own-bar {
+  display: block;
+  height: 6px;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  background: #efe6cf;
+  overflow: hidden;
+}
+.own-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-primary, #4b8bbf);
+}
+
+/* The month's closing row: tinted, so it reads as a total. */
+.own-total {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 14px;
+  background: rgba(75, 139, 191, 0.08);
+  border: 1.5px solid var(--color-primary, #4b8bbf);
+}
+
+/* The date block on month rows: day over month. */
+.own-date {
+  flex: 0 0 auto;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.3rem 0;
+  border-radius: 12px;
+  background: rgba(248, 244, 236, 0.8);
+  border: 1px solid var(--color-border, #e8dfc4);
+}
+.own-date-day {
+  font-size: 1.05rem;
+  font-weight: 900;
+  line-height: 1.2;
+  color: var(--color-text, #2d2416);
+}
+.own-date-mon {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted, #8a7355);
+}
+
+/* Spending overview: donut beside budget-style category bars. */
+.own-spend {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.own-donut svg {
+  display: block;
+  width: 150px;
+  height: auto;
+  margin: 0 auto;
+}
+.own-donut-value {
+  font-size: 0.72rem;
+  font-weight: 900;
+  fill: var(--color-text, #2d2416);
+}
+.own-donut-sub {
+  font-size: 0.58rem;
+  font-weight: 700;
+  fill: var(--color-muted, #8a7355);
+}
+.own-legend {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.own-cat {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 0.15rem 0.5rem;
+  align-items: center;
+}
+.own-cat .own-bar { grid-column: 1 / -1; }
+.own-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.own-cat-name {
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.own-cat-amt { font-size: 0.82rem; font-weight: 800; }
+.own-cat-pct {
+  font-size: 0.75rem;
+  font-weight: 700;
+  min-width: 2.4em;
+  text-align: right;
+  color: var(--color-muted, #8a7355);
+}
+
+/* The service head strip: icon, status and saved rate over the editor. */
+.own-svc-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-bottom: 0.5rem;
+}
+
+@media (min-width: 560px) {
+  .own-hero-value { font-size: 2.4rem; }
+  .own-spend { flex-direction: row; align-items: center; }
+  .own-donut svg { margin: 0; }
+}
