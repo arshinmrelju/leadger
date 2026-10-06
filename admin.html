@@ -8,12 +8,11 @@
   <meta name="format-detection" content="telephone=no, address=no, email=no, date=no" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <meta name="theme-color" content="#132b1e" />
+  <meta name="theme-color" content="#5b5bd6" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="TrustX Ledger" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <!-- Nunito font — preconnect first, then load non-blocking -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
@@ -37,18 +36,6 @@
   }
   </script>
 </head>
-<!--
-  A shell page, like every other protected screen: the sidebar, the top
-  bar, the user chip, the install controls and the mobile tab bar all come
-  from js/shell.js. The console is reached from the sidebar's Management
-  section, not from the shop's daily navigation.
-
-  What is its own is the paper. Inside the shell, the four sections sit on
-  the same receipt sheet the dashboard prints its figures on, so a rupee
-  looks the same wherever it is read. The figures themselves are never
-  computed here — this page reads through js/ledger.js, so a rupee shown
-  in the console is the same rupee the day head holds.
--->
 <body data-page="admin">
   <div class="app">
     <!-- ===================== Sidebar ===================== -->
@@ -113,7 +100,6 @@
       </header>
 
       <main class="content" id="mainContent">
-        <!-- The gate, the locked card and the loading screen all land here. -->
         <div id="ownBoot">
           <div class="ledger-loading-screen" aria-label="Loading the owner console">
             <div class="ledger-loading-card">
@@ -136,142 +122,184 @@
           </div>
         </div>
 
-        <!-- Everything below is populated by js/admin.js. The panes stay in
-             the DOM when the section changes, so switching never re-reads. -->
         <div id="ownConsole" hidden>
-          <div class="dash-receipt-wrapper">
+          <div class="dash-receipt-wrapper fin-wrap">
 
-            <div class="receipt-dispenser dash-dispenser" aria-hidden="true">
+            <div class="receipt-dispenser dash-dispenser fin-dispenser" aria-hidden="true">
               <div class="dispenser-bar"></div>
               <div class="dispenser-slot"></div>
             </div>
 
-            <main class="auth-card receipt-card dash-receipt-card">
-              <div class="receipt-inner dash-receipt-inner">
+            <main class="auth-card receipt-card dash-receipt-card fin-phone">
+              <div class="receipt-inner dash-receipt-inner fin-inner">
 
-                <!-- One title for the whole sheet: it follows the section. -->
-                <div class="receipt-top-row dash-receipt-top-row">
-                  <div class="receipt-header-left">
-                    <span class="receipt-status-tag">OWNER CONSOLE &bull; MANAGEMENT</span>
-                    <h1 class="receipt-title" id="ownPaneTitle">Money</h1>
-                    <p class="receipt-subtitle" id="ownPaneSub"></p>
+                <!-- Phone style app bar: menu, centered section title, bell -->
+                <div class="fin-appbar">
+                  <button class="fin-iconbtn" type="button" data-sidebar-toggle aria-label="Open navigation">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+                  </button>
+                  <div class="fin-appbar-center">
+                    <span class="receipt-status-tag fin-eyebrow">Owner console</span>
+                    <h1 class="receipt-title fin-title" id="ownPaneTitle">Money</h1>
+                    <p class="receipt-subtitle fin-sub" id="ownPaneSub"></p>
                   </div>
-                  <div class="dash-header-actions">
-                    <div class="receipt-stamp" title="TrustX Ledger Owner console">
-                      <span class="receipt-stamp-brand">TrustX</span>
-                      <span class="receipt-stamp-sub">OWNER</span>
-                    </div>
-                  </div>
+                  <button class="fin-iconbtn fin-bell" type="button" aria-label="Notifications" id="finBellBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                    <span class="fin-dot" aria-hidden="true"></span>
+                  </button>
                 </div>
 
-                <hr class="receipt-divider" />
-
-                <!-- The four sections. Receipt chips, so they read as part
-                     of the sheet rather than as browser furniture. -->
                 <nav class="own-chips" id="ownTabs" aria-label="Owner console sections"></nav>
 
-                <hr class="receipt-divider" />
-
-                <!-- ---------- Money ---------- -->
-                <!-- The home screen: a greeting over the month's hero
-                     figure, today's tiles, the month's tiles, the
-                     collection mix (the mock's "Accounts"), and the
-                     spending overview with its donut and category
-                     bars (the mock's "Spending Overview" and
-                     "Budget"). Every block below the hero is drawn by
-                     js/admin.js from day heads and the month's
-                     expenses. -->
+                <!-- ---------- Money : Home screen ---------- -->
                 <section class="own-pane" data-pane="money" hidden>
-                  <div class="own-controls">
+                  <div class="fin-greetrow">
+                    <div class="fin-greettext">
+                      <p class="own-greet" id="moneyGreet">Good morning</p>
+                      <p class="own-hero-sub" id="moneyGreetSub"></p>
+                    </div>
+                    <span class="fin-avatar" aria-hidden="true">Tx</span>
+                  </div>
+
+                  <div class="own-hero fin-balance">
+                    <div class="fin-balance-top">
+                      <div class="fin-balance-left">
+                        <p class="own-hero-eyebrow">Total balance &middot; Net this month</p>
+                        <div class="own-hero-value" id="moneyHeroValue">&mdash;</div>
+                        <p class="own-hero-delta" id="moneyHeroDelta" hidden></p>
+                      </div>
+                      <span class="fin-wallet" aria-hidden="true">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                      </span>
+                    </div>
+                    <div class="own-hero-split" id="moneyHeroSplit"></div>
+                    <div class="own-spark" id="moneySpark" role="img" aria-label="Collections over the last 14 days"></div>
+                  </div>
+
+                  <div class="own-controls fin-refreshrow">
                     <button type="button" class="btn btn-secondary btn-sm" id="moneyRefreshBtn">Refresh</button>
                     <span class="own-controls-spacer"></span>
                     <a class="btn btn-secondary btn-sm receipt-pill-btn" href="transactions.html">Sales</a>
                     <a class="btn btn-secondary btn-sm receipt-pill-btn" href="dashboard.html">Dashboard</a>
                   </div>
 
-                  <div class="own-hero">
-                    <p class="own-greet" id="moneyGreet">Good morning</p>
-                    <p class="own-hero-sub" id="moneyGreetSub"></p>
-                    <p class="own-hero-eyebrow">Net this month</p>
-                    <div class="own-hero-value" id="moneyHeroValue">&mdash;</div>
-                    <p class="own-hero-delta" id="moneyHeroDelta" hidden></p>
+                  <div class="fin-sectionhead">
+                    <span class="own-receipt-label">Today</span>
+                    <span class="fin-seeall">See All</span>
+                  </div>
+                  <div class="dash-grid own-money fin-tiles" id="todayTiles"></div>
+
+                  <div class="fin-sectionhead own-section">
+                    <span class="own-receipt-label own-section" style="margin:0;">This month</span>
+                    <span class="fin-seeall">See All</span>
+                  </div>
+                  <div class="dash-grid own-money fin-tiles" id="monthTiles"></div>
+
+                  <div class="fin-card">
+                    <div class="fin-sectionhead">
+                      <span class="own-receipt-label" style="margin:0;">Accounts &middot; How it was paid</span>
+                      <span class="fin-seeall">See All</span>
+                    </div>
+                    <div class="own-list" id="mixList"></div>
                   </div>
 
-                  <div class="own-receipt-label">Today</div>
-                  <div class="dash-grid own-money" id="todayTiles"></div>
-
-                  <div class="own-receipt-label own-section">This month</div>
-                  <div class="dash-grid own-money" id="monthTiles"></div>
-
-                  <div class="own-receipt-label own-section">How it was paid</div>
-                  <div class="own-list" id="mixList"></div>
-
-                  <div class="own-receipt-label own-section">Spending overview</div>
-                  <div class="own-spend">
-                    <div class="own-donut" id="spendDonut" role="img" aria-label="Expenses by category"></div>
-                    <div class="own-legend" id="spendLegend"></div>
+                  <div class="fin-card">
+                    <div class="fin-sectionhead">
+                      <span class="own-receipt-label" style="margin:0;">Spending Overview</span>
+                      <span class="fin-seeall">This Month</span>
+                    </div>
+                    <div class="own-spend">
+                      <div class="own-donut" id="spendDonut" role="img" aria-label="Expenses by category"></div>
+                      <div class="own-legend" id="spendLegend"></div>
+                    </div>
                   </div>
 
                   <p class="small muted own-section own-note" id="moneyNote"></p>
                 </section>
 
-                <!-- ---------- Month ---------- -->
-                <!-- The transactions screen: the month's days as one
-                     row per day in date order, drawn by js/admin.js
-                     into #monthDays. -->
+                <!-- ---------- Month : Transactions screen ---------- -->
                 <section class="own-pane" data-pane="month" hidden>
-                  <div class="own-month">
-                    <button type="button" class="btn btn-secondary" id="monthPrevBtn" aria-label="Previous month">&lsaquo;</button>
-                    <div class="own-month-label" id="monthLabel" aria-live="polite"></div>
-                    <button type="button" class="btn btn-secondary" id="monthNextBtn" aria-label="Next month">&rsaquo;</button>
+                  <div class="fin-card fin-monthbar">
+                    <div class="own-month">
+                      <button type="button" class="btn btn-secondary" id="monthPrevBtn" aria-label="Previous month">&lsaquo;</button>
+                      <div class="own-month-label" id="monthLabel" aria-live="polite"></div>
+                      <button type="button" class="btn btn-secondary" id="monthNextBtn" aria-label="Next month">&rsaquo;</button>
+                    </div>
+                    <div class="own-prog">
+                      <div class="own-prog-top"><span id="monthProgLabel"></span><span id="monthProgPct"></span></div>
+                      <div class="own-prog-track"><span id="monthProgFill"></span></div>
+                    </div>
+                    <div class="own-controls">
+                      <button type="button" class="btn btn-secondary btn-sm" id="monthThisBtn">This month</button>
+                      <span class="own-controls-spacer"></span>
+                      <button type="button" class="btn btn-primary btn-sm" id="monthRefreshBtn">Refresh</button>
+                    </div>
                   </div>
 
-                  <div class="own-controls">
-                    <button type="button" class="btn btn-secondary btn-sm" id="monthThisBtn">This month</button>
-                    <span class="own-controls-spacer"></span>
-                    <button type="button" class="btn btn-primary btn-sm" id="monthRefreshBtn">Refresh</button>
+                  <div class="dash-grid own-money fin-tiles" id="monthSummaryTiles"></div>
+
+                  <div class="fin-sectionhead own-section">
+                    <span class="own-receipt-label own-section" style="margin:0;">Days</span>
+                    <span class="fin-seeall">See All</span>
                   </div>
-
-                  <div class="dash-grid own-money" id="monthSummaryTiles"></div>
-
-                  <div class="own-receipt-label own-section">Days</div>
                   <div id="monthDays"></div>
                 </section>
 
                 <!-- ---------- Day ---------- -->
                 <section class="own-pane" data-pane="day" hidden>
-                  <div class="own-step">
-                    <button type="button" class="btn btn-secondary" id="dayPrevBtn" aria-label="Previous day">&lsaquo;</button>
-                    <input class="input" id="dayDate" type="date" aria-label="Business day" />
-                    <button type="button" class="btn btn-secondary" id="dayNextBtn" aria-label="Next day">&rsaquo;</button>
+                  <div class="fin-card">
+                    <div class="own-step">
+                      <button type="button" class="btn btn-secondary" id="dayPrevBtn" aria-label="Previous day">&lsaquo;</button>
+                      <input class="input" id="dayDate" type="date" aria-label="Business day" />
+                      <button type="button" class="btn btn-secondary" id="dayNextBtn" aria-label="Next day">&rsaquo;</button>
+                    </div>
+                    <div class="own-day-head">
+                      <span class="pill" id="dayStatePill"></span>
+                      <span class="small muted" id="dayStateNote"></span>
+                      <span class="own-controls-spacer"></span>
+                      <button type="button" class="btn btn-primary btn-sm" id="dayToggleBtn">Close day</button>
+                    </div>
                   </div>
 
-                  <div class="own-day-head">
-                    <span class="pill" id="dayStatePill"></span>
-                    <span class="small muted" id="dayStateNote"></span>
-                    <span class="own-controls-spacer"></span>
-                    <button type="button" class="btn btn-primary btn-sm" id="dayToggleBtn">Close day</button>
+                  <div class="dash-grid own-money fin-tiles" id="dayTiles"></div>
+
+                  <div class="fin-sectionhead own-section">
+                    <span class="own-receipt-label own-section" style="margin:0;">Sales that day</span>
+                    <span class="fin-seeall">See All</span>
                   </div>
-
-                  <div class="dash-grid own-money" id="dayTiles"></div>
-
-                  <div class="own-receipt-label own-section">Sales that day</div>
                   <div class="own-list" id="daySalesList"></div>
 
-                  <div class="own-receipt-label own-section">Integrity</div>
-                  <p class="small muted own-note" style="margin:0;">Adds up the day&rsquo;s sales and compares the total with the counters on its head. Checking reads and changes nothing.</p>
-                  <div class="own-audit-row own-section">
-                    <button type="button" class="btn btn-secondary btn-sm" id="auditDayBtn">Check this day</button>
-                    <button type="button" class="btn btn-secondary btn-sm" id="auditMonthBtn">Check this month</button>
+                  <div class="fin-card own-section">
+                    <div class="fin-sectionhead">
+                      <span class="own-receipt-label" style="margin:0;">Integrity</span>
+                    </div>
+                    <p class="small muted own-note" style="margin:0;">Adds up the day&rsquo;s sales and compares the total with the counters on its head. Checking reads and changes nothing.</p>
+                    <div class="own-audit-row own-section">
+                      <button type="button" class="btn btn-secondary btn-sm" id="auditDayBtn">Check this day</button>
+                      <button type="button" class="btn btn-secondary btn-sm" id="auditMonthBtn">Check this month</button>
+                    </div>
+                    <div id="auditResult"></div>
                   </div>
-                  <div id="auditResult"></div>
                 </section>
 
-                <!-- ---------- Shop ---------- -->
+                <!-- ---------- Shop : Budget style ---------- -->
                 <section class="own-pane" data-pane="shop" hidden>
-                  <div class="dash-columns own-split">
-                    <section class="card dash-paper-card">
-                      <div class="card-header dash-card-header">
+                  <div class="fin-budgethero">
+                    <div class="fin-budget-col">
+                      <span class="fin-budget-label">Services</span>
+                      <strong class="fin-budget-value">Catalog</strong>
+                    </div>
+                    <div class="fin-budget-col fin-budget-right">
+                      <span class="fin-budget-label">Trusted browsers</span>
+                      <strong class="fin-budget-value">Access</strong>
+                    </div>
+                    <div class="own-prog-track fin-budget-track"><span style="width:75%"></span></div>
+                    <p class="fin-budget-cap">75% of budget used</p>
+                  </div>
+
+                  <div class="dash-columns own-split fin-stack">
+                    <section class="card dash-paper-card fin-card">
+                      <div class="card-header dash-card-header fin-cardhead">
                         <h3>Services</h3>
                         <div class="card-actions">
                           <button type="button" class="btn btn-secondary btn-sm" id="seedSvcBtn" title="Add whatever of the default service list is still missing">Add defaults</button>
@@ -280,19 +308,19 @@
                       <div class="card-body">
                         <div class="own-addrow">
                           <div class="field own-addrow-name"><input class="input" id="addSvcName" type="text" maxlength="80" placeholder="New service name" /></div>
-                          <div class="field own-addrow-rate"><input class="input" id="addSvcPrice" type="text" inputmode="decimal" placeholder="Rate (&curren;)" aria-label="Rate in rupees" /></div>
+                          <div class="field own-addrow-rate"><input class="input" id="addSvcPrice" type="text" inputmode="decimal" placeholder="Rate (&#8377;)" aria-label="Rate in rupees" /></div>
                           <div class="own-addrow-actions">
                             <button type="button" class="btn btn-secondary btn-sm" id="addSvcClear">Clear</button>
                             <button type="button" class="btn btn-primary btn-sm" id="addSvcSave">Add service</button>
                           </div>
                         </div>
-                        <p class="small muted">The default list &mdash; printing, DTP, CV/resume, certificates, online applications, photos and bill payments &mdash; is added the first time a device opens the app, and every service starts at &curren;0. Set your own rate on each row.</p>
+                        <p class="small muted">The default list &mdash; printing, DTP, CV/resume, certificates, online applications, photos and bill payments &mdash; is added the first time a device opens the app, and every service starts at &#8377;0. Set your own rate on each row.</p>
                         <div id="servicesList"></div>
                       </div>
                     </section>
 
-                    <section class="card dash-paper-card">
-                      <div class="card-header dash-card-header">
+                    <section class="card dash-paper-card fin-card">
+                      <div class="card-header dash-card-header fin-cardhead">
                         <h3>Trusted browsers</h3>
                         <div class="card-actions">
                           <button type="button" class="btn btn-secondary btn-sm" id="devicesRefreshBtn">Refresh</button>
@@ -306,7 +334,30 @@
                   </div>
                 </section>
 
-                <div class="receipt-footer-note dash-footer-note own-section">CLOSE THE DAY &bull; TRUSTX LEDGER</div>
+                <div class="receipt-footer-note dash-footer-note own-section fin-footnote">Close the day &bull; TrustX Ledger</div>
+
+                <!-- Phone style bottom navigation mirroring the four sections -->
+                <nav class="fin-tabbar" aria-label="Owner console quick navigation">
+                  <button type="button" class="fin-item" data-fin-tab="money">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+                    <span>Home</span>
+                  </button>
+                  <button type="button" class="fin-item" data-fin-tab="month">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 10h16"/><path d="M8 3v4M16 3v4"/></svg>
+                    <span>Transactions</span>
+                  </button>
+                  <button type="button" class="fin-fab" data-fin-tab="day" aria-label="Day">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                  <button type="button" class="fin-item" data-fin-tab="month" data-fin-alias="budget">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M8 12h8M8 16h5"/></svg>
+                    <span>Budget</span>
+                  </button>
+                  <button type="button" class="fin-item" data-fin-tab="shop">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg>
+                    <span>Profile</span>
+                  </button>
+                </nav>
               </div>
               <div class="receipt-tear-edge" aria-hidden="true"></div>
             </main>
@@ -319,36 +370,48 @@
   </div>
 
   <script type="module">
-    /* The shell, as on every other protected page: it resolves the session
-       and the grant, and answers the admin question by reading the grant's
-       role rather than trusting the page. renderOwnerConsole(ctx) is handed
-       that answer and does nothing but ask for the promotion when it is
-       missing. */
     import { initAppShell } from "./js/shell.js";
     import { renderOwnerConsole } from "./js/admin.js";
     import { mountInstallOnboarding } from "./js/pwa.js";
 
     initAppShell({
       requireAdmin: true,
-      /* The business day rolls over at 3:30am India time, and a console
-         left open across it would go on reporting yesterday's takings
-         under a "today" heading. The shell owns the clock; it hands us the
-         tick and we re-read whatever is on screen. The Day section's arrow
-         deliberately points at days other than today, so this never moves
-         the date under the owner — only today's figures are re-read. */
       onDayChange: () => {
         window.dispatchEvent(new CustomEvent("seva:owner-day-change"));
       },
       onReady: async (ctx) => {
         await renderOwnerConsole(ctx);
-
-        /* Offered once, on this device, the first time the owner opens the
-           console — and only here. The dialog is built over the top of the
-           finished page and never navigates, so asking is not the same
-           gesture as being sent to the dashboard. See js/pwa.js. */
         mountInstallOnboarding();
+        wireFinBar();
       },
     });
+
+    function wireFinBar() {
+      const bar = document.querySelector(".fin-tabbar");
+      const chips = document.getElementById("ownTabs");
+      if (!bar || !chips) return;
+      const sync = () => {
+        const active = chips.querySelector(".own-chip.is-active");
+        const id = active ? active.getAttribute("data-tab") : "money";
+        bar.querySelectorAll(".fin-item, .fin-fab").forEach((b) => {
+          const want = b.getAttribute("data-fin-tab");
+          const alias = b.getAttribute("data-fin-alias");
+          const on = want === id || (id === "shop" && alias === "budget" && want === "month");
+          b.classList.toggle("is-active", !!on);
+        });
+      };
+      bar.addEventListener("click", (event) => {
+        const btn = event.target.closest("[data-fin-tab]");
+        if (!btn) return;
+        let id = btn.getAttribute("data-fin-tab");
+        if (btn.hasAttribute("data-fin-alias")) id = "shop";
+        const chip = chips.querySelector('button[data-tab="' + id + '"]');
+        if (chip) chip.click();
+        sync();
+      });
+      new MutationObserver(sync).observe(chips, { attributes: true, subtree: true, childList: true });
+      sync();
+    }
   </script>
 </body>
 </html>

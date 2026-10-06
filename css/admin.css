@@ -1,607 +1,650 @@
 /* =========================================================
-   TrustX Ledger — Owner console (admin.html)
-   -----------------------------------------------------------------
-   The shell is not this page's job: the sidebar, top bar, user chip,
-   install controls and the mobile shop tab bar are css/style.css and
-   css/dashboard.css, drawn by js/shell.js. Neither is the money
-   figures: the five stat cards this page prints are the dashboard's
-   own cards, reused whole rather than restyled, so a rupee reads the
-   same on both sheets.
-
-   So what is left here is the console's own furniture: the chips that
-   choose a section, the receipt labels, the month switcher and the
-   stepper, and the rows in the Shop section. All of it is written for
-   the narrow case and widened with min-width, never the other way
-   round. The `own-` prefix keeps this file out of the way of
-   css/responsive.css and css/mobile.css, which load after it.
+   TrustX Ledger — Owner console as a finance app
+   Matches the three phone screens: Home (balance, accounts,
+   spending overview), Transactions (segmented filter, grouped
+   rows) and Budget (monthly bar, category bars), with a bottom
+   app bar. All money markup still comes from js/admin.js, so
+   every id and every dashboard stat-card class is untouched —
+   this file only dresses them.
    ========================================================= */
 
-/* ---------- Content ---------- */
-
-/* One section at a time. `hidden` is the whole mechanism: the panes are
-   all in the DOM, so switching chips never re-fetches anything and the
-   month the owner was reading survives a look at Shop. */
-.own-pane[hidden] { display: none; }
-
-.own-section {
-  margin-top: 1rem;
+:root {
+  --fin-primary: #5b5bd6;
+  --fin-primary-dark: #4343c0;
+  --fin-ink: #101828;
+  --fin-muted: #8a94a6;
+  --fin-bg: #f4f6fb;
+  --fin-track: #eceef5;
 }
 
-/* The gate card and the chip row draw their icons from one helper that
-   emits no width/height, and style.css only caps an svg at 100% of its
-   container — so an unsized icon fills the space it is given. Sized here,
-   once, rather than as attributes on every call site. */
+body[data-page="admin"] {
+  background-color: #e8ebf3;
+  background-image:
+    radial-gradient(ellipse 900px 480px at 50% -60px, rgba(91, 91, 214, 0.22), transparent 70%),
+    radial-gradient(ellipse 700px 500px at 90% 110%, rgba(16, 24, 40, 0.16), transparent 65%);
+  background-attachment: fixed;
+}
+
+.own-pane[hidden] { display: none; }
 .own-gate .stat-icon { width: 34px; height: 34px; }
 .own-chip .stat-icon { width: 16px; height: 16px; }
 
-/* ---------- Section chips ---------- */
+/* ---------- Phone frame ---------- */
 
-/* Receipt chips, not browser tabs. They sit between the sheet's title
-   and its figures. Redesigned for mobile-first: pill style, solid bg on
-   active, minimum 44 px tall so any thumb can hit them reliably. */
-.own-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.2rem 0 0.5rem;
+.fin-wrap {
+  max-width: 480px;
+  margin: 0 auto;
+}
+.fin-dispenser { display: none !important; }
+
+.auth-card.receipt-card.dash-receipt-card.fin-phone {
+  background: var(--fin-bg);
+  border-radius: 40px;
+  border: 10px solid #0d1526;
+  box-shadow:
+    0 30px 80px rgba(13, 21, 38, 0.35),
+    0 4px 18px rgba(13, 21, 38, 0.25);
+  overflow: hidden;
+}
+.fin-phone .receipt-tear-edge { display: none !important; }
+.receipt-inner.dash-receipt-inner.fin-inner {
+  background: var(--fin-bg);
+  box-shadow: none;
+  padding: 14px 14px 16px;
 }
 
-.own-chip {
+/* ---------- App bar ---------- */
+
+.fin-appbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 2px 10px;
+}
+.fin-iconbtn {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid #e7eaf2;
+  background: #fff;
+  color: var(--fin-ink);
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  min-height: 44px;
-  padding: 0 1rem;
-  border: 1.5px solid var(--color-border, #e8dfc4);
-  border-radius: 999px;
-  background: rgba(255, 253, 247, 0.7);
-  color: var(--color-text-soft, #5c4a30);
-  font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  justify-content: center;
   cursor: pointer;
-  transition:
-    color var(--t-fast, 130ms) var(--ease, ease),
-    background var(--t-fast, 130ms) var(--ease, ease),
-    border-color var(--t-fast, 130ms) var(--ease, ease),
-    box-shadow var(--t-fast, 130ms) var(--ease, ease);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
 }
-.own-chip:hover {
-  background: rgba(255, 253, 247, 1);
-  border-color: var(--color-primary, #4b8bbf);
-  box-shadow: 0 2px 8px rgba(75, 139, 191, 0.15);
+.fin-appbar-center { flex: 1 1 auto; min-width: 0; text-align: center; }
+.fin-eyebrow {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fin-muted);
 }
-.own-chip.is-active {
+.fin-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: var(--fin-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fin-sub {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--fin-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fin-sub:empty { display: none; }
+.fin-bell { position: relative; }
+.fin-dot {
+  position: absolute;
+  top: 9px;
+  right: 11px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f04438;
+  border: 2px solid #fff;
+}
+
+/* ---------- Segmented section switcher (like All / Income / Expense) ---------- */
+
+#ownConsole .own-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 4px;
+  margin: 2px 0 12px;
+  border-radius: 999px;
+  background: #e9ecf4;
+  border: 1px solid #e2e6f0;
+  overflow-x: auto;
+}
+#ownConsole .own-chip {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 38px;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #6b7280;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+}
+#ownConsole .own-chip.is-active {
+  background: var(--fin-primary);
   color: #fff;
-  background: var(--color-primary, #4b8bbf);
-  border-color: var(--color-primary-dark, #3a709e);
-  border-style: solid;
-  box-shadow: 0 3px 12px rgba(75, 139, 191, 0.35);
+  box-shadow: 0 6px 14px rgba(91, 91, 214, 0.4);
 }
-.own-chip:focus-visible { outline: none; box-shadow: var(--ring, 0 0 0 3px rgba(75, 139, 191, 0.3)); }
-.own-chip:active { transform: scale(0.97); }
+#ownConsole .own-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(91, 91, 214, 0.35);
+}
 
-/* ---------- Receipt labels ---------- */
+/* ---------- Greeting row ---------- */
 
-/* A monospace, letter-spaced caption for each block of figures — the
-   same trick the dashboard's receipt metadata rows use, so "today" and
-   "this month" read as headings on a printed sheet rather than as
-   bolded text in a web page. */
+.fin-greetrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 4px 12px;
+}
+.fin-greettext { flex: 1 1 auto; min-width: 0; }
+.own-greet {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fin-muted);
+}
+.own-hero-sub {
+  margin: 0.1rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--fin-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fin-avatar {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(135deg, #f5a623, #5b5bd6);
+  box-shadow: 0 4px 12px rgba(91, 91, 214, 0.35);
+}
+
+/* ---------- Balance card ---------- */
+
+.own-hero.fin-balance {
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  border-radius: 24px;
+  padding: 18px 18px 14px;
+  color: var(--fin-ink);
+  background: linear-gradient(135deg, #eef1ff 0%, #e2e8ff 55%, #dbe4ff 100%);
+  box-shadow: 0 12px 28px rgba(91, 91, 214, 0.18);
+}
+.own-hero.fin-balance::after {
+  content: "";
+  position: absolute;
+  right: -70px;
+  top: -70px;
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(91, 91, 214, 0.22), transparent 70%);
+  pointer-events: none;
+}
+.fin-balance-top { display: flex; align-items: flex-start; gap: 12px; }
+.fin-balance-left { flex: 1 1 auto; min-width: 0; }
+.own-hero-eyebrow {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6b7194;
+}
+.own-hero-value {
+  font-size: 2.1rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: #0d1526;
+  margin-top: 2px;
+}
+.own-hero-delta {
+  display: inline-block;
+  margin: 6px 0 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.75);
+}
+.own-hero-delta.is-up { color: #12805c; }
+.own-hero-delta.is-down { color: #c0392b; }
+.fin-wallet {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(135deg, #6c6cf5, #4343c0);
+  box-shadow: 0 8px 16px rgba(91, 91, 214, 0.4);
+}
+.own-hero-split {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.own-split-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+.own-split-cell span {
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6b7194;
+}
+.own-split-cell strong {
+  display: block;
+  font-size: 0.98rem;
+  font-weight: 900;
+  color: #0d1526;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.own-spark { margin-top: 12px; }
+.own-spark svg { display: block; width: 100%; height: 56px; }
+.own-spark-cap {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b7194;
+}
+
+/* ---------- Section heads + white cards ---------- */
+
+.fin-sectionhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 4px 10px;
+}
+.fin-seeall {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--fin-primary);
+  white-space: nowrap;
+}
 .own-receipt-label {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  margin: 0.9rem 0 0.55rem;
-  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Consolas, monospace);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-muted, #8a7355);
-}
-.own-receipt-label::after {
-  content: "";
-  flex: 1 1 auto;
-  height: 1px;
-  background: var(--color-border, #e8dfc4);
-}
-
-.own-note {
-  margin-bottom: 0;
-}
-
-/* ---------- Money figures ---------- */
-
-/* Two across on a phone, which is the most that stays legible for a
-   rupee with a label over it; four from a tablet, which is the
-   dashboard's own count. The cards themselves, their icons, their
-   paper tint and their hover lift all come from css/dashboard.css. */
-.own-money {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-
-/* What came in and what is left get two columns each: they are the two
-   figures an owner reads first, and on a phone a full-width row is the
-   only size at which a rupee amount stays legible. */
-.own-money .stat-span-2 { grid-column: span 2; }
-
-/* ---------- A control row: stepper, month switcher, buttons ---------- */
-
-.own-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.own-controls .input { flex: 1 1 130px; min-width: 0; }
-.own-controls-spacer { flex: 1 1 auto; }
-/* All buttons in a control row: 44 px minimum height for touch. */
-.own-controls .btn { min-height: 44px; }
-
-/* The date stepper: arrow buttons get 48 × 48 px so they are never a
-   miss on a phone. */
-.own-step {
-  display: flex;
-  align-items: stretch;
-  gap: 0.5rem;
-  width: 100%;
-  margin-bottom: 0.25rem;
-}
-.own-step .input {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 48px;
-  border-radius: var(--radius-sm, 8px);
-}
-.own-step .btn {
-  flex: 0 0 auto;
-  width: 48px;
-  min-height: 48px;
-  padding-left: 0;
-  padding-right: 0;
-  border-radius: var(--radius-sm, 8px);
-  font-size: 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.own-month {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.85rem;
-}
-.own-month-label {
-  flex: 1 1 auto;
-  text-align: center;
-  font-size: 1.05rem;
-  font-weight: 800;
-}
-/* Month nav arrows — same 48 × 48 minimum as the day stepper. */
-.own-month .btn {
-  flex: 0 0 48px;
-  min-height: 48px;
-  width: 48px;
-  padding-left: 0;
-  padding-right: 0;
-  font-size: 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* The add-a-service box. Its own layout rather than a shared form row: the
-   name has to be allowed to shrink to nothing before the rate does, and the
-   two buttons take a whole line on the narrowest phones rather than
-   squeezing the fields to unreadable widths. */
-.own-addrow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: flex-end;
-  margin-bottom: 0.75rem;
-}
-.own-addrow .field { margin: 0; }
-.own-addrow-name { flex: 1 1 150px; min-width: 0; }
-.own-addrow-rate { flex: 0 1 110px; min-width: 88px; }
-.own-addrow-actions { display: flex; gap: 0.5rem; flex: 0 0 auto; }
-
-/* ---------- Shop rows (services, trusted browsers) ---------- */
-
-.own-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  /* Extra vertical breathing room on touch — rows feel airy, not packed. */
-  padding: 0.85rem 0;
-  border-bottom: 1px solid var(--color-border, #e8dfc4);
-}
-.own-row:last-child { border-bottom: 0; }
-
-.own-row-fields {
-  display: flex;
-  gap: 0.5rem;
-}
-.own-row-fields .input { flex: 1 1 auto; min-width: 0; }
-/* The rate box is a currency figure: fixed width so a row of rupee amounts
-   still lines up down the column. */
-.own-row-fields .input.is-rate {
-  flex: 0 0 104px;
-  text-align: right;
-}
-
-.own-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.own-row-actions .own-row-actions-end { margin-left: auto; display: flex; gap: 0.5rem; }
-
-.own-row-main { min-width: 0; }
-
-.own-row-title {
-  font-weight: 700;
+  margin: 0;
   font-size: 0.95rem;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-.own-row-sub {
-  font-size: 0.78rem;
-  color: var(--color-muted, #8a7355);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-.own-row-sub.small { margin-top: 0.15rem; }
-
-/* ---------- Day state ---------- */
-
-/* The day head is now a subtle card so the pill and toggle button sit in
-   a distinct zone rather than floating loose on the paper. */
-.own-day-head {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin: 1rem 0 0.75rem;
-  padding: 0.75rem 1rem;
-  background: rgba(248, 244, 236, 0.6);
-  border: 1px solid var(--color-border, #e8dfc4);
-  border-radius: var(--radius-sm, 8px);
-}
-/* Toggle button: stand out and easy to tap. */
-.own-day-head .btn {
-  min-height: 44px;
-  font-size: 0.88rem;
-}
-/* State pill. */
-.own-day-head .pill {
-  font-size: 0.75rem;
-  padding: 0.3em 0.7em;
-}
-.own-day-head .small.muted {
-  font-size: 0.78rem;
-  line-height: 1.3;
-}
-
-/* ---------- Integrity / audit controls ---------- */
-
-/* The two audit buttons grow full-width on narrow screens so they are
-   easy to tap with any thumb. */
-.own-audit-row {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.own-audit-row .btn {
-  flex: 1 1 140px;
-  min-height: 44px;
-  justify-content: center;
-}
-
-/* ---------- Loading / empty ---------- */
-
-.own-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 1.75rem 1rem;
-  color: var(--color-muted, #8a7355);
-  font-size: 0.9rem;
-}
-
-/* ---------- Wider windows ---------- */
-
-@media (min-width: 560px) {
-  .own-money { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .own-row-fields .input.is-rate { flex: 0 0 120px; }
-  .own-chip { font-size: 0.85rem; padding: 0 1.1rem; }
-}
-
-@media (min-width: 900px) {
-  .own-split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
-  .own-split > * { min-width: 0; }
-  /* On desktop the steppers go back to comfortable 44 × 44. */
-  .own-step .btn { width: 44px; min-height: 44px; }
-  .own-month .btn { flex: 0 0 44px; width: 44px; min-height: 44px; }
-}
-
-/* ---------- First-visit install prompt ----------
-   Lives here rather than beside its siblings in css/style.css because
-   admin.html is the only page that ever shows it: the dialog and everything
-   it needs sit in one file, so it can be removed in one edit if the owner
-   changes their mind about being asked.
-
-   The base .modal / .modal-overlay / .modal-header / .modal-footer rules
-   all come from css/style.css and are deliberately reused - this only adds
-   what the install dialog needs on top of them. */
-
-.modal-header-icon-install {
-  background: #f0fdf4;
-  color: #15803d;
-  border: 1.5px solid #bbf7d0;
-  box-shadow: 0 2px 8px rgba(21, 128, 61, 0.12);
-}
-
-/* The manual-install fallback, revealed when the browser cannot be asked to
-   install itself (iOS, or a tap that beat the prompt event). */
-.install-onboarding-fallback {
-  margin: 0;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--color-border, #e5ded1);
-  border-left: 3px solid var(--color-primary, #132b1e);
-  border-radius: 8px;
-  background: var(--color-bg, #f7f3ea);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  color: var(--color-text-soft, #4a5a52);
-}
-
-/* `.btn` sets display, which would otherwise beat the user-agent's
-   `[hidden] { display: none }` and leave an empty bordered box on screen. */
-.install-onboarding-fallback[hidden] { display: none; }
-
-.install-onboarding .modal-body p { margin: 0; line-height: 1.55; }
-.install-onboarding .modal-footer { flex-wrap: wrap; }
-
-/* On a narrow phone the two footer buttons stack, which is where this is
-   most often seen. */
-@media (max-width: 420px) {
-  .install-onboarding .modal-footer { flex-direction: column-reverse; }
-  .install-onboarding .modal-footer .btn { width: 100%; }
-}
-
-/* ---------- Finance-app face ----------
-   The Money pane's hero, the app-style rows (collection mix, month
-   days, day sales, service heads) and the spending overview. Shaped
-   like a modern finance app; painted strictly in the theme's own
-   colours, so it still reads as the same receipt sheet. */
-
-/* The hero: one tinted card for the month's net, under a greeting. */
-.own-hero {
-  margin-top: 0.85rem;
-  padding: 1.1rem 1.15rem 1rem;
-  border-radius: 16px;
-  background: linear-gradient(135deg, var(--color-primary-soft, #dceefa), #f3ecdb 90%);
-  border: 1px solid var(--color-border, #e8dfc4);
-}
-.own-greet {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--color-text, #2d2416);
-}
-.own-hero-sub {
-  margin: 0.1rem 0 0;
-  font-size: 0.78rem;
-  color: var(--color-muted, #8a7355);
-}
-.own-hero-eyebrow {
-  margin: 0.85rem 0 0;
-  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Consolas, monospace);
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-muted, #8a7355);
-}
-.own-hero-value {
-  font-size: 2rem;
   font-weight: 900;
-  line-height: 1.15;
   letter-spacing: -0.01em;
-  color: var(--color-text, #2d2416);
+  text-transform: none;
+  color: var(--fin-ink);
 }
-.own-hero-delta {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
-  font-weight: 800;
-}
-.own-hero-delta.is-up { color: var(--color-success, #2d8a4e); }
-.own-hero-delta.is-down { color: var(--color-danger, #c0392b); }
+.own-receipt-label::after { display: none; }
+.own-section { margin-top: 0; }
+.own-note { padding: 0 4px; }
 
-/* App-style rows: icon bubble, title lines, amount right. */
-.own-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+.fin-card {
+  background: #fff;
+  border: 1px solid #edf0f6;
+  border-radius: 24px;
+  padding: 16px 14px;
+  margin-top: 12px;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
 }
+.fin-refreshrow { padding: 12px 2px 0; }
+.fin-refreshrow .btn { min-height: 38px; border-radius: 999px; }
+
+/* ---------- Tiles as mini stat cards ---------- */
+
+.own-money.fin-tiles, .own-money {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.own-money .stat-span-2 { grid-column: span 2; }
+#ownConsole .own-money .stat-card {
+  background: #fff;
+  border: 1px solid #edf0f6;
+  border-radius: 20px;
+  padding: 14px;
+  min-height: 0;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.05);
+}
+#ownConsole .own-money .stat-value { font-size: 1.08rem; }
+#ownConsole .own-money .stat-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+/* ---------- Rows: accounts / transactions / days / sales ---------- */
+
+.own-list { display: flex; flex-direction: column; gap: 10px; }
 .own-txn {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.7rem 0.8rem;
-  background: var(--color-surface, #fffdf7);
-  border: 1px solid var(--color-border, #e8dfc4);
-  border-radius: 14px;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #eef1f6;
+  border-radius: 20px;
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.04);
 }
+.fin-card .own-txn { box-shadow: none; border-color: #f1f3f9; }
 .own-ic {
   flex: 0 0 auto;
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: var(--color-primary-soft, #dceefa);
-  color: var(--color-primary-dark, #3a709e);
+  border-radius: 15px;
+  background: #eef0ff;
+  color: var(--fin-primary);
 }
-.own-ic .stat-icon { width: 20px; height: 20px; }
-.own-ic-cash { background: var(--color-success-soft, #d4f0de); color: var(--color-success, #2d8a4e); }
-.own-ic-upi { background: var(--color-info-soft, #dceefa); color: var(--color-info, #4b8bbf); }
-.own-ic-card { background: var(--color-warning-soft, #fef3c7); color: var(--color-warning, #d97706); }
-.own-ic-due { background: var(--color-danger-soft, #fde8e6); color: var(--color-danger, #c0392b); }
-.own-ic-service { background: var(--color-primary-soft, #dceefa); color: var(--color-primary-dark, #3a709e); }
-
+.own-ic .stat-icon { width: 22px; height: 22px; }
+.own-ic-cash { background: #e6f7ec; color: #12805c; }
+.own-ic-upi { background: #e8f0fe; color: #2b5bd7; }
+.own-ic-card { background: #efe9ff; color: #6d3fd4; }
+.own-ic-due { background: #fef0e6; color: #d97706; }
+.own-ic-service { background: #eef0ff; color: var(--fin-primary); }
 .own-row-main { flex: 1 1 auto; min-width: 0; }
-.own-txn .own-row-title,
-.own-svc-head .own-row-title {
+.own-txn .own-row-title {
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: var(--fin-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.own-row-title { font-weight: 800; color: var(--fin-ink); }
+.own-row-sub {
+  font-size: 0.76rem;
+  color: var(--fin-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .own-amt { flex: 0 0 auto; text-align: right; }
-.own-amt-value {
-  font-weight: 800;
-  font-size: 0.95rem;
-  color: var(--color-text, #2d2416);
+.own-amt-value { font-weight: 900; font-size: 0.95rem; color: var(--fin-ink); }
+.own-amt-sub { font-size: 0.7rem; color: var(--fin-muted); }
+
+.own-date {
+  flex: 0 0 auto;
+  width: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 7px 0;
+  border-radius: 16px;
+  background: #0d1526;
+  border: 1px solid #0d1526;
 }
-.own-amt-sub {
-  font-size: 0.72rem;
-  color: var(--color-muted, #8a7355);
+.own-date-day { font-size: 1.05rem; font-weight: 900; color: #fff; line-height: 1.1; }
+.own-date-mon { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+
+.own-total {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 20px;
+  background: #eef0ff;
+  border: 1.5px solid var(--fin-primary);
 }
 
-/* Slim share bars under mix rows and category rows. */
 .own-bar {
   display: block;
-  height: 6px;
-  margin-top: 0.35rem;
+  height: 8px;
+  margin-top: 8px;
   border-radius: 999px;
-  background: #efe6cf;
+  background: var(--fin-track);
   overflow: hidden;
 }
 .own-bar > span {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: var(--color-primary, #4b8bbf);
+  background: linear-gradient(90deg, #818cf8, var(--fin-primary));
 }
 
-/* The month's closing row: tinted, so it reads as a total. */
-.own-total {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  margin-top: 0.55rem;
-  padding: 0.75rem 0.85rem;
-  border-radius: 14px;
-  background: rgba(75, 139, 191, 0.08);
-  border: 1.5px solid var(--color-primary, #4b8bbf);
-}
+/* ---------- Spending overview + budget bars ---------- */
 
-/* The date block on month rows: day over month. */
-.own-date {
-  flex: 0 0 auto;
-  width: 48px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0.3rem 0;
-  border-radius: 12px;
-  background: rgba(248, 244, 236, 0.8);
-  border: 1px solid var(--color-border, #e8dfc4);
-}
-.own-date-day {
-  font-size: 1.05rem;
-  font-weight: 900;
-  line-height: 1.2;
-  color: var(--color-text, #2d2416);
-}
-.own-date-mon {
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-muted, #8a7355);
-}
-
-/* Spending overview: donut beside budget-style category bars. */
-.own-spend {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-.own-donut svg {
-  display: block;
-  width: 150px;
-  height: auto;
-  margin: 0 auto;
-}
-.own-donut-value {
-  font-size: 0.72rem;
-  font-weight: 900;
-  fill: var(--color-text, #2d2416);
-}
-.own-donut-sub {
-  font-size: 0.58rem;
-  font-weight: 700;
-  fill: var(--color-muted, #8a7355);
-}
-.own-legend {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
+.own-spend { display: flex; flex-direction: row; align-items: center; gap: 16px; }
+.own-donut { flex: 0 0 132px; }
+.own-donut svg { display: block; width: 132px; height: auto; margin: 0 auto; }
+.own-donut-value { font-size: 0.68rem; font-weight: 900; fill: var(--fin-ink); }
+.own-donut-sub { font-size: 0.56rem; font-weight: 700; fill: var(--fin-muted); }
+.own-legend { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .own-cat {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  gap: 0.15rem 0.5rem;
+  grid-template-columns: auto 1fr auto;
+  gap: 2px 8px;
   align-items: center;
 }
-.own-cat .own-bar { grid-column: 1 / -1; }
-.own-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-.own-cat-name {
-  font-size: 0.82rem;
-  font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.own-cat-amt { font-size: 0.82rem; font-weight: 800; }
-.own-cat-pct {
-  font-size: 0.75rem;
-  font-weight: 700;
-  min-width: 2.4em;
-  text-align: right;
-  color: var(--color-muted, #8a7355);
-}
+.own-cat .own-bar { grid-column: 1 / -1; margin-top: 6px; }
+.own-dot { width: 10px; height: 10px; border-radius: 50%; }
+.own-cat-name { font-size: 0.8rem; font-weight: 800; color: var(--fin-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.own-cat-amt { font-size: 0.78rem; font-weight: 800; color: var(--fin-ink); }
+.own-cat-pct { grid-column: 3; grid-row: 1; font-size: 0.72rem; font-weight: 800; color: var(--fin-muted); display: none; }
 
-/* The service head strip: icon, status and saved rate over the editor. */
-.own-svc-head {
+/* ---------- Month + day controls ---------- */
+
+.fin-monthbar .own-month { margin-bottom: 10px; }
+.own-month { display: flex; align-items: center; gap: 8px; }
+.own-month-label { flex: 1 1 auto; text-align: center; font-size: 1rem; font-weight: 900; color: var(--fin-ink); }
+.own-month .btn, .own-step .btn {
+  flex: 0 0 46px;
+  width: 46px;
+  min-height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #e7eaf2;
+  background: #fff;
+  font-size: 1.3rem;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding-bottom: 0.5rem;
+  justify-content: center;
+}
+.own-step { display: flex; gap: 8px; align-items: stretch; }
+.own-step .input { flex: 1 1 auto; height: 46px; border-radius: 14px; border: 1px solid #e7eaf2; }
+.own-prog { margin: 0 0 10px; }
+.own-prog-top { display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 800; color: #4b5563; margin-bottom: 6px; }
+.own-prog-track { height: 10px; border-radius: 999px; background: var(--fin-track); overflow: hidden; }
+.own-prog-track > span { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, #818cf8, var(--fin-primary)); transition: width 300ms ease; }
+.own-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.own-controls .btn { min-height: 40px; border-radius: 999px; }
+.own-controls-spacer { flex: 1 1 auto; }
+
+.own-day-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+  padding: 12px;
+  background: #f4f6fb;
+  border: 1px solid #e7eaf2;
+  border-radius: 16px;
+}
+.own-audit-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.own-audit-row .btn { flex: 1 1 140px; min-height: 44px; border-radius: 14px; justify-content: center; }
+.own-loading { display: flex; align-items: center; justify-content: center; padding: 1.5rem 1rem; color: var(--fin-muted); font-size: 0.9rem; }
+
+/* ---------- Shop as budget hero + cards ---------- */
+
+.fin-budgethero {
+  background: linear-gradient(135deg, #0d1526, #2b3a67 60%, #5b5bd6 100%);
+  color: #fff;
+  border-radius: 24px;
+  padding: 18px;
+  box-shadow: 0 12px 28px rgba(13, 21, 38, 0.3);
+}
+.fin-budget-col { display: flex; flex-direction: column; gap: 2px; }
+.fin-budgethero .fin-budget-col + .fin-budget-col { margin-top: 10px; }
+.fin-budget-label { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+.fin-budget-value { font-size: 1.5rem; font-weight: 900; }
+.fin-budget-right { text-align: left; }
+.fin-budget-track { margin-top: 12px; background: rgba(255,255,255,0.2); }
+.fin-budget-track > span { background: linear-gradient(90deg, #c7d2fe, #fff); }
+.fin-budget-cap { margin: 8px 0 0; font-size: 0.76rem; color: rgba(255,255,255,0.8); }
+.fin-stack { display: flex; flex-direction: column; gap: 0; }
+.fin-cardhead { background: transparent; border-bottom: 1px solid #eef1f6; }
+.own-addrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 10px; }
+.own-addrow .field { margin: 0; }
+.own-addrow-name { flex: 1 1 150px; min-width: 0; }
+.own-addrow-rate { flex: 0 1 110px; min-width: 88px; }
+.own-addrow-actions { display: flex; gap: 8px; }
+.own-row { display: flex; flex-direction: column; gap: 8px; padding: 14px 2px; border-bottom: 1px solid #eef1f6; }
+.own-row:last-child { border-bottom: 0; }
+.own-row-fields { display: flex; gap: 8px; }
+.own-row-fields .input { flex: 1 1 auto; min-width: 0; border-radius: 12px; }
+.own-row-fields .input.is-rate { flex: 0 0 104px; text-align: right; }
+.own-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.own-row-actions .own-row-actions-end { margin-left: auto; display: flex; gap: 8px; }
+.own-svc-head { display: flex; align-items: center; gap: 10px; }
+
+/* ---------- Bottom app bar ---------- */
+
+.fin-tabbar {
+  position: sticky;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  margin-top: 18px;
+  padding: 10px 10px 12px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #e7eaf2;
+  box-shadow: 0 14px 34px rgba(13, 21, 38, 0.16);
+  backdrop-filter: blur(14px);
+}
+.fin-item {
+  flex: 1 1 0;
+  border: 0;
+  background: none;
+  color: #9aa3b2;
+  font-family: inherit;
+  font-size: 0.66rem;
+  font-weight: 800;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 52px;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 16px;
+}
+.fin-item svg { width: 22px; height: 22px; }
+.fin-item.is-active { color: var(--fin-primary); }
+.fin-fab {
+  flex: 0 0 auto;
+  width: 58px;
+  height: 58px;
+  margin: -32px 6px 0;
+  border-radius: 50%;
+  border: 4px solid var(--fin-bg);
+  background: var(--fin-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 12px 22px rgba(91, 91, 214, 0.45);
+}
+.fin-fab svg { width: 24px; height: 24px; }
+.fin-fab.is-active { background: var(--fin-primary-dark); }
+.fin-footnote { opacity: 0.6; }
+
+.auth-footer-caption { color: #6b7280; }
+
+/* ---------- Small phones: full-bleed app ---------- */
+
+@media (max-width: 560px) {
+  body[data-page="admin"] .content { padding: 10px 10px 90px; }
+  .auth-card.receipt-card.dash-receipt-card.fin-phone {
+    border: 0;
+    border-radius: 28px;
+    box-shadow: 0 18px 44px rgba(13, 21, 38, 0.22);
+  }
+  .own-spend { flex-direction: column; align-items: stretch; }
+  .own-donut { flex-basis: auto; }
 }
 
-@media (min-width: 560px) {
-  .own-hero-value { font-size: 2.4rem; }
-  .own-spend { flex-direction: row; align-items: center; }
-  .own-donut svg { margin: 0; }
+/* ---------- Desktop: keep the phone centered ---------- */
+
+@media (min-width: 900px) {
+  .own-split.fin-stack { display: flex; }
+  .fin-inner { padding: 18px 18px 20px; }
+}
+
+/* ---------- Mobile: the shell topbar is redundant ----------
+
+   The phone header inside the sheet (menu, section title, bell)
+   already does this job, so on phones the outer "Owner console"
+   bar is just a second header stacked above the first. Hidden
+   below the shell's own drawer breakpoint; the drawer itself is
+   untouched and still opens from the inner menu button, which
+   carries the same data-sidebar-toggle hook. Desktop keeps the
+   topbar, where the phone sheet sits beside the sidebar. */
+
+@media (max-width: 1024px) {
+  body[data-page="admin"] .topbar { display: none; }
+  body[data-page="admin"] .content {
+    padding-top: calc(0.6rem + var(--sat, 0px));
+  }
 }

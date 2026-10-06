@@ -564,6 +564,8 @@ async function loadMoney(force) {
      All of it is drawn from figures already in hand — no extra reads. */
   renderMoneyGreeting();
   renderMoneyHero({ collected, expensesKnown, monthExpenses, prevCollected, prevRecorded });
+  renderHeroSplit({ collected, expensesKnown, monthExpenses });
+  renderSpark(lastFortnight(todayKey, heads, prevHeads));
   renderMixList({ cash, upi, card, due, gross });
   renderSpending({ rows: expenseRows, expensesKnown, total: monthExpenses });
 }
@@ -631,6 +633,66 @@ function renderMoneyHero({ collected, expensesKnown, monthExpenses, prevCollecte
   delta.hidden = false;
   delta.className = "own-hero-delta " + (up ? "is-up" : "is-down");
   delta.textContent = (up ? "+" : "−") + Math.abs(pct).toFixed(1) + "% vs last month";
+}
+
+/** In-hand vs spent, as two glass cells inside the hero. */
+function renderHeroSplit({ collected, expensesKnown, monthExpenses }) {
+  const out = document.getElementById("moneyHeroSplit");
+  if (!out) return;
+  const got = formatINR(collected);
+  const spent = expensesKnown ? formatINR(monthExpenses) : "Not read";
+  out.innerHTML =
+    '<div class="own-split-cell"><span>In hand</span><strong>' + escapeHtml(got) + "</strong></div>" +
+    '<div class="own-split-cell"><span>Spent</span><strong>' + escapeHtml(spent) + "</strong></div>";
+}
+
+/**
+ * The 14 days ending today, oldest first, drawn as bars.
+ *
+ * Both months' heads are already in hand, so the walk never crosses a
+ * month boundary with a new read: missing heads are simply gaps.
+ */
+function lastFortnight(todayKey, headsA, headsB) {
+  const keys = [];
+  let k = todayKey;
+  for (let i = 0; i < 14; i++) {
+    keys.unshift(k);
+    k = shiftDayKey(k, -1);
+  }
+  const merged = Object.assign({}, headsB, headsA);
+  return keys.map((key) => {
+    const c = (merged[key] && merged[key].counters) || null;
+    return { key, collected: c ? Number(c.collectedPaise) || 0 : 0, has: !!c };
+  });
+}
+
+/** Collections sparkline: amber today, blue recorded days, ghosts for gaps. */
+function renderSpark(days) {
+  const out = document.getElementById("moneySpark");
+  if (!out) return;
+  const W = 280;
+  const H = 64;
+  const gap = 4;
+  const bw = (W - gap * (days.length - 1)) / days.length;
+  let max = 0;
+  for (const d of days) {
+    if (d.collected > max) max = d.collected;
+  }
+  const bars = days
+    .map((d, i) => {
+      const h = max > 0 ? Math.max(Math.round((d.collected / max) * (H - 16)), d.collected > 0 ? 3 : 2) : 2;
+      const x = (bw + gap) * i;
+      const y = H - h;
+      const fill = i === days.length - 1 ? "#f5a623" : d.has ? "#7fb3dd" : "rgba(255,255,255,.18)";
+      return (
+        '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + bw.toFixed(1) + '" height="' + h + '" rx="2.5" fill="' + fill + '">' +
+        "<title>" + escapeHtml(d.key + " · " + formatINR(d.collected)) + "</title></rect>"
+      );
+    })
+    .join("");
+  out.innerHTML =
+    '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="presentation">' + bars + "</svg>" +
+    '<p class="own-spark-cap">Collected · last 14 days</p>';
 }
 
 /** Cash / UPI / card / due for the month, with each one's share. */
@@ -761,6 +823,33 @@ function monthShort(key) {
   return names[Number(key.split("-")[1])] || "";
 }
 
+/** Month progress: day X of D, pure calendar math, no reads. */
+function renderMonthProgress(yearMonth, todayKey, isFuture, isCurrent) {
+  const label = document.getElementById("monthProgLabel");
+  const pctEl = document.getElementById("monthProgPct");
+  const fill = document.getElementById("monthProgFill");
+  if (!label || !pctEl || !fill) return;
+  const bounds = monthBounds(yearMonth);
+  if (!bounds) return;
+  const total = bounds.days;
+  let done = 0;
+  let text = "";
+  if (isFuture) {
+    done = 0;
+    text = "Not started";
+  } else if (isCurrent) {
+    done = Math.min(Number(todayKey.slice(8, 10)), total);
+    text = "Day " + done + " of " + total;
+  } else {
+    done = total;
+    text = total + " days · a closed month";
+  }
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  label.textContent = text;
+  pctEl.textContent = pct + "%";
+  fill.style.width = pct + "%";
+}
+
 function wireMonth() {
   document.getElementById("monthPrevBtn").addEventListener("click", () => {
     state.month = shiftMonth(state.month, -1);
@@ -805,6 +894,8 @@ async function loadMonth(force) {
 
   const todayKey = todayKolkata();
   const out = document.getElementById("monthDays");
+
+  renderMonthProgress(yearMonth, todayKey, isFuture, isCurrent);
 
   let heads;
   try {

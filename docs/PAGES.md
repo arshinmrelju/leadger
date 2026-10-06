@@ -200,14 +200,17 @@ day-close never sits one tap from sale entry. The HTML is a 315-line shell.
 
 **Money** opens with a greeting over the month's hero net, with the change
 against last month's collections underneath it, then today's tiles and the
-month-to-date tiles. Below them sit the collection mix (cash / UPI / card /
+month-to-date tiles. The hero is a deep-green card: in-hand vs spent glass
+cells and a 14-day collections sparkline (amber today, blue recorded days,
+ghosts for gaps), all drawn from heads already in hand. Below them sit the collection mix (cash / UPI / card /
 due with each one's share) and the spending overview: a donut of the month's
 expenses by their own category field with budget-style bars. Every figure is
 folded off day heads rather than summed from sales, so it costs one query per
 month instead of a read per sale; the hero's delta costs one extra cached
 month of heads, and the mix, donut and day-sales list cost nothing at all.
 
-**Month** lists the month's recorded days as one row per day — date block,
+**Month** opens with a day-X-of-D progress bar (pure calendar math), then
+lists the month's recorded days as one row per day — date block,
 sales, state, taken, spent and net — with the month's own total as a closing
 row, and the days with nothing on them called out by name. A finished
 month is scanned whole (`monthBounds(yearMonth).days`): stopping at the last day with
