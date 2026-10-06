@@ -29,6 +29,94 @@ body[data-page="admin"] {
 .own-gate .stat-icon { width: 34px; height: 34px; }
 .own-chip .stat-icon { width: 16px; height: 16px; }
 
+/* ---------- Boot / loading (same phone-receipt design as the console) ---------- */
+
+.fin-boot-wrap { padding: 1.5rem 0 2rem; }
+
+.fin-boot {
+  text-align: center;
+  padding: 2.2rem 1.4rem 2.4rem;
+}
+
+.fin-boot-emblem {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fin-boot-emblem .emblem-spinner {
+  position: absolute;
+  inset: 0;
+  border: 3.5px solid rgba(91, 91, 214, 0.16);
+  border-top-color: var(--fin-primary);
+  border-right-color: #9c9cf0;
+  border-radius: 50%;
+  animation: spin 0.9s cubic-bezier(0.4, 0.1, 0.2, 0.9) infinite;
+  box-shadow: 0 0 16px rgba(91, 91, 214, 0.14);
+}
+
+.fin-boot-emblem > svg {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  padding: 11px;
+  background: #fff;
+  border-radius: 16px;
+  color: var(--fin-primary);
+  border: 1px solid #e4e6f5;
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
+  animation: pulseScale 2s ease-in-out infinite;
+}
+
+.fin-boot-title {
+  font-size: 1.18rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: var(--fin-ink);
+  margin: 0 0 0.3rem;
+}
+
+.fin-boot-sub {
+  margin: 0 0 1.2rem;
+  font-size: 0.8rem;
+  color: var(--fin-muted);
+}
+
+.fin-boot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #fff;
+  border: 1px solid #e7eaf2;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--fin-ink);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
+  margin-bottom: 1.1rem;
+}
+
+.fin-boot-progress {
+  height: 6px;
+  max-width: 220px;
+  margin: 0 auto;
+  background: var(--fin-track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.fin-boot-progress .ledger-loading-bar {
+  height: 100%;
+  border-radius: 999px;
+}
+
 /* ---------- Phone frame ---------- */
 
 .fin-wrap {
