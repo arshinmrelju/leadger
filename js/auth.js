@@ -299,7 +299,12 @@ export async function signInWithGoogle() {
   try {
     const provider = new b.authMod.GoogleAuthProvider();
     const cred = await b.authMod.signInWithPopup(b.auth, provider);
-    return cred.user;
+    /* onAuthStateChanged fires async — without this, getCurrentUser() is
+       still null in the enrollment read that runs a line later, so the
+       grant lookup returns null and a returning account is sent down the
+       create path the rules will refuse. */
+    if (cred && cred.user) notify(cred.user);
+    return cred ? cred.user : null;
   } catch (err) {
     throw toAuthError(err);
   }
@@ -566,8 +571,23 @@ function clientInfo() {
  */
 export async function enrollBrowser({ label } = {}) {
   const user = await signInWithGoogle();
+  if (!user) throw new AuthError("not-signed-in", friendly("not-signed-in"));
   const b = await storeBridge();
   const fs = b.firestore;
+
+  /* Returning account (same Google id on a second device, or a repeat
+     sign-in): the grant already exists and is active, and the rules
+     forbid writing a new enrollment while trusted — so that write is
+     denied and the authorised account is told "not authorised", until a
+     refresh reads the grant directly and logs in. Check first and make
+     re-sign-in idempotent. */
+  try {
+    const pre = await getAccessGrant({ force: true });
+    if (pre && pre.active === true) return pre;
+  } catch {
+    /* Lookup failed (offline/quota) — fall through to enrollment, which
+       re-checks everything anyway. */
+  }
 
   const email = (user.email || "").toLowerCase().trim();
 
