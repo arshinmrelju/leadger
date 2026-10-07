@@ -381,6 +381,26 @@ test("the two manifests launch into their own app", () => {
   assert.equal(owner.id, "/admin.html", "owner manifest needs its own id, or installs collide");
   assert.notEqual(shop.id, owner.id, "sharing one id merges the two apps into one install");
 
+  /* Scopes decide which app a URL opens in. The shop's pages share no
+     common prefix, so its scope must stay "/". The console's two pages do
+     ("admin.html", "admin-login.html"), so its scope is the "/admin"
+     prefix: with scope "/" the installed shop app would swallow admin.html
+     and the console would never be a separate app. */
+  assert.equal(shop.scope, "/", "shop scope must cover every root page");
+  assert.equal(owner.scope, "/admin", "owner scope must own only its pages");
+  for (const page of ["admin.html", "admin-login.html"]) {
+    assert.ok(
+      `/${page}`.startsWith(owner.scope),
+      `${page} must be inside the owner scope or it opens outside the app`,
+    );
+  }
+  for (const page of ["dashboard.html", "transactions.html", "calendar.html", "ledger.html", "login.html", "index.html"]) {
+    assert.ok(
+      !`/${page}`.startsWith(owner.scope),
+      `${page} must stay outside the owner scope or the apps overlap`,
+    );
+  }
+
   /* Same mark, different colours: the two home-screen icons must never be
      the same files, or the shop and the console are indistinguishable. */
   const shopIcons = new Set(shop.icons.map((i) => i.src));

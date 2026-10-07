@@ -4,7 +4,7 @@
   "description": "Owner console for TrustX Ledger: the month's money, close any day, and the shop's services and trusted browsers.",
   "id": "/admin.html",
   "start_url": "/admin.html",
-  "scope": "/",
+  "scope": "/admin",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
   "orientation": "any",

@@ -1093,7 +1093,7 @@ The original bug this replaced: a day whose head has drifted out of step with it
 - Only `200` and non-opaque responses are stored. Navigations fall back network → cache → **`offline.html`**, so an installed app never shows a blank void.
 - **`skipWaiting()` is never called on its own.** The worker only activates on an explicit `SKIP_WAITING` message, which the app sends from an `Update ready` button the user clicks. A deploy is noticed within the hour by a `registration.update()` poll.
 - `Install app` appears only when the browser actually offered a prompt; if it did not, the button says so instead of silently failing.
-- **Two installable apps, one per role.** The shop manifest (`manifest.webmanifest`, `id`/`start_url: /dashboard.html`) opens the shop workspace, so a desktop install never lands on the Owner console. The Owner console has its own manifest (`manifest-admin.webmanifest`, `id`/`start_url: /admin.html`) linked only from `admin.html`/`admin-login.html`, so installing from the console opens the console. Each keeps a stable `id` so existing installs update in place.
+- **Two installable apps, one per role.** The shop manifest (`manifest.webmanifest`, `id`/`start_url: /dashboard.html`) opens the shop workspace, so a desktop install never lands on the Owner console. The Owner console has its own manifest (`manifest-admin.webmanifest`, `id`/`start_url: /admin.html`, `scope: /admin`) linked only from `admin.html`/`admin-login.html`, so installing from the console opens the console in its own window. The narrow scope is what keeps the shop app (scope `/`) from swallowing the console URLs. Each keeps a stable `id` so existing installs update in place.
 - **First-visit install dialog — `admin.html` only.** `mountInstallOnboarding()` puts a receipt-styled dialog over the finished console on the owner's first visit, remembers the answer in `localStorage` (`trustx.install-offered.v1`), and asks once. Three properties are deliberate:
   - **It never navigates.** No assignment to `location`, no `href` — *"an install prompt that had to navigate to do its job would make 'install the app' and 'go to the dashboard' the same gesture."*
   - **It does not wait for `beforeinstallprompt`.** That event is Chromium-only and iOS Safari never fires it, so gating on it would mean an iPhone is never offered the app at all. The dialog renders regardless; the button calls the held prompt, or replaces itself with the two-tap route for that browser.
@@ -1206,7 +1206,7 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 | ![HTML5](https://img.shields.io/badge/HTML5-8-e34f26?style=flat-square&logo=html5&logoColor=white) | 8 static HTML pages |
 | ![CSS3](https://img.shields.io/badge/CSS3-9-5435d3?style=flat-square&logo=css3&logoColor=white) | 9 stylesheets · 5,418 lines · custom-property design tokens |
 | ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 21 native ES modules · 12,278 lines · **no bundler** |
-| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v9` · 2 manifests · 4 shortcuts |
+| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v10` · 2 manifests · 4 shortcuts |
 
 No framework. No build step. No `node_modules`. Pages load the Firebase SDK through a pinned import map and everything else is a native ES module.
 
@@ -1260,7 +1260,7 @@ There is **no application server**. Firebase is the backend.
 
 [![Live status](https://img.shields.io/badge/STATUS-%F0%9F%9F%A2%20ONLINE-2d8a4e?style=flat-square)](https://trustxplpy.web.app)
 [![HTTP 200](https://img.shields.io/badge/live%20deploy-HTTP%20200-brightgreen?style=flat-square)](https://trustxplpy.web.app)
-[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v9-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
+[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v10-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
 
 </div>
 
@@ -1873,7 +1873,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 | Security rules | 978 lines |
 | Runtime dependencies | **0** |
 | Build steps | **0** |
-| Version | 0.13.1 · service worker cache `v9` |
+| Version | 0.13.1 · service worker cache `v10` |
 
 ### Version history
 

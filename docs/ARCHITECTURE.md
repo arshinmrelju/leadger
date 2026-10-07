@@ -239,7 +239,7 @@ migration is recorded in `firestore.rules:616-619`.
 
 | Piece | File | Behaviour |
 |---|---|---|
-| Precaching | `sw.js` | cache `v9`, 57 files (53 app + 4 pinned Firebase SDK bundles), install-time |
+| Precaching | `sw.js` | cache `v10`, 57 files (53 app + 4 pinned Firebase SDK bundles), install-time |
 | Navigation | `sw.js` | network first, cache fallback, then `offline.html` |
 | App data | Firestore | `persistentLocalCache` + multi-tab, so an open shop keeps reading while offline |
 | Writes while offline | — | not queued. A sale needs the rules to approve it, and the rules are server-side |
@@ -254,7 +254,7 @@ connection.**
 | Field | Shop (`manifest.webmanifest`) | Owner (`manifest-admin.webmanifest`) |
 |---|---|---|
 | `id` / `start_url` | `/dashboard.html` | `/admin.html` |
-| `scope` | `/` | `/` |
+| `scope` | `/` (pages share no prefix) | `/admin` (owns `admin.html` + `admin-login.html` only) |
 | `display` | `standalone` | `standalone` |
 | `theme_color` | `#132b1e` | `#5b5bd6` |
 | `background_color` | `#f7f3ea` | `#f7f3ea` |
