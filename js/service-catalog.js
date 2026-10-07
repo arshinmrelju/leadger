@@ -63,9 +63,11 @@ export const DEFAULT_SERVICE_PRICE_RUPEES = 0;
  * would order one shop's catalog differently from another's. Appending gives
  * a fresh shop and an upgraded one the same order.
  *
- * The government band is FULL at ten (300-390). The next job that belongs
- * there has to open a band at 900, not take slot 400 - that would list it
- * under "Online application / digital services" with no error anywhere.
+ * The government band filled its tenth slot at 390 (Pension), band 900
+ * belongs to ration card work and band 1000 to vehicle work, so the next
+ * job that belongs to one of them has to open a band at 1100 - never slot
+ * 400, which would list it under "Online application / digital services"
+ * with no error anywhere.
  */
 const GROUPS = [
   {
@@ -107,6 +109,7 @@ const GROUPS = [
       ["Legal Heir", "LH"],
       ["PVC Card", "PV"],
       ["Passport Application", "PP"],
+      ["Pension", "PW"],
     ],
   },
   {
@@ -160,6 +163,24 @@ const GROUPS = [
       ["Birth Certificate", "BC"],
       ["Birth Correction", "BR"],
       ["Caste Certificate", "CC"],
+    ],
+  },
+  {
+    id: "ration",
+    label: "Ration card services",
+    base: 900,
+    services: [
+      ["Ration Card Works", "RW"],
+    ],
+  },
+  {
+    id: "vehicle",
+    label: "Vehicle services",
+    base: 1000,
+    services: [
+      ["Vehicle", "VH"],
+      ["RC", "RC"],
+      ["Permit", "PM"],
     ],
   },
 ];

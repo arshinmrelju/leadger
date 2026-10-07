@@ -128,7 +128,7 @@ TrustX Ledger/
 │   ├── image-receipt.js    Gemini OCR + offline Tesseract OCR + multi-line review
 │   ├── receipt-items.js    a bill as line items · pricing · catalog ranking  (pure)
 │   ├── service-picker.js   WAI-ARIA combobox over the service catalog
-│   ├── service-catalog.js  38 seed services in 8 sortOrder bands  (pure)
+│   ├── service-catalog.js  43 seed services in 10 sortOrder bands  (pure)
 │   ├── calendar.js         month-grid logic                            (pure)
 │   ├── day-heads.js        day counters + per-method split             (pure)
 │   ├── day-ledger.js       single-day view logic                       (pure)
@@ -1008,9 +1008,9 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 </details>
 
 <details>
-<summary><b>⚙️ A 39-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
+<summary><b>⚙️ A 43-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
 
-`js/service-catalog.js` seeds the catalog a shop starts from: **39 services across 8 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Owner console's **Shop** tab asks for real rates once, after the seed.
+`js/service-catalog.js` seeds the catalog a shop starts from: **43 services across 10 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Owner console's **Shop** tab asks for real rates once, after the seed.
 
 ```text
 100s  Printing & document services      Normal Printing · Colour/Photo Printing ·
@@ -1020,8 +1020,8 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
                                         CV / Resume
 300s  Government / certificate services PCC · Income Certificate · Possession
                                         Certificate · Building Tax · E-Challan ·
-                                        PAN Card · Legal Document Work · PVC Card ·
-                                        Passport Application · Legal Letter
+                                        PAN Card · Legal Heir · PVC Card ·
+                                        Passport Application · Pension
 400s  Online application / digital      Online Application · Government Portal Work ·
                                         Form Filling · Document Uploading ·
                                         Print Application Copy · Download/Print
@@ -1033,6 +1033,8 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
                                         Non-Attachment Certificate
 800s  Certificates & vital records      Birth Certificate · Birth Correction ·
                                         Caste Certificate
+900s  Ration card services              Ration Card Works
+1000s Vehicle services                  Vehicle · RC · Permit
 ```
 
 Three things make the auto-seed safe to run on every page load:
@@ -1041,7 +1043,7 @@ Three things make the auto-seed safe to run on every page load:
 2. **`findMissingCatalogServices` matches on normalised name *and* on seed ID**, so a hand-typed service is never duplicated and a *renamed* default is never re-seeded over the top.
 3. **New entries append at the end of their band**, because inserting in the middle would renumber services whose `sortOrder` was baked in at seed time.
 
-Band 300 is full at ten entries, so the next government job has to open band 900 — *"not take slot 400, that would list it under 'Online application / digital services' with no error anywhere."*
+Band 300 filled its tenth slot with Pension (300-390), band 900 holds ration card work and band 1000 vehicle work, so the next government job has to open band 1100 — *"not take slot 400, that would list it under 'Online application / digital services' with no error anywhere."*
 
 The picker itself is a WAI-ARIA combobox with a real focusable textbox, sticky group headings, full arrow-key navigation, a `Tab`-to-commit behaviour, and a two-pass position measurement that defeats the modal's own `transform` animation.
 
@@ -1802,7 +1804,7 @@ The app runs locally from step 2 of [Installation](#installation). Because every
 
 **2 · Seed representative data** via the Owner console (`admin.html`):
 
-- **🛒 Shop → Add default services** — writes the 38 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
+- **🛒 Shop → Add default services** — writes the 43 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
 - **💵 Money / 📅 Month** are read-only views. Record sales through **⌘N** on the dashboard instead, so the atomicity proof is exercised for real.
 - Record a spread of sales across several days: different payment methods, at least one **due** left pending, at least one sale **backfilled** onto a past business day, and at least one day with **no entries at all** so the calendar's catch-up panel is populated.
 

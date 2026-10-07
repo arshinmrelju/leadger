@@ -492,7 +492,7 @@ const PICKER_SERVICES = [
   { serviceId: "a1", name: "Passport Photo", code: "PP", pricePaise: 4000, sortOrder: 500, active: true },
   { serviceId: "a2", name: "Photocopy", code: "PC", pricePaise: 200, sortOrder: 100, active: true },
   { serviceId: "a3", name: "Laminating", code: "LA", pricePaise: 1000, sortOrder: 200, active: true },
-  { serviceId: "a4", name: "Custom Binding", code: "CB", pricePaise: 0, sortOrder: 999, active: true },
+  { serviceId: "a4", name: "Custom Binding", code: "CB", pricePaise: 0, sortOrder: 10000, active: true },
   { serviceId: "a5", name: "Retired Job", code: "RJ", pricePaise: 500, sortOrder: 100, active: false },
 ];
 
@@ -547,8 +547,8 @@ test("serviceGroupOf: sortOrder bands map to the counter's sections", () => {
   for (const entry of SERVICE_CATALOG) {
     assert.notEqual(labelOf(entry), "Other services", `seeded band exists: ${entry.name}`);
   }
-  /* Hand-typed services land outside every band. */
-  assert.equal(labelOf({ sortOrder: 999 }), "Other services");
+  /* Hand-typed services land outside every band (the bands run 100-1099). */
+  assert.equal(labelOf({ sortOrder: 10000 }), "Other services");
   assert.equal(labelOf({}), "Other services");
   assert.equal(labelOf({ sortOrder: "junk" }), "Other services");
   assert.equal(labelOf(null), "Other services");
