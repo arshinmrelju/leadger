@@ -380,6 +380,27 @@ test("the two manifests launch into their own app", () => {
   assert.equal(owner.start_url, "/admin.html", "owner manifest must launch the console");
   assert.equal(owner.id, "/admin.html", "owner manifest needs its own id, or installs collide");
   assert.notEqual(shop.id, owner.id, "sharing one id merges the two apps into one install");
+
+  /* Same mark, different colours: the two home-screen icons must never be
+     the same files, or the shop and the console are indistinguishable. */
+  const shopIcons = new Set(shop.icons.map((i) => i.src));
+  const missing = [];
+  for (const icon of owner.icons) {
+    assert.ok(
+      !shopIcons.has(icon.src),
+      `owner manifest reuses the shop icon ${icon.src} — the apps would look identical`,
+    );
+    if (!fs.existsSync(path.join(ROOT, icon.src))) missing.push(icon.src);
+  }
+  assert.deepEqual(missing, [], `owner icons missing on disk: ${missing.join(", ")}`);
+  assert.ok(
+    owner.icons.some((i) => i.sizes === "192x192" && i.type === "image/png"),
+    "owner manifest needs a 192px PNG or the browser will not offer to install it",
+  );
+  assert.ok(
+    owner.icons.some((i) => i.sizes === "512x512" && i.type === "image/png"),
+    "owner manifest needs a 512x512 PNG or the browser will not offer to install it",
+  );
 });
 
 test("the install prompt is captured before any async shell init can run", () => {

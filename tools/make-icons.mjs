@@ -106,6 +106,11 @@ const jobs = [
   { svg: join(OUT, "logo.svg"), size: 192, out: join(OUT, "icon-192.png") },
   { svg: join(OUT, "logo.svg"), size: 512, out: join(OUT, "icon-512.png") },
   { svg: join(OUT, "icon-maskable.svg"), size: 512, out: join(OUT, "icon-maskable-512.png") },
+  /* Owner console set — the second PWA (manifest-admin.webmanifest) needs
+     its own 192 + 512 PNGs or the browser will not offer to install it. */
+  { svg: join(OUT, "logo-owner.svg"), size: 192, out: join(OUT, "icon-owner-192.png") },
+  { svg: join(OUT, "logo-owner.svg"), size: 512, out: join(OUT, "icon-owner-512.png") },
+  { svg: join(OUT, "icon-maskable-owner.svg"), size: 512, out: join(OUT, "icon-maskable-owner-512.png") },
 ];
 
 for (const { svg, size, out } of jobs) {

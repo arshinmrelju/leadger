@@ -37,7 +37,7 @@
    ========================================================= */
 
 /** Bump to invalidate every cached file on the next activate. */
-const CACHE_VERSION = "v8";
+const CACHE_VERSION = "v9";
 
 const SHELL_CACHE = `trustx-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `trustx-vendor-${CACHE_VERSION}`;
@@ -122,6 +122,11 @@ const SHELL_FILES = [
   "assets/icon-192.png",
   "assets/icon-512.png",
   "assets/icon-maskable-512.png",
+  "assets/logo-owner.svg",
+  "assets/favicon-owner.svg",
+  "assets/icon-owner-192.png",
+  "assets/icon-owner-512.png",
+  "assets/icon-maskable-owner-512.png",
   "assets/coin-gold.svg",
   "assets/coin-silver.svg",
   "assets/cha-ching.mp3",

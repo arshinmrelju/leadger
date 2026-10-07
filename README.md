@@ -1087,7 +1087,7 @@ The original bug this replaced: a day whose head has drifted out of step with it
 <details open>
 <summary><b>📱 Installable, offline-first PWA</b> — <code>sw.js</code>, <code>js/pwa.js</code>, <code>manifest.webmanifest</code></summary>
 
-- **Precache: 52 files — 48 app files plus the 4 pinned Firebase SDK bundles** — listed explicitly, because there is no build step to generate a manifest. Each is added individually inside a `try/catch`, because *"a single 404 must not leave the shop with NO service worker."* `tests/module-graph.mjs` cross-checks `SHELL_FILES` against what is actually in `js/` and `css/`, so a new module cannot be added without being cached or deliberately excluded.
+- **Precache: 57 files — 53 app files plus the 4 pinned Firebase SDK bundles** — listed explicitly, because there is no build step to generate a manifest. Each is added individually inside a `try/catch`, because *"a single 404 must not leave the shop with NO service worker."* `tests/module-graph.mjs` cross-checks `SHELL_FILES` against what is actually in `js/` and `css/`, so a new module cannot be added without being cached or deliberately excluded.
 - **Cache-first, revalidating in the background, behind an allowlist.** `www.gstatic.com` and the font hosts are cached; **everything else is passed straight through before `respondWith`**. A blocklist was rejected deliberately — *"it would have to guess at every host Firebase might use, and would fail open on any host nobody thought of."*
 - **Never cached, always:** `/tools/`, `/sa.json`, `/service-account.json`, `/.firebase/`, the debug logs, `sw.js` itself.
 - Only `200` and non-opaque responses are stored. Navigations fall back network → cache → **`offline.html`**, so an installed app never shows a blank void.
@@ -1206,7 +1206,7 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 | ![HTML5](https://img.shields.io/badge/HTML5-8-e34f26?style=flat-square&logo=html5&logoColor=white) | 8 static HTML pages |
 | ![CSS3](https://img.shields.io/badge/CSS3-9-5435d3?style=flat-square&logo=css3&logoColor=white) | 9 stylesheets · 5,418 lines · custom-property design tokens |
 | ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 21 native ES modules · 12,278 lines · **no bundler** |
-| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v8` · 2 manifests · 4 shortcuts |
+| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v9` · 2 manifests · 4 shortcuts |
 
 No framework. No build step. No `node_modules`. Pages load the Firebase SDK through a pinned import map and everything else is a native ES module.
 
@@ -1260,7 +1260,7 @@ There is **no application server**. Firebase is the backend.
 
 [![Live status](https://img.shields.io/badge/STATUS-%F0%9F%9F%A2%20ONLINE-2d8a4e?style=flat-square)](https://trustxplpy.web.app)
 [![HTTP 200](https://img.shields.io/badge/live%20deploy-HTTP%20200-brightgreen?style=flat-square)](https://trustxplpy.web.app)
-[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v8-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
+[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v9-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
 
 </div>
 
@@ -1873,7 +1873,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 | Security rules | 978 lines |
 | Runtime dependencies | **0** |
 | Build steps | **0** |
-| Version | 0.13.1 · service worker cache `v8` |
+| Version | 0.13.1 · service worker cache `v9` |
 
 ### Version history
 
