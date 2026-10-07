@@ -101,8 +101,9 @@ Imports `setLoading`, `formatINR`, `formatKolkataLong`, `formatKolkataTime`, `es
 **Quick services** — `#quickGrid`, up to 12 tiles; a tap opens the sale form pre-filled with that
 `serviceId`. `#quickAddBtn` → `Add services`.
 
-**Actions** — `#scanReceiptBtn` `SCAN RECEIPT` · `#newTxnBtn` `NEW TRANSACTION` ·
-`#refreshBtn` `Refresh` · `#emptyRecordBtn` `Record a sale`
+**Actions** — `#newTxnBtn` `NEW TRANSACTION` ·
+`#refreshBtn` `Refresh` · `#emptyRecordBtn` `Record a sale` (receipt scanning lives
+inside the sale dialog as `#saleScanBtn`, plus <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>)
 
 **Shell hooks** — `onReady` registers `onSaleRecorded()`; `onDayChange` reloads on Kolkata
 midnight.
@@ -277,7 +278,7 @@ misses the cache and there is no connection.
 | Edit a sale | `js/txn-actions.js` | row `edit` button |
 | View receipt photo | `js/txn-actions.js` | row `receipt` button |
 | Mark paid / Delete | `js/txn-actions.js` | row `paid` / `delete` buttons |
-| Scan a receipt | `js/image-receipt.js` | `#scanReceiptBtn` · ⌘⇧N |
+| Scan a receipt | `js/image-receipt.js` | `#saleScanBtn` inside the sale dialog · ⌘⇧N |
 | Confirm | `js/app.js` | every destructive action |
 | Toast | `js/app.js` | everything |
 

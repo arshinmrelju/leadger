@@ -285,7 +285,7 @@ Below the grid, a **catch-up panel** lists the days still to fill in (up to 8), 
 
 ### Scan a receipt — two OCR paths, one bill at a time
 
-<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>, or the `SCAN RECEIPT` button on the dashboard.
+<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>, or `Have a paper bill? Scan it instead` inside the Record-a-sale dialog.
 
 ```mermaid
 flowchart TD
@@ -464,7 +464,7 @@ A write refused by the rules is **never** reported as a sign-in failure — quot
 - Revenue card carries a note; Net is coloured against zero
 - **Recent transactions** table — time, service, qty × rate, total, payment-method chips (including *pending*), customer, status; `View history` link; `Refresh` with a loading state
 - **Quick services** grid — up to 12 tiles, tap to open the sale form pre-filled with that service
-- `SCAN RECEIPT` · `NEW TRANSACTION` · `Refresh` · `Record a sale` (empty state) · `Add services`
+- `NEW TRANSACTION` · `Refresh` · `Record a sale` (empty state) · `Add services` (receipt scanning lives inside the sale dialog)
 - Day-rollover aware: `onDayChange` reloads when Kolkata crosses midnight
 - `onSaleRecorded` reloads after any sale anywhere in the app
 

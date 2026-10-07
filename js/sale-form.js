@@ -60,6 +60,9 @@ const ICON_CLOSE =
 const ICON_SALE =
   '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>';
 
+const ICON_CAMERA_SM =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+
 /* ---------------- State ---------------- */
 
 let overlay = null;
@@ -142,6 +145,18 @@ function saleFormMarkup() {
   return (
     '<form id="saleForm" novalidate>' +
     '<div class="alert alert-error is-hidden" id="formMsg" role="alert"><span data-form-msg></span></div>' +
+
+    /* The paper-bill route lives here, not beside NEW TRANSACTION: scanning
+       books one or many sales straight from a photo, so it is an alternate
+       way to fill this same dialog's job — not a second primary action
+       competing with it on every page. Kept as a quiet link so the form
+       stays a form, and reachable from every page that opens this dialog. */
+    '<div class="sale-scan-row">' +
+    '<button type="button" class="btn btn-ghost btn-sm" id="saleScanBtn">' +
+    ICON_CAMERA_SM +
+    '<span>Have a paper bill? Scan it instead</span>' +
+    "</button>" +
+    "</div>" +
 
     /* What the scanner could not place. Shown ABOVE the form, and only
        when the bill named something the catalog does not have — the
@@ -555,6 +570,21 @@ function wire(root) {
   if (suggestAdd) suggestAdd.addEventListener("click", () => openAddServiceBox(scannedName));
   const suggestHide = root.querySelector("#scanSuggestHide");
   if (suggestHide) suggestHide.addEventListener("click", () => hideScanSuggest());
+
+  /* Leave the half-filled form behind and open the scanner: the scan books
+     its own sales (one per bill line), so keeping this dialog open under it
+     would only invite saving the same sale twice. Dynamic import — a static
+     one would cycle back into js/image-receipt.js, which already imports
+     this module. */
+  const saleScanBtn = root.querySelector("#saleScanBtn");
+  if (saleScanBtn) {
+    saleScanBtn.addEventListener("click", () => {
+      closeModal(root);
+      import("./image-receipt.js")
+        .then((m) => m.openScanReceiptModal())
+        .catch((err) => console.warn("[trustx-ledger] scan receipt failed to open:", err));
+    });
+  }
 
   root.querySelectorAll("#methodRow .seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {

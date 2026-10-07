@@ -678,6 +678,12 @@ input.input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none
 
 .scan-suggest-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
 
+/* The paper-bill route inside the sale dialog (js/sale-form.js). A quiet
+   full-width link, not a second primary button: the form's SAVE stays the
+   only loud action, and scanning is the alternate way in. */
+.sale-scan-row { display: flex; justify-content: center; margin-bottom: 1rem; }
+.sale-scan-row .btn { display: inline-flex; align-items: center; gap: 0.4rem; }
+
 /* =========================================================
    The attached receipt photo (js/sale-form.js)
    ========================================================= */
