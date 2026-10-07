@@ -22,3 +22,6 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
+
+# Third-party tool residue
+.freebuff/
