@@ -14,40 +14,40 @@ the build on a cycle, a bare specifier, or a Firebase version that drifts from t
 
 ```mermaid
 flowchart TD
-    subgraph HTML["8 HTML documents"]
+    subgraph HTML["9 HTML documents"]
         direction TB
-        PUB["index · login · offline<br/>no Firebase import"]
+        PUB["index · login · offline<br/>index imports no Firebase<br/>offline has none"]
         SHOP["dashboard · calendar · ledger<br/>transactions"]
-        ADM["admin"]
+        ADM["admin-login · admin<br/>owner console + its sign-in"]
     end
 
     subgraph PURE["Pure logic · zero Firebase"]
-        UTIL["utils 250"]
+        UTIL["utils 249"]
         CAT["service-catalog 297"]
         DH["day-heads 235"]
         DL["day-ledger 243"]
-        CAL["calendar 450"]
-        AUD["day-audit 492"]
-        RITEMS["receipt-items 494"]
+        CAL["calendar 480"]
+        AUD["day-audit 506"]
+        RITEMS["receipt-items 542"]
     end
 
     subgraph UI["UI layer"]
         APP["app 295"]
-        SHELL["shell 306"]
-        FORM["sale-form 1311"]
-        PICK["service-picker 682"]
+        SHELL["shell 309"]
+        FORM["sale-form 1511"]
+        PICK["service-picker 738"]
         TXN["txn-actions 764"]
-        IMGR["image-receipt 1562"]
-        ADMJS["admin 1540"]
+        IMGR["image-receipt 1759"]
+        ADMJS["admin 1944"]
     end
 
     subgraph DATA["Data + platform"]
-        LEDGER["ledger 1833"]
-        AUTH["auth 872"]
-        FB["firebase 157"]
-        CACHE["read-cache 303"]
-        QUOTA["quota 376"]
-        PWA["pwa 275"]
+        LEDGER["ledger 1860"]
+        AUTH["auth 892"]
+        FB["firebase 156"]
+        CACHE["read-cache 302"]
+        QUOTA["quota 326"]
+        PWA["pwa 535"]
         AICFG["ai-config 73"]
     end
 
@@ -239,7 +239,7 @@ migration is recorded in `firestore.rules:616-619`.
 
 | Piece | File | Behaviour |
 |---|---|---|
-| Precaching | `sw.js` | cache `v10`, 57 files (53 app + 4 pinned Firebase SDK bundles), install-time |
+| Precaching | `sw.js` | cache `v11`, 59 files (55 app + 4 pinned Firebase SDK bundles), install-time |
 | Navigation | `sw.js` | network first, cache fallback, then `offline.html` |
 | App data | Firestore | `persistentLocalCache` + multi-tab, so an open shop keeps reading while offline |
 | Writes while offline | — | not queued. A sale needs the rules to approve it, and the rules are server-side |

@@ -25,7 +25,7 @@ dependencies.
 
 ## Tests
 
-178 cases across five files.
+179 cases across five files.
 
 | File | Lines | Covers |
 |---|---|---|
@@ -50,7 +50,7 @@ import { splitAmounts } from "../js/day-heads.js";
 ### Current status
 
 ```text
-178 tests · 178 pass · 0 fail
+179 tests · 179 pass · 0 fail
 ```
 
 The case that was failing at `v0.13.1` — `tests/ledger.mjs:1221`, *"a day of legacy sales reads as
@@ -165,18 +165,19 @@ npm run test:rules
 ## Repository map
 
 ```text
-70 tracked files
+89 tracked files
 ├─ index.html login.html offline.html          public gateway, auth, fallback
+├─ admin-login.html                            owner console sign-in
 ├─ dashboard.html calendar.html                workspace
 ├─ ledger.html transactions.html admin.html
-├─ js/            20 modules · 11 284 lines
-├─ css/            9 files  ·  5 400 lines
-├─ assets/        10 files  (icons, logo, sound, banner)
-├─ tests/          3 files  ·  3 263 lines
+├─ js/            21 modules · 14 016 lines
+├─ css/            9 files  ·  6 695 lines
+├─ assets/        16 files  (icons, logos, sound, banner)
+├─ tests/          5 files  ·  4 194 lines
 ├─ tools/          7 files
 ├─ firestore.rules  923 lines
 ├─ database.rules.json  55 lines
-├─ sw.js           342 lines
+├─ sw.js           349 lines
 └─ docs/           this reference
 ```
 
@@ -184,4 +185,4 @@ npm run test:rules
 
 ## License
 
-No `LICENSE` file is present. All rights reserved by default.
+MIT — see the root [`LICENSE`](../LICENSE) file.

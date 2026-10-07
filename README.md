@@ -17,7 +17,7 @@
 [![Build step](https://img.shields.io/badge/build-none-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![Dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![PWA](https://img.shields.io/badge/PWA-installable-2d8a4e?style=flat-square)](https://web.dev/progressive-web-apps/)
-[![Tests](https://img.shields.io/badge/tests-178%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
+[![Tests](https://img.shields.io/badge/tests-179%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
 [![License](https://img.shields.io/badge/license-MIT-2d8a4e?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/LICENSE)
 [![Security rules](https://img.shields.io/badge/firestore.rules-923%20lines-c0392b?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/firestore.rules)
 
@@ -73,7 +73,7 @@ TrustX Ledger is a **production-shaped, single-shop ledger** for an Indian digit
 
 The interesting engineering is not the CRUD. It is that **a browser is treated as untrusted**:
 
-- **No bundler, no build step, no `npm install`.** The Firebase SDK is pulled from a pinned CDN version through an import map. 8 HTML files + 20 ES modules run as-is.
+- **No bundler, no build step, no `npm install`.** The Firebase SDK is pulled from a pinned CDN version through an import map. 9 HTML files + 21 ES modules run as-is.
 - **The server is the authority.** A sale and the day's totals must land in **one atomic Firestore batch**, and `firestore.rules` proves the day head moved by exactly that sale's `amounts` split. A sale cannot land without the day following it.
 - **Money is integer paise.** `₹10.50` is stored as `1050`. No floating point anywhere in the money path.
 - **Days are `Asia/Kolkata`**, keyed `YYYY-MM-DD`. A sale can be backfilled onto a past business day; future days are refused by the UI *and* by the rules.
@@ -85,31 +85,32 @@ The interesting engineering is not the CRUD. It is that **a browser is treated a
 
 | Pages | JS modules | CSS files | Rules | Tests | Runtime deps |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| **8** | **21** | **9** | **978** | **178** | **0** |
+| **9** | **21** | **9** | **978** | **179** | **0** |
 
 </div>
 
 `978` = 923 lines of `firestore.rules` + 55 lines of `database.rules.json`.
-`178` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
+`179` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
 
 <details>
-<summary><b>📦 What is actually in the repository</b> (70 tracked files)</summary>
+<summary><b>📦 What is actually in the repository</b> (89 tracked files)</summary>
 
 ```
 TrustX Ledger/
 ├── ENTRY + AUTH
-│   ├── index.html            128 lines   System Gateway receipt card · SW registration
+│   ├── index.html            127 lines   System Gateway receipt card · SW registration
 │   ├── login.html            207 lines   Google Sign-In (receipt-paper UI)
-│   └── offline.html          112 lines   Service-worker offline fallback
+│   ├── offline.html          111 lines   Service-worker offline fallback
+│   ├── admin-login.html      184 lines   Owner console sign-in — separate installable app
 │
 ├── SHOP WORKSPACE  (signed-in + trusted device)
-│   ├── dashboard.html        713 lines   Today · 8 stat cards · recent sales · quick services
-│   ├── calendar.html         538 lines   Month grid · recorded / closed / missing / future
+│   ├── dashboard.html        701 lines   Today · 8 stat cards · recent sales · quick services
+│   ├── calendar.html         539 lines   Month grid · recorded / closed / missing / future
 │   ├── ledger.html           746 lines   One business day · filters · totals · close & reopen
-│   └── transactions.html     623 lines   All-time or single-day history · search · grouped
+│   └── transactions.html     622 lines   All-time or single-day history · search · grouped
 │
 ├── ADMIN  (admin role only · one link in the nav)
-│   └── admin.html            315 lines   Owner console → js/admin.js, on the app shell
+│   └── admin.html            397 lines   Owner console → js/admin.js, on the app shell
 │                                            Money · Month · Day · Shop
 │
 ├── OVERLAYS  (modals, not pages)
@@ -119,7 +120,7 @@ TrustX Ledger/
 │   ├── View receipt photo            js/txn-actions.js
 │   └── Confirm / alert               js/app.js
 │
-├── js/  21 modules · 12,278 lines
+├── js/  21 modules · 14,016 lines
 │   ├── firebase.js         SDK bootstrap · lazy import · offline persistence
 │   ├── auth.js             Google Sign-In · enrollment · grants · admin promotion
 │   ├── ledger.js           the only module that writes money
@@ -143,16 +144,17 @@ TrustX Ledger/
 │   ├── ai-config.js        Gemini model config (key is a placeholder)
 │   └── read-cache / quota / …  no cycles — leaves → firebase → auth/ledger → UI
 │
-├── css/  9 files · 5,418 lines  (style · forms · dashboard · transactions ·
+├── css/  9 files · 6,695 lines  (style · forms · dashboard · transactions ·
 │                                   ledger · calendar · admin · responsive · mobile)
 ├── tests/  5 files             (ledger · calendar · receipt-scan · module-graph · owner-console)
 ├── tools/  7 Node scripts       (bootstrap-access · rules-check · make-icons · …)
-├── assets/ 10 files             (logo · favicon · PWA icons · coins · banner · sound)
+├── assets/ 16 files             (logos · favicons · PWA icons · coins · banner · sound)
 ├── firestore.rules       923 lines   the money
 ├── database.rules.json    55 lines   expenses + fail-closed legacy paths
 ├── firestore.indexes.json             empty — the day key is the partition
-├── sw.js                 343 lines   cache v7 · 52-file precache
-├── manifest.webmanifest              4 app shortcuts
+├── sw.js                 349 lines   cache v11 · 55-file precache
+├── manifest.webmanifest              4 app shortcuts · shop installable app
+├── manifest-admin.webmanifest        owner console installable app
 ├── firebase.json                    hosting + both rule sets + emulators + headers
 └── package.json                      2 scripts, 0 dependencies
 ```
@@ -340,17 +342,18 @@ flowchart TD
 
 ## 🗺️ Pages
 
-**8 pages. All 8 are deployed and reachable — verified live, all returning HTTP 200.**
-Every page except `index.html`, `login.html` and `offline.html` redirects to the sign-in gate unless the browser already holds an active access grant.
+**9 pages. All 9 are deployed and reachable — verified live, all returning HTTP 200.**
+Every page except `index.html`, `login.html`, `offline.html` and `admin-login.html` redirects to the sign-in gate unless the browser already holds an active access grant.
 
 ```text
 ╔══════════════════════════════════════════════════════════════════════════╗
-║  PROJECT EXPLORER — TrustX Ledger                          8 pages       ║
+║  PROJECT EXPLORER — TrustX Ledger                          9 pages       ║
 ╠══════════════════════════════════════════════════════════════════════════╣
 ║                                                                          ║
-║  PUBLIC                                                                  ║
+║  PUBLIC + OWNER SIGN-IN                                                   ║
 ║  🏠  System Gateway ·············· index.html         /          [open]  ║
 ║  🔐  Sign in ····················· login.html         /login.html  [open]  ║
+║  🛡️  Owner sign in ··············· admin-login.html   /admin-login  [open] ║
 ║  📴  Offline fallback ············ offline.html       /offline.html[open] ║
 ║                                                                          ║
 ║  SHOP WORKSPACE — signed in + trusted browser                            ║
@@ -370,6 +373,7 @@ Every page except `index.html`, `login.html` and `offline.html` redirects to the
 |---|---|---|---|
 | 🏠 **System Gateway** | `/` | public | [`index.html`](https://github.com/arshinmrelju/leadger/blob/main/index.html) · [open](https://trustxplpy.web.app/) |
 | 🔐 **Sign in** | `/login.html` | public | [`login.html`](https://github.com/arshinmrelju/leadger/blob/main/login.html) · [open](https://trustxplpy.web.app/login.html) |
+| 🛡️ **Owner sign in** | `/admin-login.html` | public | [`admin-login.html`](https://github.com/arshinmrelju/leadger/blob/main/admin-login.html) · [open](https://trustxplpy.web.app/admin-login.html) |
 | 📊 **Dashboard** | `/dashboard.html` | trusted | [`dashboard.html`](https://github.com/arshinmrelju/leadger/blob/main/dashboard.html) · [open](https://trustxplpy.web.app/dashboard.html) |
 | 📅 **Calendar** | `/calendar.html` | trusted | [`calendar.html`](https://github.com/arshinmrelju/leadger/blob/main/calendar.html) · [open](https://trustxplpy.web.app/calendar.html) |
 | 📒 **Daily Ledger** | `/ledger.html?date=` | trusted | [`ledger.html`](https://github.com/arshinmrelju/leadger/blob/main/ledger.html) · [open](https://trustxplpy.web.app/ledger.html) |
@@ -377,11 +381,11 @@ Every page except `index.html`, `login.html` and `offline.html` redirects to the
 | 🛡️ **Owner Console** | `/admin.html` | **admin** | [`admin.html`](https://github.com/arshinmrelju/leadger/blob/main/admin.html) · [open](https://trustxplpy.web.app/admin.html) |
 | 📴 **Offline Fallback** | `/offline.html` | public | [`offline.html`](https://github.com/arshinmrelju/leadger/blob/main/offline.html) · [open](https://trustxplpy.web.app/offline.html) |
 
-Jump to a section: [Gateway](#page-index) · [Sign in](#page-login) · [Dashboard](#page-dashboard) · [Calendar](#page-calendar) · [Ledger](#page-ledger) · [History](#page-transactions) · [Console](#page-admin) · [Offline](#page-offline)
+Jump to a section: [Gateway](#page-index) · [Sign in](#page-login) · [Owner sign in](#page-admin-login) · [Dashboard](#page-dashboard) · [Calendar](#page-calendar) · [Ledger](#page-ledger) · [History](#page-transactions) · [Console](#page-admin) · [Offline](#page-offline)
 
 Plus five overlays that are modals rather than pages: [**Record a sale**](#record-a-sale) · Scan a receipt · Edit a sale · View receipt photo · Confirm
 
-Base URL for every live link: **`https://trustxplpy.web.app/`** · All 8 pages verified **HTTP 200**.
+Base URL for every live link: **`https://trustxplpy.web.app/`** · All 9 pages verified **HTTP 200**.
 
 ---
 
@@ -568,11 +572,31 @@ The dashboard reads the day head, which is why the counters must be provably cor
 
 ---
 
+<a id="page-admin-login"></a>
+
+### 🛡️ Owner Sign-In — `admin-login.html`
+
+**Route** `/admin-login.html` · **Access** public · **184 lines**
+
+> The Owner console's own sign-in page, styled to match the ledger's receipt aesthetic. The Owner app is a **second installable app** (its own manifest, `scope: /admin`), so it signs itself in rather than reusing the shop's `login.html`.
+
+**Features**
+
+- Same Google Sign-In flow as `login.html`, pointed at the admin shell
+- `data-page="admin"` so the app shell knows which app it booted into
+- Own manifest link (`manifest-admin.webmanifest`) so an install from this page launches `admin.html`
+
+🔗 [Open live](https://trustxplpy.web.app/admin-login.html) · [Source](https://github.com/arshinmrelju/leadger/blob/main/admin-login.html)
+
+**Related** → [Owner Console](#page-admin) · [PWA](#pwa)
+
+---
+
 <a id="page-admin"></a>
 
 ### 🛡️ Owner Console — `admin.html`
 
-**Route** `/admin.html` · **Access** **`admin` role only** · **315 lines shell + `js/admin.js`**
+**Route** `/admin.html` · **Access** **`admin` role only** · **397 lines shell + `js/admin.js`**
 **One sidebar link.** Under Management, after the shop's own four screens.
 **The PWA `start_url`** — the installed app launches here.
 
@@ -815,7 +839,7 @@ Because the head cannot see the sale, a write to the head *alone* is bounded by 
 flowchart TD
     subgraph CLIENT["Browser - no build step - no bundler"]
         direction TB
-        HTML["8 HTML pages<br/>import map to Firebase 12.18.0"]
+        HTML["9 HTML pages<br/>import map to Firebase 12.18.0"]
         PURE["Pure logic modules<br/>calendar · day-heads · day-ledger<br/>day-audit · service-catalog · receipt-items · utils"]
         UI["UI modules<br/>shell · app · sale-form<br/>txn-actions · image-receipt · service-picker · admin"]
         IO["Data modules<br/>ledger.js · auth.js"]
@@ -1089,7 +1113,7 @@ The original bug this replaced: a day whose head has drifted out of step with it
 <details open>
 <summary><b>📱 Installable, offline-first PWA</b> — <code>sw.js</code>, <code>js/pwa.js</code>, <code>manifest.webmanifest</code></summary>
 
-- **Precache: 57 files — 53 app files plus the 4 pinned Firebase SDK bundles** — listed explicitly, because there is no build step to generate a manifest. Each is added individually inside a `try/catch`, because *"a single 404 must not leave the shop with NO service worker."* `tests/module-graph.mjs` cross-checks `SHELL_FILES` against what is actually in `js/` and `css/`, so a new module cannot be added without being cached or deliberately excluded.
+- **Precache: 59 files — 55 app files plus the 4 pinned Firebase SDK bundles** — listed explicitly, because there is no build step to generate a manifest. Each is added individually inside a `try/catch`, because *"a single 404 must not leave the shop with NO service worker."* `tests/module-graph.mjs` cross-checks `SHELL_FILES` against what is actually in `js/` and `css/`, so a new module cannot be added without being cached or deliberately excluded.
 - **Cache-first, revalidating in the background, behind an allowlist.** `www.gstatic.com` and the font hosts are cached; **everything else is passed straight through before `respondWith`**. A blocklist was rejected deliberately — *"it would have to guess at every host Firebase might use, and would fail open on any host nobody thought of."*
 - **Never cached, always:** `/tools/`, `/sa.json`, `/service-account.json`, `/.firebase/`, the debug logs, `sw.js` itself.
 - Only `200` and non-opaque responses are stored. Navigations fall back network → cache → **`offline.html`**, so an installed app never shows a blank void.
@@ -1168,7 +1192,7 @@ Input escaping: `escapeHtml` on every interpolated value; `serviceId` may not co
 <details>
 <summary><b>🎨 A receipt-paper design system</b> — <code>css/style.css</code></summary>
 
-Nine stylesheets, 5,418 lines, one token set:
+Nine stylesheets, 6,695 lines, one token set:
 
 | Token | Value | |
 |---|---|---|
@@ -1205,10 +1229,10 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 
 | | |
 |---|---|
-| ![HTML5](https://img.shields.io/badge/HTML5-8-e34f26?style=flat-square&logo=html5&logoColor=white) | 8 static HTML pages |
-| ![CSS3](https://img.shields.io/badge/CSS3-9-5435d3?style=flat-square&logo=css3&logoColor=white) | 9 stylesheets · 5,418 lines · custom-property design tokens |
-| ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 21 native ES modules · 12,278 lines · **no bundler** |
-| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v10` · 2 manifests · 4 shortcuts |
+| ![HTML5](https://img.shields.io/badge/HTML5-9-e34f26?style=flat-square&logo=html5&logoColor=white) | 9 static HTML pages |
+| ![CSS3](https://img.shields.io/badge/CSS3-9-5435d3?style=flat-square&logo=css3&logoColor=white) | 9 stylesheets · 6,695 lines · custom-property design tokens |
+| ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 21 native ES modules · 14,016 lines · **no bundler** |
+| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v11` · 2 manifests · 4 shortcuts |
 
 No framework. No build step. No `node_modules`. Pages load the Firebase SDK through a pinned import map and everything else is a native ES module.
 
@@ -1262,16 +1286,17 @@ There is **no application server**. Firebase is the backend.
 
 [![Live status](https://img.shields.io/badge/STATUS-%F0%9F%9F%A2%20ONLINE-2d8a4e?style=flat-square)](https://trustxplpy.web.app)
 [![HTTP 200](https://img.shields.io/badge/live%20deploy-HTTP%20200-brightgreen?style=flat-square)](https://trustxplpy.web.app)
-[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v10-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
+[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v11-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
 
 </div>
 
-All 8 pages were checked and return **HTTP 200**:
+All 9 pages were checked and return **HTTP 200**:
 
 | Page | Live URL |
 |---|---|
 | System Gateway | https://trustxplpy.web.app/ |
 | Sign in | https://trustxplpy.web.app/login.html |
+| Owner sign in | https://trustxplpy.web.app/admin-login.html |
 | Dashboard | https://trustxplpy.web.app/dashboard.html |
 | Calendar | https://trustxplpy.web.app/calendar.html |
 | Daily Ledger | https://trustxplpy.web.app/ledger.html |
@@ -1745,13 +1770,13 @@ npm run test:rules # Firestore emulator harness — requires `firebase emulators
 | `tests/ledger.mjs` | 2,336 | paise maths, validation, day-view logic, catalog seeding, day-head counters — **and it reads `firestore.rules` off disk to assert the client constants still match the rules** |
 | `tests/calendar.mjs` | 428 | month bounds, totals, missed-day detection, backfilled-row marking |
 | `tests/receipt-scan.mjs` | 303 | a scanned bill read as a **list** of lines, priced the way `createTransaction()` recomputes them, with an unknown name offered as suggestions instead of refused — **and a source guard on the Gemini prompt, because that instruction is what used to collapse a bill to its largest line** |
-| `tests/module-graph.mjs` | 557 | every named import resolves to a real export; no dead exports; `sw.js`'s `FIREBASE_VERSION` matches all 8 import maps |
+| `tests/module-graph.mjs` | 621 | every named import resolves to a real export; no dead exports; `sw.js`'s `FIREBASE_VERSION` matches all 8 import maps |
 | `tests/owner-console.mjs` | 506 | the admin console's figures, chips and half-scoped guard |
 
 ### Current result — stated honestly
 
 ```
-ℹ tests 178     ℹ pass 178     ℹ fail 0     ℹ skipped 0     ℹ todo 0
+ℹ tests 179     ℹ pass 179     ℹ fail 0     ℹ skipped 0     ℹ todo 0
 ```
 
 **The suite is green.** The one case that used to fail here — *a day of legacy sales reads as in
@@ -1859,23 +1884,23 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 
 </div>
 
-> Every badge above is **live** — nothing is hardcoded and nothing will go stale. There is **no LICENSE file** in this repository, so the license badge will report *"No license found"*. That is the accurate state, not an oversight in the badge.
+> Every badge above is **live** — nothing is hardcoded and nothing will go stale. The project is licensed **MIT** (see [`LICENSE`](https://github.com/arshinmrelju/leadger/blob/main/LICENSE)).
 
 **Measured from the working tree**
 
 | | |
 |---|---|
-| Tracked files | 70 |
-| HTML pages | 8 · 3,228 lines |
-| JS modules | 21 · 12,278 lines |
-| CSS files | 9 · 5,418 lines |
-| Tests | 5 files · 4,130 lines · 178 cases |
+| Tracked files | 89 |
+| HTML pages | 9 · 3,634 lines |
+| JS modules | 21 · 14,016 lines |
+| CSS files | 9 · 6,695 lines |
+| Tests | 5 files · 4,194 lines · 179 cases |
 | Tools | 7 Node scripts |
-| Assets | 10 files |
+| Assets | 16 files |
 | Security rules | 978 lines |
 | Runtime dependencies | **0** |
 | Build steps | **0** |
-| Version | 0.13.1 · service worker cache `v10` |
+| Version | 0.13.1 · service worker cache `v11` |
 
 ### Version history
 
@@ -1931,8 +1956,8 @@ Features documented ...... 15         auth+allowlist · day heads · calendar ·
                                         read cache · paise+dates · design system
 
 Features explored ........ 2           live links · screenshots
-Live links ............... 17          1 deployment + 8 pages + 8 source files
-                                        (all 8 pages verified HTTP 200)
+Live links ............... 19          1 deployment + 9 pages + 9 source files
+                                        (all 9 pages verified HTTP 200)
 Screenshots .............. 0           honest — none exist; capture guide provided
 Animations/diagrams ...... 6           3 Mermaid flows + 1 ASCII calendar +
                                         1 ASCII receipt + 1 ASCII project explorer
@@ -1947,7 +1972,7 @@ Security ................. ✓           rules matrix · authz · 3-layer valida
                                         sensitive data · 6 known gaps
 Installation ............. ✓           verified against package.json and real tools
 Configuration ............ ✓           3 real config points, placeholders only
-Testing ................. ✓           178 tests · 178 pass / 0 fail
+Testing ................. ✓           179 tests · 179 pass / 0 fail
 Statistics ............... ✓           all badges dynamic, none hardcoded
 Developer ................ ✓            from repository metadata only
 Secrets exposed .......... 0 ✓         no key, token or credential reproduced
@@ -1964,8 +1989,8 @@ Fabricated content ....... 0 ✓         no invented pages, features, stats or m
 
 ### Verification performed
 
-- `npm test` executed — **178 tests, 178 pass, 0 fail**; the long-standing legacy-sales failure is fixed at its cause (fixture + refusal diagnosis), not skipped or weakened
-- All 8 deployed page URLs requested — **HTTP 200** each
+- `npm test` executed — **179 tests, 179 pass, 0 fail**; the long-standing legacy-sales failure is fixed at its cause (fixture + refusal diagnosis), not skipped or weakened
+- All 9 deployed page URLs requested — **HTTP 200** each
 - **All 10 Mermaid diagrams** (7 here, 3 in `docs/`) parsed with the `mermaid@11` parser that GitHub uses — every one renders
 - **Anchor, fence and HTML-tag balance machine-checked** across this README and all 6 `docs/` files — every internal anchor resolves, every fence closes, every `<details>` pairs
 - **83 external URLs** enumerated and reviewed; the one that would have 404'd (a `LICENSE` badge pointing at a file that does not exist) now points at the repository root, and the missing license is stated in plain text instead

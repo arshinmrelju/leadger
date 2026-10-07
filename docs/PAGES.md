@@ -1,7 +1,7 @@
 # Pages & Overlays
 
 Every page in [TrustX Ledger](https://github.com/arshinmrelju/leadger), and every modal that is not
-a page. All eight pages are deployed at `https://trustxplpy.web.app` — verified **HTTP 200**.
+a page. All nine pages are deployed at `https://trustxplpy.web.app` — verified **HTTP 200**.
 
 Base URL: **`https://trustxplpy.web.app/`**
 
@@ -25,14 +25,15 @@ never the control; the rules are.
 
 | Page | File | Route | Access | Lines |
 |---|---|---|---|---|
-| System Gateway | `index.html` | `/` | public | 128 |
+| System Gateway | `index.html` | `/` | public | 127 |
 | Sign in | `login.html` | `/login.html` | public | 207 |
-| Dashboard | `dashboard.html` | `/dashboard.html` | trusted | 713 |
-| Calendar | `calendar.html` | `/calendar.html` | trusted | 538 |
+| Owner sign in | `admin-login.html` | `/admin-login.html` | public | 184 |
+| Dashboard | `dashboard.html` | `/dashboard.html` | trusted | 701 |
+| Calendar | `calendar.html` | `/calendar.html` | trusted | 539 |
 | Daily Ledger | `ledger.html` | `/ledger.html?date=YYYY-MM-DD` | trusted | 746 |
-| Transaction History | `transactions.html` | `/transactions.html[?date=YYYY-MM-DD]` | trusted | 623 |
-| Owner Console | `admin.html` | `/admin.html` | admin | 315 |
-| Offline Fallback | `offline.html` | `/offline.html` | public | 112 |
+| Transaction History | `transactions.html` | `/transactions.html[?date=YYYY-MM-DD]` | trusted | 622 |
+| Owner Console | `admin.html` | `/admin.html` | admin | 397 |
+| Offline Fallback | `offline.html` | `/offline.html` | public | 111 |
 
 ---
 
@@ -71,6 +72,18 @@ to `dashboard.html` without showing the button.
 | `not-enrolled` | This browser is not set up on this shop yet. Sign in with Google to continue. |
 
 **Preflight:** `isConfigured()` false → warning banner, button disabled.
+
+---
+
+### 🛡️ Owner sign in — `admin-login.html`
+
+`data-page="admin"` · title `Owner console sign in · TrustX Ledger` · its own manifest link
+(`manifest-admin.webmanifest`).
+
+- Same Google Sign-In flow as `login.html`, wired to the owner console's shell
+- `data-page="admin"` tells the shell which app it booted into
+- The Owner app is a **second installable app** (`scope: /admin`), so this page signs the console in
+  rather than reusing the shop's `login.html`
 
 ---
 

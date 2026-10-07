@@ -38,16 +38,16 @@ names. Capture against a **scratch project**, not the live one.
 Counts are from `git ls-files` at `v0.13.1` — the **application**, excluding this `docs/` tree.
 
 ```text
-70 tracked files
-├─  8 HTML pages              3,228 lines
-├─ 20 JS modules             11,284 lines
-├─  9 CSS files               5,400 lines
-├─  3 test files              3,263 lines   142 cases
+89 tracked files
+├─  9 HTML pages              3,634 lines
+├─ 21 JS modules             14,016 lines
+├─  9 CSS files               6,695 lines
+├─  5 test files              4,194 lines   179 cases
 ├─  7 tool scripts
-├─ 10 assets
+├─ 16 assets
 ├─ firestore.rules              923 lines   the money
 ├─ database.rules.json           55 lines   expenses + fail-closed legacy paths
-├─ sw.js                        342 lines   cache v4 · 51 precached files
+├─ sw.js                        349 lines   cache v11 · 55 precached files
 └─ package.json                            2 scripts · 0 dependencies · 0 build steps
 ```
 
