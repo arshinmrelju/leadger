@@ -37,7 +37,7 @@
    ========================================================= */
 
 /** Bump to invalidate every cached file on the next activate. */
-const CACHE_VERSION = "v12";
+const CACHE_VERSION = "v14";
 
 const SHELL_CACHE = `trustx-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `trustx-vendor-${CACHE_VERSION}`;

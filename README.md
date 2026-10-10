@@ -129,7 +129,7 @@ TrustX Ledger/
 │   ├── image-receipt.js    Gemini OCR + offline Tesseract OCR + multi-line review
 │   ├── receipt-items.js    a bill as line items · pricing · catalog ranking  (pure)
 │   ├── service-picker.js   WAI-ARIA combobox over the service catalog
-│   ├── service-catalog.js  47 seed services in 10 sortOrder bands  (pure)
+│   ├── service-catalog.js  49 seed services in 12 sortOrder bands  (pure)
 │   ├── calendar.js         month-grid logic                            (pure)
 │   ├── day-heads.js        day counters + per-method split             (pure)
 │   ├── day-ledger.js       single-day view logic                       (pure)
@@ -152,7 +152,7 @@ TrustX Ledger/
 ├── firestore.rules       923 lines   the money
 ├── database.rules.json    55 lines   expenses + fail-closed legacy paths
 ├── firestore.indexes.json             empty — the day key is the partition
-├── sw.js                 349 lines   cache v12 · 55-file precache
+├── sw.js                 349 lines   cache v14 · 55-file precache
 ├── manifest.webmanifest              4 app shortcuts · shop installable app
 ├── manifest-admin.webmanifest        owner console installable app
 ├── firebase.json                    hosting + both rule sets + emulators + headers
@@ -1032,9 +1032,9 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 </details>
 
 <details>
-<summary><b>⚙️ A 47-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
+<summary><b>⚙️ A 49-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
 
-`js/service-catalog.js` seeds the catalog a shop starts from: **47 services across 10 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Owner console's **Shop** tab asks for real rates once, after the seed.
+`js/service-catalog.js` seeds the catalog a shop starts from: **49 services across 12 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Owner console's **Shop** tab asks for real rates once, after the seed.
 
 ```text
 100s  Printing & document services      Normal Printing · Colour/Photo Printing ·
@@ -1060,6 +1060,8 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
                                         Caste Certificate
 900s  Ration card services              Ration Card Works
 1000s Vehicle services                  Vehicle · RC · Permit
+1100s Health services                   e Health
+1200s Railway services                  RRB
 ```
 
 Three things make the auto-seed safe to run on every page load:
@@ -1068,7 +1070,7 @@ Three things make the auto-seed safe to run on every page load:
 2. **`findMissingCatalogServices` matches on normalised name *and* on seed ID**, so a hand-typed service is never duplicated and a *renamed* default is never re-seeded over the top.
 3. **New entries append at the end of their band**, because inserting in the middle would renumber services whose `sortOrder` was baked in at seed time.
 
-Band 300 filled its tenth slot with Pension (300-390) and band 400 its tenth with Asha (400-490), band 900 holds ration card work and band 1000 vehicle work, so the next government job has to open band 1100 — *"not take slot 400, that would list it under 'Online application / digital services' with no error anywhere."*
+Band 300 filled its tenth slot with Pension (300-390) and band 400 its tenth with Asha (400-490), band 900 holds ration card work, band 1000 vehicle work, band 1100 health work and band 1200 railway work, so the next job has to open band 1300 — *"not take slot 400, that would list it under 'Online application / digital services' with no error anywhere."*
 
 The picker itself is a WAI-ARIA combobox with a real focusable textbox, sticky group headings, full arrow-key navigation, a `Tab`-to-commit behaviour, and a two-pass position measurement that defeats the modal's own `transform` animation.
 
@@ -1233,7 +1235,7 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 | ![HTML5](https://img.shields.io/badge/HTML5-9-e34f26?style=flat-square&logo=html5&logoColor=white) | 9 static HTML pages |
 | ![CSS3](https://img.shields.io/badge/CSS3-9-5435d3?style=flat-square&logo=css3&logoColor=white) | 9 stylesheets · 6,695 lines · custom-property design tokens |
 | ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 21 native ES modules · 14,016 lines · **no bundler** |
-| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v12` · 2 manifests · 4 shortcuts |
+| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v14` · 2 manifests · 4 shortcuts |
 
 No framework. No build step. No `node_modules`. Pages load the Firebase SDK through a pinned import map and everything else is a native ES module.
 
@@ -1287,7 +1289,7 @@ There is **no application server**. Firebase is the backend.
 
 [![Live status](https://img.shields.io/badge/STATUS-%F0%9F%9F%A2%20ONLINE-2d8a4e?style=flat-square)](https://trustxplpy.web.app)
 [![HTTP 200](https://img.shields.io/badge/live%20deploy-HTTP%20200-brightgreen?style=flat-square)](https://trustxplpy.web.app)
-[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v12-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
+[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v14-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
 
 </div>
 
@@ -1830,7 +1832,7 @@ The app runs locally from step 2 of [Installation](#installation). Because every
 
 **2 · Seed representative data** via the Owner console (`admin.html`):
 
-- **🛒 Shop → Add default services** — writes the 47 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
+- **🛒 Shop → Add default services** — writes the 49 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
 - **💵 Money / 📅 Month** are read-only views. Record sales through **⌘N** on the dashboard instead, so the atomicity proof is exercised for real.
 - Record a spread of sales across several days: different payment methods, at least one **due** left pending, at least one sale **backfilled** onto a past business day, and at least one day with **no entries at all** so the calendar's catch-up panel is populated.
 
@@ -1901,7 +1903,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 | Security rules | 978 lines |
 | Runtime dependencies | **0** |
 | Build steps | **0** |
-| Version | 0.13.1 · service worker cache `v12` |
+| Version | 0.13.1 · service worker cache `v14` |
 
 ### Version history
 

@@ -47,7 +47,7 @@ Counts are from `git ls-files` at `v0.13.1` — the **application**, excluding t
 ├─ 16 assets
 ├─ firestore.rules              923 lines   the money
 ├─ database.rules.json           55 lines   expenses + fail-closed legacy paths
-├─ sw.js                        349 lines   cache v12 · 55 precached files
+├─ sw.js                        349 lines   cache v14 · 55 precached files
 └─ package.json                            2 scripts · 0 dependencies · 0 build steps
 ```
 
