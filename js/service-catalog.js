@@ -63,11 +63,11 @@ export const DEFAULT_SERVICE_PRICE_RUPEES = 0;
  * would order one shop's catalog differently from another's. Appending gives
  * a fresh shop and an upgraded one the same order.
  *
- * The government band filled its tenth slot at 390 (Pension), band 900
- * belongs to ration card work and band 1000 to vehicle work, so the next
- * job that belongs to one of them has to open a band at 1100 - never slot
- * 400, which would list it under "Online application / digital services"
- * with no error anywhere.
+ * The government band filled its tenth slot at 390 (Pension), the online
+ * band its tenth at 490 (Asha), band 900 belongs to ration card work and
+ * band 1000 to vehicle work, so the next job that belongs to one of them
+ * has to open a band at 1100 - never slot 400, which would list it under
+ * "Online application / digital services" with no error anywhere.
  */
 const GROUPS = [
   {
@@ -124,6 +124,9 @@ const GROUPS = [
       ["Print Application Copy", "AP"],
       ["Download / Print Certificate", "DC"],
       ["Family Membership", "FM"],
+      ["Ksmart", "KS"],
+      ["Udayam", "UD"],
+      ["Asha", "AS"],
     ],
   },
   {
@@ -153,6 +156,7 @@ const GROUPS = [
       ["Encumbrance Certificate", "EN"],
       ["Land Tax", "LT"],
       ["Non-Attachment Certificate", "NA"],
+      ["Name Transfer", "NT"],
     ],
   },
   {

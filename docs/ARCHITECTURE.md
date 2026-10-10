@@ -23,7 +23,7 @@ flowchart TD
 
     subgraph PURE["Pure logic · zero Firebase"]
         UTIL["utils 249"]
-        CAT["service-catalog 297"]
+        CAT["service-catalog 301"]
         DH["day-heads 235"]
         DL["day-ledger 243"]
         CAL["calendar 480"]
@@ -239,7 +239,7 @@ migration is recorded in `firestore.rules:616-619`.
 
 | Piece | File | Behaviour |
 |---|---|---|
-| Precaching | `sw.js` | cache `v11`, 59 files (55 app + 4 pinned Firebase SDK bundles), install-time |
+| Precaching | `sw.js` | cache `v12`, 59 files (55 app + 4 pinned Firebase SDK bundles), install-time |
 | Navigation | `sw.js` | network first, cache fallback, then `offline.html` |
 | App data | Firestore | `persistentLocalCache` + multi-tab, so an open shop keeps reading while offline |
 | Writes while offline | — | not queued. A sale needs the rules to approve it, and the rules are server-side |
