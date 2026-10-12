@@ -482,6 +482,36 @@ test("the PDF export is wired across its pages, stylesheet and worker", () => {
     assert.ok(css.includes(sel), `css/print.css does not hide ${sel} on paper`);
   }
 
+  /* The reports turn their rows into cards on a narrow screen, and a
+     portrait sheet is narrow enough for those rules to fire on paper. The
+     print stylesheet must force the table back and keep the sheet full
+     width, or an export prints a stack of cards ~660px wide. */
+  assert.match(
+    css,
+    /display:\s*table\s*!important/,
+    "print must force table layout over the mobile card rules",
+  );
+  assert.match(
+    css,
+    /display:\s*table-row\s*!important/,
+    "print must force rows back into table rows",
+  );
+  assert.match(
+    css,
+    /table-layout:\s*fixed\s*!important/,
+    "print must fix column widths so the table fits the sheet",
+  );
+  assert.match(
+    css,
+    /content:\s*none\s*!important/,
+    "print must strip the mobile data-label pseudo elements",
+  );
+  assert.match(
+    css,
+    /\.content\s*\{[^}]*width:\s*100%\s*!important/,
+    "print must pin .content to full width (margin:auto otherwise shrinks it)",
+  );
+
   const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
   const block = sw.match(/SHELL_FILES\s*=\s*\[([\s\S]*?)\]/);
   assert.ok(block, "sw.js must declare a SHELL_FILES list");

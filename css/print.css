@@ -12,9 +12,25 @@
    document for that moment: drop the sidebar, topbar, filters and row
    buttons, and lay the table out so it survives a page break.
 
+   Two things are deliberate and load-bearing:
+
+     1. The table is FORCED back into table layout. Both reports turn
+        their rows into cards on a narrow screen (css/ledger.css at
+        760px, css/mobile.css at 720px). A portrait sheet is only
+        ~718px of printable width, so those rules would otherwise fire
+        on paper and print a stack of cards instead of a table. The
+        `display` resets below therefore carry !important and come
+        after every other stylesheet.
+
+     2. The sheet is full width. `.content` is a flex item with
+        `margin: 0 auto`, and auto cross-axis margins defeat the flex
+        stretch — so a `width: auto` print rule left the table ~660px
+        wide on a 1047px landscape sheet. The width is pinned instead.
+
    Landscape on purpose: both reports are wide tables (a ledger row is
    time, service, quantity, rate, total, payment, customer, status), and
-   portrait clips columns on A4.
+   portrait clips columns on A4. The table is still made to fit portrait
+   if the shopkeeper prints it that way.
    ========================================================= */
 
 /* The letterhead is a print affordance, never something on screen. */
@@ -23,19 +39,22 @@
 @media print {
   @page {
     size: landscape;
-    margin: 10mm;
+    margin: 8mm;
   }
 
   html,
   body {
     background: #ffffff !important;
     background-image: none !important;
-    margin: 0;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   body {
-    font-size: 10.5pt;
+    font-size: 9pt;
     color: #000000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   /* ---------- Application chrome is not part of the report ---------- */
@@ -47,31 +66,50 @@
   .modal-overlay,
   .quota-banner,
   .pwa-control,
-  .no-print {
+  .no-print,
+  .ledger-head,
+  .dash-head,
+  .ledger-bar,
+  .hist-bar,
+  .hist-actions,
+  .ledger-more,
+  .txn-actions-col,
+  .txn-row-actions {
     display: none !important;
   }
 
-  .main { margin-left: 0 !important; }
+  /* The layout stops being an app frame and becomes a sheet. */
+  .app {
+    display: block !important;
+  }
+
+  .main {
+    display: block !important;
+    margin-left: 0 !important;
+    min-height: 0 !important;
+  }
 
   .content {
-    padding: 0 !important;
+    display: block !important;
+    width: 100% !important;
     max-width: none !important;
-    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* ---------- Letterhead ---------- */
   .print-doc {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding-bottom: 8px;
-    margin-bottom: 12px;
+    gap: 10px;
+    padding-bottom: 5px;
+    margin-bottom: 8px;
     border-bottom: 2px solid #000000;
   }
 
   .print-doc-logo {
-    width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
     flex: none;
   }
 
@@ -81,13 +119,13 @@
   }
 
   .print-doc-shop {
-    font-size: 15pt;
+    font-size: 14pt;
     font-weight: 800;
-    line-height: 1.15;
+    line-height: 1.1;
   }
 
   .print-doc-app {
-    font-size: 8pt;
+    font-size: 7.5pt;
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -100,35 +138,25 @@
   }
 
   .print-doc-report {
-    font-size: 12pt;
+    font-size: 11.5pt;
     font-weight: 800;
-    line-height: 1.2;
+    line-height: 1.15;
   }
 
   .print-doc-sub {
-    font-size: 9.5pt;
+    font-size: 9pt;
     font-weight: 600;
   }
 
   .print-doc-meta {
-    font-size: 8.5pt;
+    font-size: 8pt;
     color: #444444;
   }
 
   .print-doc-stamp {
-    margin-top: 2px;
-    font-size: 8pt;
+    margin-top: 1px;
+    font-size: 7.5pt;
     color: #666666;
-  }
-
-  /* ---------- Page headings and controls are already in the header ---------- */
-  .ledger-head,
-  .dash-head,
-  .ledger-bar,
-  .hist-bar,
-  .ledger-more,
-  .txn-actions-col {
-    display: none !important;
   }
 
   /* ---------- Cards become plain paper ---------- */
@@ -138,6 +166,7 @@
     box-shadow: none !important;
     background: transparent !important;
     background-image: none !important;
+    margin: 0 !important;
   }
 
   .card-header { display: none !important; }
@@ -148,8 +177,8 @@
   .dash-grid {
     display: grid !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 8px !important;
-    margin: 0 0 12px !important;
+    gap: 6px !important;
+    margin: 0 0 8px !important;
   }
 
   .stat-card,
@@ -158,9 +187,9 @@
   .stat-card.stat-due,
   .stat-card.stat-expenses {
     min-height: 0 !important;
-    padding: 6px 10px !important;
+    padding: 4px 8px !important;
     border: 1px solid #999999 !important;
-    border-radius: 4px !important;
+    border-radius: 3px !important;
     box-shadow: none !important;
     background: #ffffff !important;
     background-image: none !important;
@@ -169,92 +198,241 @@
 
   .stat-label,
   .stat-label-text {
-    font-size: 8pt !important;
+    font-size: 7.5pt !important;
     font-weight: 700 !important;
-    letter-spacing: 0.08em !important;
+    letter-spacing: 0.06em !important;
     text-transform: uppercase !important;
     color: #444444 !important;
   }
 
   .stat-card .stat-value {
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     font-weight: 800 !important;
     color: #000000 !important;
   }
 
   .stat-card .stat-value.text-danger { color: #a30000 !important; }
 
-  /* ---------- Tables ---------- */
-  .table-wrap { overflow: visible !important; }
+  /* =========================================================
+     Tables — forced back into a table, at any paper width
+     ========================================================= */
+
+  .table-wrap {
+    display: block !important;
+    overflow: visible !important;
+  }
 
   .table,
   .ledger-table,
-  .txn-table {
-    min-width: 0 !important;
+  .txn-table,
+  .hist-table {
+    display: table !important;
     width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
     border-collapse: collapse !important;
-    font-size: 9.5pt !important;
+    font-size: 8.5pt !important;
+  }
+
+  .table thead,
+  .ledger-table thead,
+  .txn-table thead {
+    display: table-header-group !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    clip: auto !important;
+    clip-path: none !important;
+    white-space: normal !important;
+  }
+
+  .table tbody,
+  .ledger-table tbody,
+  .txn-table tbody {
+    display: table-row-group !important;
+  }
+
+  .table tfoot { display: table-footer-group !important; }
+
+  .table tr,
+  .ledger-table tr,
+  .txn-table tr,
+  .txn-table tbody tr,
+  .txn-table .txn-group,
+  .txn-table .table-total {
+    display: table-row !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+  }
+
+  .table th,
+  .table td,
+  .ledger-table th,
+  .ledger-table td,
+  .txn-table th,
+  .txn-table td {
+    display: table-cell !important;
+    border: 1px solid #bcbcbc !important;
+    padding: 2px 5px !important;
+    background: transparent !important;
+    background-image: none !important;
+    color: #000000 !important;
+    font-size: 8.5pt !important;
+    line-height: 1.25 !important;
+    text-align: left !important;
+    vertical-align: top !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
   }
 
   .table th {
-    padding: 4px 6px !important;
+    padding: 3px 5px !important;
     border: 1px solid #000000 !important;
-    background: #eeeeee !important;
-    color: #000000 !important;
-    font-size: 8.5pt !important;
+    background: #ededed !important;
+    background-image: none !important;
+    font-size: 7.5pt !important;
+    font-weight: 800 !important;
+    text-transform: uppercase;
+    letter-spacing: 0;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  .table td {
-    padding: 4px 6px !important;
-    border: 1px solid #bbbbbb !important;
-    white-space: normal !important;
-    color: #000000 !important;
-    vertical-align: top;
+  /* Row-action buttons and their whole column are app affordances, not
+     report content. This has to sit AFTER the `display: table-cell` reset
+     above, which would otherwise out-specify the earlier hide. */
+  .txn-actions-col,
+  .table th.txn-actions-col,
+  .table td.txn-actions-col,
+  .ledger-table th.txn-actions-col,
+  .ledger-table td.txn-actions-col,
+  .txn-table th.txn-actions-col,
+  .txn-table td.txn-actions-col {
+    display: none !important;
   }
 
-  /* A column header and the first row of each page's worth of rows stay
-     together; a row is never cut in half across two sheets. */
+  /* The mobile card transform labels every cell from `data-label` with a
+     ::before. On paper the column header already does that. */
+  .ledger-table td::before,
+  .txn-table td::before,
+  .txn-table .table-total td::before {
+    content: none !important;
+    display: none !important;
+  }
+
+  /* Numbers, times and money read as a column: right-aligned and never
+     wrapped onto a second line. */
+  .table th.ledger-num,
+  .table td.ledger-num,
+  .table .text-right,
+  .table td.txn-num,
+  .table th.txn-num,
+  .ledger-time,
+  .txn-time,
+  .ledger-total,
+  .txn-total,
+  .txn-due {
+    text-align: right !important;
+    white-space: nowrap !important;
+  }
+
+  .ledger-table td.ledger-time,
+  .ledger-table td.ledger-service,
+  .ledger-table td.ledger-customer,
+  .txn-table td.txn-customer,
+  .txn-table td.txn-service {
+    white-space: normal !important;
+  }
+
+  /* Column widths: fixed layout keeps every table inside the sheet, so a
+     long service name wraps inside its column instead of pushing the
+     table off the page. The last column (actions) is hidden above. */
+  .ledger-table th:nth-child(1) { width: 11%; }
+  .ledger-table th:nth-child(2) { width: 25%; }
+  .ledger-table th:nth-child(3) { width: 9%; }
+  .ledger-table th:nth-child(4) { width: 9%; }
+  .ledger-table th:nth-child(5) { width: 10%; }
+  .ledger-table th:nth-child(6) { width: 10%; }
+  .ledger-table th:nth-child(7) { width: 16%; }
+  .ledger-table th:nth-child(8) { width: 10%; }
+
+  .hist-table th:nth-child(1) { width: 9%; }
+  .hist-table th:nth-child(2) { width: 13%; }
+  .hist-table th:nth-child(3) { width: 22%; }
+  .hist-table th:nth-child(4) { width: 6%; }
+  .hist-table th:nth-child(5) { width: 8%; }
+  .hist-table th:nth-child(6) { width: 9%; }
+  .hist-table th:nth-child(7) { width: 11%; }
+  .hist-table th:nth-child(8) { width: 11%; }
+  .hist-table th:nth-child(9) { width: 11%; }
+
+  /* A row is never cut in half across two sheets. */
+  .table tr,
+  .ledger-table tr,
+  .txn-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
   .table thead { display: table-header-group; }
-  .table tfoot { display: table-footer-group; }
-  .table tr { page-break-inside: avoid; break-inside: avoid; }
   .table tbody tr:hover { background: transparent !important; }
 
   /* Day separators in the history and the closing total row read as
      strong rules on paper rather than as shaded app rows. */
-  .txn-group td {
-    background: #ffffff !important;
+  .txn-table .txn-group td {
+    background: #f4f4f4 !important;
+    background-image: none !important;
     border-top: 1.5px solid #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+    color: #000000 !important;
   }
 
-  .table .table-total td,
-  .table-total td {
-    background: #ffffff !important;
+  .txn-table .table-total td {
+    background: #f4f4f4 !important;
+    background-image: none !important;
     border-top: 2px solid #000000 !important;
+    font-weight: 800 !important;
+  }
+
+  .hist-day,
+  .hist-day-totals {
+    font-size: 8.5pt !important;
   }
 
   /* ---------- Ledger totals footer ---------- */
   .ledger-totals {
+    display: grid !important;
     grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
     background: #ffffff !important;
     border: 1px solid #000000 !important;
-    margin-top: 8px !important;
+    border-top: 0 !important;
+    margin-top: 0 !important;
   }
 
   .ledger-total-cell {
     background: #ffffff !important;
     border-right: 1px solid #999999 !important;
-    padding: 5px 8px !important;
+    padding: 4px 6px !important;
   }
 
+  .ledger-total-cell:last-child { border-right: 0 !important; }
+
   .ledger-total-cell .lt-label {
-    font-size: 7.5pt !important;
+    font-size: 7pt !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: #444444 !important;
   }
 
   .ledger-total-cell .lt-value {
-    font-size: 10.5pt !important;
+    font-size: 10pt !important;
+    font-weight: 800 !important;
     color: #000000 !important;
   }
 
@@ -264,7 +442,10 @@
   .ledger-backfilled {
     border: 1px solid #999999 !important;
     background: #ffffff !important;
+    background-image: none !important;
     color: #000000 !important;
+    padding: 0 4px !important;
+    font-size: 7.5pt !important;
   }
 
   .ledger-closed {
@@ -275,7 +456,9 @@
   }
 
   .txn-footer {
-    margin-top: 8px !important;
+    margin-top: 6px !important;
     color: #333333 !important;
   }
+
+  .muted { color: #666666 !important; }
 }

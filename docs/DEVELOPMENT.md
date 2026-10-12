@@ -31,7 +31,7 @@ dependencies.
 |---|---|---|
 | [`tests/ledger.mjs`](../tests/ledger.mjs) | 2 336 | paise arithmetic, `splitAmounts`, date keys, day-audit diagnosis and repair planning, OCR normalisation, catalog matching, quota arithmetic |
 | [`tests/calendar.mjs`](../tests/calendar.mjs) | 428 | `buildGrid`, `monthBounds`, `monthTotals`, `missedDays`, `dayCellLabel` |
-| [`tests/module-graph.mjs`](../tests/module-graph.mjs) | 666 | import edges — no cycles, no bare specifiers, import-map version consistency |
+| [`tests/module-graph.mjs`](../tests/module-graph.mjs) | 696 | import edges — no cycles, no bare specifiers, import-map version consistency |
 | [`tests/receipt-scan.mjs`](../tests/receipt-scan.mjs) | 303 | a bill read as lines, priced as `createTransaction()` prices it, unknown names offered as suggestions |
 | [`tests/owner-console.mjs`](../tests/owner-console.mjs) | 506 | the owner console's figures, chips and guard |
 
@@ -171,9 +171,9 @@ npm run test:rules
 ├─ dashboard.html calendar.html                workspace
 ├─ ledger.html transactions.html admin.html
 ├─ js/            22 modules · 14 135 lines
-├─ css/           10 files  ·  6 976 lines
+├─ css/           10 files  ·  7 159 lines
 ├─ assets/        16 files  (icons, logos, sound, banner)
-├─ tests/          5 files  ·  4 253 lines
+├─ tests/          5 files  ·  4 283 lines
 ├─ tools/          7 files
 ├─ firestore.rules  923 lines
 ├─ database.rules.json  55 lines
