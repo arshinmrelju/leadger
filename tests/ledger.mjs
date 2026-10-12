@@ -351,10 +351,24 @@ test("catalog: every entry fits the services schema the rules enforce", () => {
     assert.ok(where.length >= 1 && where.length <= 80, `name length: ${where}`);
     assert.ok(String(entry.code).length <= 12, `code length: ${where}`);
     assert.ok(Number.isFinite(entry.sortOrder), `sortOrder is a number: ${where}`);
-    /* rateToPaise is what createService validates with — a NaN here
+    /* rateToPaise is what createService validates with — a null here
        would throw and abort the seed. */
-    assert.equal(rateToPaise(entry.price), 0, `seeded rate is ₹0: ${where}`);
+    assert.notEqual(rateToPaise(entry.price), null, `seeded rate is a number: ${where}`);
     assert.ok(rateToPaise(entry.price) <= MAX_RATE_PAISE, `rate in range: ${where}`);
+  }
+
+  /* The entries whose rate the shop fixes up front. */
+  const priced = { "PVC Card": 12000, "Asha": 7000 };
+  for (const [name, paise] of Object.entries(priced)) {
+    const entry = SERVICE_CATALOG.find((e) => e.name === name);
+    assert.ok(entry, `the catalog has a ${name} entry`);
+    assert.equal(rateToPaise(entry.price), paise, `${name} seeds at the fixed rate`);
+  }
+
+  /* Every other entry keeps the ₹0 default. */
+  for (const entry of SERVICE_CATALOG) {
+    if (entry.name in priced) continue;
+    assert.equal(rateToPaise(entry.price), 0, `seeded rate is ₹0: ${entry.name}`);
   }
 });
 

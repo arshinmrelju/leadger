@@ -36,6 +36,15 @@
  * are the shop's own, and a wrong number seeded here would silently
  * pre-fill the rate box on every future sale. The console asks for them
  * once, right after the seed.
+ *
+ * A group entry may carry a THIRD value to override this for that one
+ * service when the shop's own rate is known and fixed:
+ *
+ *     ["PVC Card", "PV", 120],
+ *     ["Asha", "AS", 70],
+ *
+ * PVC Card and Asha use this today. Everything without an override still
+ * seeds at DEFAULT_SERVICE_PRICE_RUPEES.
  */
 export const DEFAULT_SERVICE_PRICE_RUPEES = 0;
 
@@ -108,7 +117,7 @@ const GROUPS = [
       ["E-Challan", "EC"],
       ["PAN Card Work", "PN"],
       ["Legal Heir", "LH"],
-      ["PVC Card", "PV"],
+      ["PVC Card", "PV", 120],
       ["Passport Application", "PP"],
       ["Pension", "PW"],
     ],
@@ -127,7 +136,7 @@ const GROUPS = [
       ["Family Membership", "FM"],
       ["Ksmart", "KS"],
       ["Udayam", "UD"],
-      ["Asha", "AS"],
+      ["Asha", "AS", 70],
     ],
   },
   {
@@ -271,17 +280,20 @@ export function catalogSeedId(name) {
  * `code` is the two-letter tile on the quick grids (the UI truncates it
  * to two characters), so it is chosen to read clearly at a glance — it
  * is a display shortcut, not an inventory code.
+ *
+ * `price` comes from the group entry's optional third value, falling back
+ * to DEFAULT_SERVICE_PRICE_RUPEES (₹0) when the entry does not set one.
  */
 export const SERVICE_CATALOG = Object.freeze(
   GROUPS.flatMap((group) =>
-    group.services.map(([name, code], index) => {
+    group.services.map(([name, code, price = DEFAULT_SERVICE_PRICE_RUPEES], index) => {
       const seedId = catalogSeedId(name);
       return Object.freeze({
         name,
         code,
         seedId,
         group: group.id,
-        price: DEFAULT_SERVICE_PRICE_RUPEES,
+        price,
         sortOrder: group.base + index * 10,
       });
     })

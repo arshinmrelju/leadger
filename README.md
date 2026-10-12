@@ -1034,7 +1034,7 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 <details>
 <summary><b>⚙️ A 49-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
 
-`js/service-catalog.js` seeds the catalog a shop starts from: **49 services across 12 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The Owner console's **Shop** tab asks for real rates once, after the seed.
+`js/service-catalog.js` seeds the catalog a shop starts from: **49 services across 12 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The exceptions are **PVC Card (₹120)** and **Asha (₹70)**, whose catalog entries carry their own rate. The Owner console's **Shop** tab asks for the rest of the real rates once, after the seed.
 
 ```text
 100s  Printing & document services      Normal Printing · Colour/Photo Printing ·
