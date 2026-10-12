@@ -466,6 +466,51 @@ test("a hidden pwa control cannot be shown by the .btn display rule", () => {
   );
 });
 
+test("the PDF export is wired across its pages, stylesheet and worker", () => {
+  /* Export PDF only works when three files agree: each report page has to
+     link the print stylesheet and import the module, and the worker has to
+     precache both, or the button sits there dead offline. */
+  const css = fs.readFileSync(path.join(ROOT, "css", "print.css"), "utf8");
+  assert.match(css, /@media\s+print/, "css/print.css must be a print stylesheet");
+  assert.match(
+    css,
+    /\.print-doc\s*\{\s*display\s*:\s*none/,
+    "the letterhead must be hidden on screen and only shown on paper",
+  );
+  /* The chrome that would otherwise print has to be named. */
+  for (const sel of [".sidebar", ".topbar", ".ledger-bar", ".hist-bar", ".txn-actions-col"]) {
+    assert.ok(css.includes(sel), `css/print.css does not hide ${sel} on paper`);
+  }
+
+  const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+  const block = sw.match(/SHELL_FILES\s*=\s*\[([\s\S]*?)\]/);
+  assert.ok(block, "sw.js must declare a SHELL_FILES list");
+  const cached = new Set([...block[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]));
+  assert.ok(cached.has("css/print.css"), "sw.js must precache css/print.css");
+  assert.ok(cached.has("js/print-export.js"), "sw.js must precache js/print-export.js");
+
+  for (const page of ["ledger.html", "transactions.html"]) {
+    const html = fs.readFileSync(path.join(ROOT, page), "utf8");
+    assert.ok(
+      html.includes('href="css/print.css"'),
+      `${page} must link css/print.css or the export prints the whole app`,
+    );
+    assert.match(
+      html,
+      /from\s*["']\.\/js\/print-export\.js["']/,
+      `${page} must import the print-export module`,
+    );
+    assert.ok(
+      /id="(?:ledgerPrintBtn|histPrintBtn)"/.test(html),
+      `${page} must render an export button`,
+    );
+    assert.ok(
+      html.includes("printHeaderMarkup()"),
+      `${page} must place the print-only letterhead in its markup`,
+    );
+  }
+});
+
 test("the service worker caches only deliberate CDN hosts", () => {
   const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
 

@@ -1,7 +1,7 @@
 # Architecture
 
-[TrustX Ledger](https://github.com/arshinmrelju/leadger) is a **static** Progressive Web App: eight
-HTML documents, twenty-one ES modules, nine stylesheets, and no build step. There is no bundler, no
+[TrustX Ledger](https://github.com/arshinmrelju/leadger) is a **static** Progressive Web App: nine
+HTML documents, twenty-two ES modules, ten stylesheets, and no build step. There is no bundler, no
 transpiler, no framework, and `package.json` declares **zero** dependencies — the only two scripts
 in it are `test` and `test:rules`.
 
@@ -239,7 +239,7 @@ migration is recorded in `firestore.rules:616-619`.
 
 | Piece | File | Behaviour |
 |---|---|---|
-| Precaching | `sw.js` | cache `v14`, 59 files (55 app + 4 pinned Firebase SDK bundles), install-time |
+| Precaching | `sw.js` | cache `v15`, 61 files (57 app + 4 pinned Firebase SDK bundles), install-time |
 | Navigation | `sw.js` | network first, cache fallback, then `offline.html` |
 | App data | Firestore | `persistentLocalCache` + multi-tab, so an open shop keeps reading while offline |
 | Writes while offline | — | not queued. A sale needs the rules to approve it, and the rules are server-side |

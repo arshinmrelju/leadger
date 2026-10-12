@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="css/ledger.css" />
   <link rel="stylesheet" href="css/responsive.css" />
   <link rel="stylesheet" href="css/mobile.css" />
+  <link rel="stylesheet" href="css/print.css" />
 
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
   <script type="importmap">
@@ -169,6 +170,7 @@ import { setLoading, toast, confirm } from "./js/app.js";
     import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
     import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
+    import { ICON_PRINT, printHeaderMarkup, printExport } from "./js/print-export.js";
     import { dateKeyFromSearch, writeDateToSearch } from "./js/calendar.js";
 
     const mainContent = document.getElementById("mainContent");
@@ -199,6 +201,10 @@ import { setLoading, toast, confirm } from "./js/app.js";
     let filterMethod = "any";
     let filterStatus = "any";
 
+    /* The shop's own name, resolved by the shell, printed on the
+       export's letterhead. */
+    let shopName = "";
+
     /* =========================================================
        Markup
        ========================================================= */
@@ -218,6 +224,9 @@ import { setLoading, toast, confirm } from "./js/app.js";
 
     function pageMarkup() {
       return (
+        /* Print-only letterhead (js/print-export.js): hidden on screen,
+           the first thing on the exported sheet. */
+        printHeaderMarkup() +
         '<div class="ledger-head">' +
           "<h1>Daily ledger</h1>" +
           '<span class="ledger-sub" id="ledgerDayLabel"></span>' +
@@ -226,6 +235,7 @@ import { setLoading, toast, confirm } from "./js/app.js";
                the way back out of a day that was closed by mistake — so
                both live here, next to the day they act on, rather than
                being buried in a console. */
+            '<button class="btn btn-secondary" type="button" id="ledgerPrintBtn">' + ICON_PRINT + " Export PDF</button>" +
             '<button class="btn btn-secondary" type="button" id="ledgerReopenBtn" hidden>' + ICON_UNLOCK + " Reopen day</button>" +
             '<button class="btn btn-secondary" type="button" id="ledgerCloseBtn">' + ICON_LOCK + " Close day</button>" +
             '<button class="btn btn-primary" type="button" id="ledgerRecordBtn">' + ICON_PLUS + " Record sale</button>" +
@@ -563,10 +573,51 @@ import { setLoading, toast, confirm } from "./js/app.js";
     }
 
     /* =========================================================
+       Export
+       ========================================================= */
+
+    /**
+     * Export the day through the browser's print dialog, where the
+     * shopkeeper picks "Save as PDF".
+     *
+     * What is printed is what is on screen, so the letterhead says how
+     * many rows are showing and which filters are on. The totals footer
+     * keeps describing the whole day — that is deliberate on screen, and
+     * the note is what stops the printed copy looking like a bug.
+     */
+    function onExport() {
+      const visible = filterDayRows(rows, {
+        query: searchText,
+        method: filterMethod,
+        status: filterStatus,
+      });
+      const total = dayCount || rows.length;
+      const filtering =
+        Boolean(searchText.trim()) || filterMethod !== "any" || filterStatus !== "any";
+
+      const filters = [];
+      if (filterMethod !== "any") filters.push("payment " + filterMethod);
+      if (filterStatus !== "any") filters.push("status " + filterStatus);
+      if (searchText.trim()) filters.push('search "' + searchText.trim() + '"');
+
+      printExport({
+        shopName,
+        report: "Daily ledger",
+        subtitle: dayHeading(dateKey) + (closed ? " · Closed" : ""),
+        meta:
+          (filtering
+            ? "Showing " + visible.length + " of " + total + (total === 1 ? " sale" : " sales")
+            : total + (total === 1 ? " sale" : " sales")) +
+          (filters.length ? " · filtered by " + filters.join(", ") : ""),
+      });
+    }
+
+    /* =========================================================
        Boot
        ========================================================= */
 
-    async function renderPage() {
+    async function renderPage(ctx) {
+      shopName = (ctx && ctx.general && ctx.general.name) || "";
       document.getElementById("topbarDate").textContent = formatKolkataLong(new Date());
       mainContent.innerHTML = pageMarkup();
 
@@ -587,6 +638,7 @@ import { setLoading, toast, confirm } from "./js/app.js";
         goToDate(todayKolkata());
       });
       document.getElementById("ledgerRefresh").addEventListener("click", () => reload());
+      document.getElementById("ledgerPrintBtn").addEventListener("click", () => onExport());
       document.getElementById("ledgerLoadMore").addEventListener("click", () => loadMore());
       document.getElementById("ledgerRecordBtn").addEventListener("click", () => openSaleForm({ dateKey }));
       document.getElementById("ledgerCloseBtn").addEventListener("click", () => onCloseDay());

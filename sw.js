@@ -37,7 +37,7 @@
    ========================================================= */
 
 /** Bump to invalidate every cached file on the next activate. */
-const CACHE_VERSION = "v14";
+const CACHE_VERSION = "v15";
 
 const SHELL_CACHE = `trustx-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `trustx-vendor-${CACHE_VERSION}`;
@@ -94,6 +94,7 @@ const SHELL_FILES = [
   "css/ledger.css",
   "css/calendar.css",
   "css/admin.css",
+  "css/print.css",
 
   "js/app.js",
   "js/admin.js",
@@ -114,6 +115,7 @@ const SHELL_FILES = [
   "js/service-catalog.js",
   "js/service-picker.js",
   "js/shell.js",
+  "js/print-export.js",
   "js/txn-actions.js",
   "js/utils.js",
 

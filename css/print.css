@@ -1,0 +1,281 @@
+/* =========================================================
+   TrustX Ledger — Print / PDF
+   -----------------------------------------------------------------
+   Loaded by the two report pages that offer "Export PDF" — the daily
+   ledger and the transaction history. Everything here exists for
+   paper, so all of it sits inside @media print except the single rule
+   that keeps the letterhead off the screen.
+
+   The export itself is the browser's print dialog (js/print-export.js):
+   a zero-dependency, offline-capable PDF from the tool the shopkeeper
+   already has. This file's whole job is to turn the app back into a
+   document for that moment: drop the sidebar, topbar, filters and row
+   buttons, and lay the table out so it survives a page break.
+
+   Landscape on purpose: both reports are wide tables (a ledger row is
+   time, service, quantity, rate, total, payment, customer, status), and
+   portrait clips columns on A4.
+   ========================================================= */
+
+/* The letterhead is a print affordance, never something on screen. */
+.print-doc { display: none; }
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    background-image: none !important;
+    margin: 0;
+  }
+
+  body {
+    font-size: 10.5pt;
+    color: #000000;
+  }
+
+  /* ---------- Application chrome is not part of the report ---------- */
+  .sidebar,
+  .sidebar-backdrop,
+  .topbar,
+  .tabbar,
+  .toast-wrap,
+  .modal-overlay,
+  .quota-banner,
+  .pwa-control,
+  .no-print {
+    display: none !important;
+  }
+
+  .main { margin-left: 0 !important; }
+
+  .content {
+    padding: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+  }
+
+  /* ---------- Letterhead ---------- */
+  .print-doc {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #000000;
+  }
+
+  .print-doc-logo {
+    width: 40px;
+    height: 40px;
+    flex: none;
+  }
+
+  .print-doc-identity {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .print-doc-shop {
+    font-size: 15pt;
+    font-weight: 800;
+    line-height: 1.15;
+  }
+
+  .print-doc-app {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #555555;
+  }
+
+  .print-doc-title {
+    flex: none;
+    text-align: right;
+  }
+
+  .print-doc-report {
+    font-size: 12pt;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  .print-doc-sub {
+    font-size: 9.5pt;
+    font-weight: 600;
+  }
+
+  .print-doc-meta {
+    font-size: 8.5pt;
+    color: #444444;
+  }
+
+  .print-doc-stamp {
+    margin-top: 2px;
+    font-size: 8pt;
+    color: #666666;
+  }
+
+  /* ---------- Page headings and controls are already in the header ---------- */
+  .ledger-head,
+  .dash-head,
+  .ledger-bar,
+  .hist-bar,
+  .ledger-more,
+  .txn-actions-col {
+    display: none !important;
+  }
+
+  /* ---------- Cards become plain paper ---------- */
+  .card {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    background-image: none !important;
+  }
+
+  .card-header { display: none !important; }
+  .card-body,
+  .card-body-flush { padding: 0 !important; }
+
+  /* ---------- Summary cards (transaction history) ---------- */
+  .dash-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin: 0 0 12px !important;
+  }
+
+  .stat-card,
+  .stat-card.stat-revenue,
+  .stat-card.stat-net,
+  .stat-card.stat-due,
+  .stat-card.stat-expenses {
+    min-height: 0 !important;
+    padding: 6px 10px !important;
+    border: 1px solid #999999 !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    transform: none !important;
+  }
+
+  .stat-label,
+  .stat-label-text {
+    font-size: 8pt !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    color: #444444 !important;
+  }
+
+  .stat-card .stat-value {
+    font-size: 12pt !important;
+    font-weight: 800 !important;
+    color: #000000 !important;
+  }
+
+  .stat-card .stat-value.text-danger { color: #a30000 !important; }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow: visible !important; }
+
+  .table,
+  .ledger-table,
+  .txn-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 9.5pt !important;
+  }
+
+  .table th {
+    padding: 4px 6px !important;
+    border: 1px solid #000000 !important;
+    background: #eeeeee !important;
+    color: #000000 !important;
+    font-size: 8.5pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .table td {
+    padding: 4px 6px !important;
+    border: 1px solid #bbbbbb !important;
+    white-space: normal !important;
+    color: #000000 !important;
+    vertical-align: top;
+  }
+
+  /* A column header and the first row of each page's worth of rows stay
+     together; a row is never cut in half across two sheets. */
+  .table thead { display: table-header-group; }
+  .table tfoot { display: table-footer-group; }
+  .table tr { page-break-inside: avoid; break-inside: avoid; }
+  .table tbody tr:hover { background: transparent !important; }
+
+  /* Day separators in the history and the closing total row read as
+     strong rules on paper rather than as shaded app rows. */
+  .txn-group td {
+    background: #ffffff !important;
+    border-top: 1.5px solid #000000 !important;
+  }
+
+  .table .table-total td,
+  .table-total td {
+    background: #ffffff !important;
+    border-top: 2px solid #000000 !important;
+  }
+
+  /* ---------- Ledger totals footer ---------- */
+  .ledger-totals {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    background: #ffffff !important;
+    border: 1px solid #000000 !important;
+    margin-top: 8px !important;
+  }
+
+  .ledger-total-cell {
+    background: #ffffff !important;
+    border-right: 1px solid #999999 !important;
+    padding: 5px 8px !important;
+  }
+
+  .ledger-total-cell .lt-label {
+    font-size: 7.5pt !important;
+    color: #444444 !important;
+  }
+
+  .ledger-total-cell .lt-value {
+    font-size: 10.5pt !important;
+    color: #000000 !important;
+  }
+
+  /* ---------- Badges, methods and markers: quiet, but still legible ---------- */
+  .badge,
+  .ledger-method,
+  .ledger-backfilled {
+    border: 1px solid #999999 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .ledger-closed {
+    border: 1px solid #000000 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    page-break-inside: avoid;
+  }
+
+  .txn-footer {
+    margin-top: 8px !important;
+    color: #333333 !important;
+  }
+}

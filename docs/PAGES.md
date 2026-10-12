@@ -30,8 +30,8 @@ never the control; the rules are.
 | Owner sign in | `admin-login.html` | `/admin-login.html` | public | 184 |
 | Dashboard | `dashboard.html` | `/dashboard.html` | trusted | 701 |
 | Calendar | `calendar.html` | `/calendar.html` | trusted | 539 |
-| Daily Ledger | `ledger.html` | `/ledger.html?date=YYYY-MM-DD` | trusted | 746 |
-| Transaction History | `transactions.html` | `/transactions.html[?date=YYYY-MM-DD]` | trusted | 622 |
+| Daily Ledger | `ledger.html` | `/ledger.html?date=YYYY-MM-DD` | trusted | 798 |
+| Transaction History | `transactions.html` | `/transactions.html[?date=YYYY-MM-DD]` | trusted | 671 |
 | Owner Console | `admin.html` | `/admin.html` | admin | 397 |
 | Offline Fallback | `offline.html` | `/offline.html` | public | 111 |
 
@@ -164,10 +164,14 @@ as an outline, never as `₹0`.
 | `#ledgerMethod` | All methods / Cash / UPI / Card / Due |
 | `#ledgerStatus` | All statuses / Paid / Pending |
 | `#ledgerRefresh` | `Refresh` |
+| `#ledgerPrintBtn` | `Export PDF` — opens the browser print dialog via `printExport()` |
 | `#ledgerBody` / `#ledgerTotals` | rows and day totals from the rows |
 | `#ledgerLoadMore` / `#ledgerMoreText` | cursor paging |
 
-Row actions come from `txnActionButtons(t, { closed })`.
+Row actions come from `txnActionButtons(t, { closed })`. `Export PDF` prints the visible rows
+through the browser's own dialog (Choose **Save as PDF**); the print-only letterhead from
+`js/print-export.js` names the shop, the day, the row count and any active filter, and
+`css/print.css` strips the app chrome so the export reads as a report.
 
 ---
 
@@ -184,11 +188,15 @@ Row actions come from `txnActionButtons(t, { closed })`.
 | `#histMethod` | payment filter |
 | `#histTodayBtn` / `#histAllBtn` / `#histResetBtn` | scope switching |
 | `#histRefreshBtn` | `Refresh` |
+| `#histPrintBtn` | `Export PDF` — browser print dialog via `printExport()` |
 | `#histBody` / `#histFooter` | rows grouped under day headings; footer states when capped |
 | `#histEmptyBtn` | `Record a sale` when a pinned day is empty |
 | `#newTxnBtn` | `New transaction`, pre-filled with the pinned day |
 
-Scope is derived from the URL: a `date` param means **day**, otherwise **all time**.
+Scope is derived from the URL: a `date` param means **day**, otherwise **all time**. `Export PDF`
+prints the rows on screen through the browser's print dialog; because the table only ever holds the
+server's window, the letterhead from `js/print-export.js` states the scope and every active filter
+so a printed "all time" list and a printed single day do not look alike.
 
 ---
 

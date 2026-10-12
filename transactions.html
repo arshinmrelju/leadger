@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="css/transactions.css" />
   <link rel="stylesheet" href="css/responsive.css" />
   <link rel="stylesheet" href="css/mobile.css" />
+  <link rel="stylesheet" href="css/print.css" />
 
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
   <script type="importmap">
@@ -156,6 +157,7 @@
     import { initAppShell } from "./js/shell.js";
     import { openSaleForm, onSaleRecorded } from "./js/sale-form.js";
     import { txnActionButtons, handleTxnAction } from "./js/txn-actions.js";
+    import { ICON_PRINT, printHeaderMarkup, printExport } from "./js/print-export.js";
     import { dateKeyFromSearch, writeDateToSearch } from "./js/calendar.js";
 
     const mainContent = document.getElementById("mainContent");
@@ -181,6 +183,9 @@
     let method = "";
     let lastRows = [];                 // last server read, re-filtered on the client
     let closedDays = new Set();        // business days known to be closed (pinned day only)
+    /* The shop's own name, resolved by the shell, printed on the
+       export's letterhead. */
+    let shopName = "";
     /* What "today" was when this page last looked. A pinned day is only
        dragged along by the midnight rollover while it IS today; a day the
        shopkeeper went back to on purpose is left alone. */
@@ -198,10 +203,13 @@
     /* =========================================================
        Render the page body (runs once the shell approves access)
        ========================================================= */
-    async function renderPage() {
+    async function renderPage(ctx) {
+      shopName = (ctx && ctx.general && ctx.general.name) || "";
       document.getElementById("topbarDate").textContent = formatKolkataLong(new Date());
 
       mainContent.innerHTML =
+        /* Print-only letterhead (js/print-export.js). */
+        printHeaderMarkup() +
         '<div class="dash-head">' +
         "<div>" +
         "<h1>Transaction history</h1>" +
@@ -244,6 +252,7 @@
         '<button type="button" class="btn btn-secondary" id="histTodayBtn">Today</button>' +
         '<button type="button" class="btn btn-secondary" id="histAllBtn">All time</button>' +
         '<button type="button" class="btn btn-secondary" id="histResetBtn">Clear</button>' +
+        '<button type="button" class="btn btn-secondary" id="histPrintBtn">' + ICON_PRINT + " Export PDF</button>" +
         '<button type="button" class="btn btn-primary" id="histRefreshBtn">Refresh</button>' +
         "</div>" +
         "</div>" +
@@ -358,6 +367,8 @@ syncScopeButtons();
         setLoading(btn, true);
         reload().finally(() => setLoading(btn, false));
       });
+
+      document.getElementById("histPrintBtn").addEventListener("click", () => onExport());
     }
 
     function syncScopeButtons() {
@@ -588,6 +599,44 @@ function txnRow(t) {
         scopeText +
         (capped ? " &middot; showing the " + LIMIT + " most recent" : "") +
         (dayCapped && !capped ? " &middot; the last " + rows.dayCap + " days" : "");
+    }
+
+    /* =========================================================
+       Export
+       ========================================================= */
+
+    /**
+     * Export what is on screen through the browser's print dialog,
+     * where the shopkeeper picks "Save as PDF".
+     *
+     * The table only ever holds the server's window, so the letterhead
+     * states the scope and every active filter — a printed "all time"
+     * list and a printed single day otherwise look identical.
+     */
+    function onExport() {
+      const shown = (lastRows || []).filter(matches);
+      const total = (lastRows || []).length;
+
+      const filters = [];
+      if (method) filters.push("payment " + method.charAt(0).toUpperCase() + method.slice(1));
+      if (query) {
+        const typed = document.getElementById("histSearch").value.trim();
+        filters.push('search "' + typed + '"');
+      }
+
+      printExport({
+        shopName,
+        report: "Transaction history",
+        subtitle:
+          scope === "day"
+            ? "Sales recorded on " + formatDateKey(dateKey)
+            : "Every sale recorded in this ledger, newest first",
+        meta:
+          (shown.length === total
+            ? total + (total === 1 ? " sale" : " sales")
+            : "Showing " + shown.length + " of " + total + " sales") +
+          (filters.length ? " · filtered by " + filters.join(", ") : ""),
+      });
     }
 
     /* =========================================================

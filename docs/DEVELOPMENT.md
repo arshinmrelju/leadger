@@ -25,13 +25,13 @@ dependencies.
 
 ## Tests
 
-179 cases across five files.
+180 cases across five files.
 
 | File | Lines | Covers |
 |---|---|---|
 | [`tests/ledger.mjs`](../tests/ledger.mjs) | 2 336 | paise arithmetic, `splitAmounts`, date keys, day-audit diagnosis and repair planning, OCR normalisation, catalog matching, quota arithmetic |
 | [`tests/calendar.mjs`](../tests/calendar.mjs) | 428 | `buildGrid`, `monthBounds`, `monthTotals`, `missedDays`, `dayCellLabel` |
-| [`tests/module-graph.mjs`](../tests/module-graph.mjs) | 557 | import edges — no cycles, no bare specifiers, import-map version consistency |
+| [`tests/module-graph.mjs`](../tests/module-graph.mjs) | 666 | import edges — no cycles, no bare specifiers, import-map version consistency |
 | [`tests/receipt-scan.mjs`](../tests/receipt-scan.mjs) | 303 | a bill read as lines, priced as `createTransaction()` prices it, unknown names offered as suggestions |
 | [`tests/owner-console.mjs`](../tests/owner-console.mjs) | 506 | the owner console's figures, chips and guard |
 
@@ -50,7 +50,7 @@ import { splitAmounts } from "../js/day-heads.js";
 ### Current status
 
 ```text
-179 tests · 179 pass · 0 fail
+180 tests · 180 pass · 0 fail
 ```
 
 The case that was failing at `v0.13.1` — `tests/ledger.mjs:1221`, *"a day of legacy sales reads as
@@ -165,19 +165,19 @@ npm run test:rules
 ## Repository map
 
 ```text
-89 tracked files
+92 tracked files
 ├─ index.html login.html offline.html          public gateway, auth, fallback
 ├─ admin-login.html                            owner console sign-in
 ├─ dashboard.html calendar.html                workspace
 ├─ ledger.html transactions.html admin.html
-├─ js/            21 modules · 14 016 lines
-├─ css/            9 files  ·  6 695 lines
+├─ js/            22 modules · 14 135 lines
+├─ css/           10 files  ·  6 976 lines
 ├─ assets/        16 files  (icons, logos, sound, banner)
-├─ tests/          5 files  ·  4 194 lines
+├─ tests/          5 files  ·  4 253 lines
 ├─ tools/          7 files
 ├─ firestore.rules  923 lines
 ├─ database.rules.json  55 lines
-├─ sw.js           349 lines
+├─ sw.js           351 lines
 └─ docs/           this reference
 ```
 
