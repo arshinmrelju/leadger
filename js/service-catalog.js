@@ -177,6 +177,7 @@ const GROUPS = [
       ["Birth Certificate", "BC"],
       ["Birth Correction", "BR"],
       ["Caste Certificate", "CC"],
+      ["NCLC (Non-Creamy Layer Certificate)", "NC"],
     ],
   },
   {

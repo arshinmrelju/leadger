@@ -129,7 +129,7 @@ TrustX Ledger/
 │   ├── image-receipt.js    Gemini OCR + offline Tesseract OCR + multi-line review
 │   ├── receipt-items.js    a bill as line items · pricing · catalog ranking  (pure)
 │   ├── service-picker.js   WAI-ARIA combobox over the service catalog
-│   ├── service-catalog.js  49 seed services in 12 sortOrder bands  (pure)
+│   ├── service-catalog.js  50 seed services in 12 sortOrder bands  (pure)
 │   ├── calendar.js         month-grid logic                            (pure)
 │   ├── day-heads.js        day counters + per-method split             (pure)
 │   ├── day-ledger.js       single-day view logic                       (pure)
@@ -1032,9 +1032,9 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 </details>
 
 <details>
-<summary><b>⚙️ A 49-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
+<summary><b>⚙️ A 50-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
 
-`js/service-catalog.js` seeds the catalog a shop starts from: **49 services across 12 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The exceptions are **PVC Card (₹120)** and **Asha (₹70)**, whose catalog entries carry their own rate. The Owner console's **Shop** tab asks for the rest of the real rates once, after the seed.
+`js/service-catalog.js` seeds the catalog a shop starts from: **50 services across 12 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The exceptions are **PVC Card (₹120)** and **Asha (₹70)**, whose catalog entries carry their own rate. The Owner console's **Shop** tab asks for the rest of the real rates once, after the seed.
 
 ```text
 100s  Printing & document services      Normal Printing · Colour/Photo Printing ·
@@ -1057,7 +1057,8 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 700s  Property / land record            Encumbrance Certificate · Land Tax ·
                                         Non-Attachment Certificate · Name Transfer
 800s  Certificates & vital records      Birth Certificate · Birth Correction ·
-                                        Caste Certificate
+                                        Caste Certificate · NCLC (Non-Creamy Layer
+                                        Certificate)
 900s  Ration card services              Ration Card Works
 1000s Vehicle services                  Vehicle · RC · Permit
 1100s Health services                   e Health
@@ -1832,7 +1833,7 @@ The app runs locally from step 2 of [Installation](#installation). Because every
 
 **2 · Seed representative data** via the Owner console (`admin.html`):
 
-- **🛒 Shop → Add default services** — writes the 49 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
+- **🛒 Shop → Add default services** — writes the 50 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
 - **💵 Money / 📅 Month** are read-only views. Record sales through **⌘N** on the dashboard instead, so the atomicity proof is exercised for real.
 - Record a spread of sales across several days: different payment methods, at least one **due** left pending, at least one sale **backfilled** onto a past business day, and at least one day with **no entries at all** so the calendar's catch-up panel is populated.
 

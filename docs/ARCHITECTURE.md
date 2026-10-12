@@ -23,7 +23,7 @@ flowchart TD
 
     subgraph PURE["Pure logic · zero Firebase"]
         UTIL["utils 249"]
-        CAT["service-catalog 318"]
+        CAT["service-catalog 331"]
         DH["day-heads 235"]
         DL["day-ledger 243"]
         CAL["calendar 480"]
