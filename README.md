@@ -145,7 +145,7 @@ TrustX Ledger/
 │   ├── ai-config.js        Gemini model config (key is a placeholder)
 │   └── read-cache / quota / …  no cycles — leaves → firebase → auth/ledger → UI
 │
-├── css/  10 files · 7,159 lines  (style · forms · dashboard · transactions ·
+├── css/  10 files · 7,250 lines  (style · forms · dashboard · transactions ·
 │                                   ledger · calendar · admin · print · responsive · mobile)
 ├── tests/  5 files             (ledger · calendar · receipt-scan · module-graph · owner-console)
 ├── tools/  7 Node scripts       (bootstrap-access · rules-check · make-icons · …)
@@ -1199,7 +1199,7 @@ Input escaping: `escapeHtml` on every interpolated value; `serviceId` may not co
 <details>
 <summary><b>🎨 A receipt-paper design system</b> — <code>css/style.css</code></summary>
 
-Ten stylesheets, 7,159 lines, one token set:
+Ten stylesheets, 7,250 lines, one token set:
 
 | Token | Value | |
 |---|---|---|
@@ -1237,7 +1237,7 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 | | |
 |---|---|
 | ![HTML5](https://img.shields.io/badge/HTML5-9-e34f26?style=flat-square&logo=html5&logoColor=white) | 9 static HTML pages |
-| ![CSS3](https://img.shields.io/badge/CSS3-10-5435d3?style=flat-square&logo=css3&logoColor=white) | 10 stylesheets · 7,159 lines · custom-property design tokens |
+| ![CSS3](https://img.shields.io/badge/CSS3-10-5435d3?style=flat-square&logo=css3&logoColor=white) | 10 stylesheets · 7,250 lines · custom-property design tokens |
 | ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 22 native ES modules · 14,135 lines · **no bundler** |
 | ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v16` · 2 manifests · 4 shortcuts |
 
@@ -1900,7 +1900,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 | Tracked files | 92 |
 | HTML pages | 9 · 3,735 lines |
 | JS modules | 22 · 14,135 lines |
-| CSS files | 10 · 7,159 lines |
+| CSS files | 10 · 7,250 lines |
 | Tests | 5 files · 4,283 lines · 180 cases |
 | Tools | 7 Node scripts |
 | Assets | 16 files |

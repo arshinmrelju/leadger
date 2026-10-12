@@ -31,6 +31,12 @@
    time, service, quantity, rate, total, payment, customer, status), and
    portrait clips columns on A4. The table is still made to fit portrait
    if the shopkeeper prints it that way.
+
+   The look is the app's own: warm paper, sky-blue primary, amber
+   accent. Structure comes from hairline row rules and a tinted header
+   rather than the heavy black grid of a machine report — a shopkeeper
+   hands this to a customer, so it should look like a document, not a
+   dot-matrix printout.
    ========================================================= */
 
 /* The letterhead is a print affordance, never something on screen. */
@@ -52,7 +58,7 @@
 
   body {
     font-size: 9pt;
-    color: #000000;
+    color: #2b2118;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -101,15 +107,15 @@
   .print-doc {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding-bottom: 5px;
-    margin-bottom: 8px;
-    border-bottom: 2px solid #000000;
+    gap: 12px;
+    padding-bottom: 7px;
+    margin-bottom: 10px;
+    border-bottom: 2px solid #4b8bbf;
   }
 
   .print-doc-logo {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     flex: none;
   }
 
@@ -122,14 +128,16 @@
     font-size: 14pt;
     font-weight: 800;
     line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: #2b2118;
   }
 
   .print-doc-app {
-    font-size: 7.5pt;
+    font-size: 7pt;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: #555555;
+    color: #4b8bbf;
   }
 
   .print-doc-title {
@@ -141,22 +149,24 @@
     font-size: 11.5pt;
     font-weight: 800;
     line-height: 1.15;
+    color: #254d6e;
   }
 
   .print-doc-sub {
     font-size: 9pt;
     font-weight: 600;
+    color: #5c4a30;
   }
 
   .print-doc-meta {
-    font-size: 8pt;
-    color: #444444;
+    font-size: 7.5pt;
+    color: #8a7355;
   }
 
   .print-doc-stamp {
     margin-top: 1px;
-    font-size: 7.5pt;
-    color: #666666;
+    font-size: 7pt;
+    color: #b89f7a;
   }
 
   /* ---------- Cards become plain paper ---------- */
@@ -177,8 +187,8 @@
   .dash-grid {
     display: grid !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 6px !important;
-    margin: 0 0 8px !important;
+    gap: 8px !important;
+    margin: 0 0 10px !important;
   }
 
   .stat-card,
@@ -187,31 +197,35 @@
   .stat-card.stat-due,
   .stat-card.stat-expenses {
     min-height: 0 !important;
-    padding: 4px 8px !important;
-    border: 1px solid #999999 !important;
-    border-radius: 3px !important;
+    padding: 6px 10px !important;
+    border: 1px solid #e4dac6 !important;
+    border-left: 3px solid #4b8bbf !important;
+    border-radius: 4px !important;
     box-shadow: none !important;
-    background: #ffffff !important;
+    background: #fdfbf5 !important;
     background-image: none !important;
     transform: none !important;
   }
 
+  .stat-card.stat-revenue { border-left-color: #2d8a4e !important; }
+  .stat-card.stat-due { border-left-color: #c0392b !important; }
+
   .stat-label,
   .stat-label-text {
-    font-size: 7.5pt !important;
+    font-size: 7pt !important;
     font-weight: 700 !important;
-    letter-spacing: 0.06em !important;
+    letter-spacing: 0.08em !important;
     text-transform: uppercase !important;
-    color: #444444 !important;
+    color: #8a7355 !important;
   }
 
   .stat-card .stat-value {
     font-size: 11pt !important;
     font-weight: 800 !important;
-    color: #000000 !important;
+    color: #2b2118 !important;
   }
 
-  .stat-card .stat-value.text-danger { color: #a30000 !important; }
+  .stat-card .stat-value.text-danger { color: #c0392b !important; }
 
   /* =========================================================
      Tables — forced back into a table, at any paper width
@@ -271,6 +285,7 @@
     background-image: none !important;
   }
 
+  /* Hairline row rules instead of a full black grid. */
   .table th,
   .table td,
   .ledger-table th,
@@ -278,28 +293,33 @@
   .txn-table th,
   .txn-table td {
     display: table-cell !important;
-    border: 1px solid #bcbcbc !important;
-    padding: 2px 5px !important;
+    border: 0 !important;
+    border-bottom: 1px solid #e4dac6 !important;
+    padding: 3px 6px !important;
     background: transparent !important;
     background-image: none !important;
-    color: #000000 !important;
+    color: #2b2118 !important;
     font-size: 8.5pt !important;
-    line-height: 1.25 !important;
+    line-height: 1.3 !important;
     text-align: left !important;
     vertical-align: top !important;
     white-space: normal !important;
     overflow-wrap: anywhere !important;
+    font-variant-numeric: tabular-nums !important;
   }
 
   .table th {
-    padding: 3px 5px !important;
-    border: 1px solid #000000 !important;
-    background: #ededed !important;
+    padding: 4px 6px !important;
+    border: 0 !important;
+    border-top: 1px solid #e4dac6 !important;
+    border-bottom: 1.5px solid #4b8bbf !important;
+    background: #f4efe3 !important;
     background-image: none !important;
+    color: #254d6e !important;
     font-size: 7.5pt !important;
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     text-transform: uppercase;
-    letter-spacing: 0;
+    letter-spacing: 0.03em;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -326,6 +346,15 @@
     display: none !important;
   }
 
+  /* A whisper of striping so the eye can track a row across the columns
+     now that the vertical rules are gone. */
+  .table tbody tr:nth-child(even) td {
+    background: #fbf7ee !important;
+    background-image: none !important;
+  }
+
+  .table tbody tr:hover td { background: transparent !important; }
+
   /* Numbers, times and money read as a column: right-aligned and never
      wrapped onto a second line. */
   .table th.ledger-num,
@@ -348,6 +377,19 @@
   .txn-table td.txn-customer,
   .txn-table td.txn-service {
     white-space: normal !important;
+  }
+
+  .table td.ledger-total,
+  .table td.txn-total {
+    font-weight: 700 !important;
+    color: #254d6e !important;
+  }
+
+  /* Only an outstanding balance is red; a settled ₹0.00 keeps the muted
+     grey from its own class. */
+  .table td.txn-due.text-danger,
+  .table td.txn-due .text-danger {
+    color: #c0392b !important;
   }
 
   /* Column widths: fixed layout keeps every table inside the sheet, so a
@@ -381,22 +423,23 @@
   }
 
   .table thead { display: table-header-group; }
-  .table tbody tr:hover { background: transparent !important; }
 
-  /* Day separators in the history and the closing total row read as
-     strong rules on paper rather than as shaded app rows. */
+  /* ---------- Day separators and the closing total ---------- */
   .txn-table .txn-group td {
-    background: #f4f4f4 !important;
+    background: #eef5fb !important;
     background-image: none !important;
-    border-top: 1.5px solid #000000 !important;
-    border-bottom: 1px solid #000000 !important;
-    color: #000000 !important;
+    border-top: 1px solid #cfe2f2 !important;
+    border-bottom: 1px solid #cfe2f2 !important;
+    color: #254d6e !important;
+    font-weight: 700 !important;
+    padding: 4px 6px !important;
   }
 
   .txn-table .table-total td {
-    background: #f4f4f4 !important;
+    background: #f4efe3 !important;
     background-image: none !important;
-    border-top: 2px solid #000000 !important;
+    border-top: 2px solid #4b8bbf !important;
+    color: #254d6e !important;
     font-weight: 800 !important;
   }
 
@@ -405,20 +448,26 @@
     font-size: 8.5pt !important;
   }
 
+  .hist-day-totals b {
+    color: #254d6e !important;
+  }
+
   /* ---------- Ledger totals footer ---------- */
   .ledger-totals {
     display: grid !important;
     grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-    background: #ffffff !important;
-    border: 1px solid #000000 !important;
-    border-top: 0 !important;
+    background: #fbf7ee !important;
+    border: 1px solid #e4dac6 !important;
+    border-top: 2px solid #4b8bbf !important;
+    border-radius: 0 0 4px 4px !important;
     margin-top: 0 !important;
+    overflow: hidden !important;
   }
 
   .ledger-total-cell {
-    background: #ffffff !important;
-    border-right: 1px solid #999999 !important;
-    padding: 4px 6px !important;
+    background: transparent !important;
+    border-right: 1px solid #ece3d1 !important;
+    padding: 5px 8px !important;
   }
 
   .ledger-total-cell:last-child { border-right: 0 !important; }
@@ -426,39 +475,81 @@
   .ledger-total-cell .lt-label {
     font-size: 7pt !important;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #444444 !important;
+    letter-spacing: 0.06em;
+    color: #8a7355 !important;
   }
 
   .ledger-total-cell .lt-value {
-    font-size: 10pt !important;
+    font-size: 10.5pt !important;
     font-weight: 800 !important;
-    color: #000000 !important;
+    color: #2b2118 !important;
+    font-variant-numeric: tabular-nums !important;
   }
 
-  /* ---------- Badges, methods and markers: quiet, but still legible ---------- */
+  .ledger-total-cell.lt-primary .lt-value { color: #254d6e !important; }
+  .ledger-total-cell.lt-due .lt-value { color: #c0392b !important; }
+
+  /* ---------- Badges, methods and markers ---------- */
   .badge,
   .ledger-method,
+  .badge-method,
   .ledger-backfilled {
-    border: 1px solid #999999 !important;
-    background: #ffffff !important;
+    border: 1px solid #e4dac6 !important;
+    background: #f4efe3 !important;
     background-image: none !important;
-    color: #000000 !important;
-    padding: 0 4px !important;
+    color: #5c4a30 !important;
+    border-radius: 999px !important;
+    padding: 0 6px !important;
     font-size: 7.5pt !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+  }
+
+  .badge-success,
+  .badge-paid,
+  .method-cash {
+    border-color: #bfe3cc !important;
+    background: #e7f6ec !important;
+    color: #1e6b3a !important;
+  }
+
+  .badge-danger,
+  .badge-unpaid,
+  .method-due {
+    border-color: #f3c9c4 !important;
+    background: #fdecec !important;
+    color: #a3271a !important;
+  }
+
+  .badge-warning {
+    border-color: #f0dc9e !important;
+    background: #fef3d0 !important;
+    color: #8a5a00 !important;
+  }
+
+  /* The "backfilled" marker is a footnote on a row, not a pill. */
+  .ledger-backfilled {
+    border-radius: 3px !important;
+    border-color: #f0dc9e !important;
+    background: #fef3d0 !important;
+    color: #8a5a00 !important;
+    font-weight: 700 !important;
   }
 
   .ledger-closed {
-    border: 1px solid #000000 !important;
-    background: #ffffff !important;
-    color: #000000 !important;
+    border: 1px solid #cbb98f !important;
+    border-radius: 6px !important;
+    background: #f4efe3 !important;
+    color: #5c4a30 !important;
     page-break-inside: avoid;
   }
 
   .txn-footer {
-    margin-top: 6px !important;
-    color: #333333 !important;
+    margin-top: 7px !important;
+    color: #8a7355 !important;
   }
 
-  .muted { color: #666666 !important; }
+  .muted { color: #8a7355 !important; }
+  .text-danger { color: #c0392b !important; }
+  .text-success { color: #1e6b3a !important; }
 }

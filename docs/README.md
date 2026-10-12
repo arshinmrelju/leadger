@@ -41,7 +41,7 @@ Counts are from `git ls-files` at `v0.13.1` — the **application**, excluding t
 92 tracked files
 ├─  9 HTML pages              3,735 lines
 ├─ 22 JS modules             14,135 lines
-├─ 10 CSS files               7,159 lines
+├─ 10 CSS files               7,250 lines
 ├─  5 test files              4,283 lines   180 cases
 ├─  7 tool scripts
 ├─ 16 assets
