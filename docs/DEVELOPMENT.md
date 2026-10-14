@@ -170,7 +170,7 @@ npm run test:rules
 ├─ admin-login.html                            owner console sign-in
 ├─ dashboard.html calendar.html                workspace
 ├─ ledger.html transactions.html admin.html
-├─ js/            22 modules · 14 135 lines
+├─ js/            22 modules · 14 152 lines
 ├─ css/           10 files  ·  7 250 lines
 ├─ assets/        16 files  (icons, logos, sound, banner)
 ├─ tests/          5 files  ·  4 283 lines

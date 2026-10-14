@@ -120,7 +120,7 @@ TrustX Ledger/
 │   ├── View receipt photo            js/txn-actions.js
 │   └── Confirm / alert               js/app.js
 │
-├── js/  22 modules · 14,135 lines
+├── js/  22 modules · 14,152 lines
 │   ├── firebase.js         SDK bootstrap · lazy import · offline persistence
 │   ├── auth.js             Google Sign-In · enrollment · grants · admin promotion
 │   ├── ledger.js           the only module that writes money
@@ -129,7 +129,7 @@ TrustX Ledger/
 │   ├── image-receipt.js    Gemini OCR + offline Tesseract OCR + multi-line review
 │   ├── receipt-items.js    a bill as line items · pricing · catalog ranking  (pure)
 │   ├── service-picker.js   WAI-ARIA combobox over the service catalog
-│   ├── service-catalog.js  50 seed services in 12 sortOrder bands  (pure)
+│   ├── service-catalog.js  52 seed services in 14 sortOrder bands  (pure)
 │   ├── calendar.js         month-grid logic                            (pure)
 │   ├── day-heads.js        day counters + per-method split             (pure)
 │   ├── day-ledger.js       single-day view logic                       (pure)
@@ -153,7 +153,7 @@ TrustX Ledger/
 ├── firestore.rules       923 lines   the money
 ├── database.rules.json    55 lines   expenses + fail-closed legacy paths
 ├── firestore.indexes.json             empty — the day key is the partition
-├── sw.js                 351 lines   cache v16 · 57-file precache
+├── sw.js                 351 lines   cache v17 · 57-file precache
 ├── manifest.webmanifest              4 app shortcuts · shop installable app
 ├── manifest-admin.webmanifest        owner console installable app
 ├── firebase.json                    hosting + both rule sets + emulators + headers
@@ -846,7 +846,7 @@ flowchart TD
         PURE["Pure logic modules<br/>calendar · day-heads · day-ledger<br/>day-audit · service-catalog · receipt-items · utils"]
         UI["UI modules<br/>shell · app · sale-form<br/>txn-actions · image-receipt · service-picker · admin<br/>print-export"]
         IO["Data modules<br/>ledger.js · auth.js"]
-        SW["Service worker sw.js<br/>cache v16 · 57-file precache"]
+        SW["Service worker sw.js<br/>cache v17 · 57-file precache"]
         HTML --> UI
         UI --> IO
         UI --> PURE
@@ -1035,9 +1035,9 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 </details>
 
 <details>
-<summary><b>⚙️ A 50-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
+<summary><b>⚙️ A 52-service catalog that seeds itself, safely</b> — <code>js/service-catalog.js</code>, <code>js/service-picker.js</code></summary>
 
-`js/service-catalog.js` seeds the catalog a shop starts from: **50 services across 12 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The exceptions are **PVC Card (₹120)** and **Asha (₹70)**, whose catalog entries carry their own rate. The Owner console's **Shop** tab asks for the rest of the real rates once, after the seed.
+`js/service-catalog.js` seeds the catalog a shop starts from: **52 services across 14 `sortOrder` bands**, each at **₹0 on purpose** — *"the rates are the shop's own, and a wrong number seeded here would silently pre-fill the rate box on every future sale."* The exceptions are **PVC Card (₹120)** and **Asha (₹70)**, whose catalog entries carry their own rate. The Owner console's **Shop** tab asks for the rest of the real rates once, after the seed.
 
 ```text
 100s  Printing & document services      Normal Printing · Colour/Photo Printing ·
@@ -1066,6 +1066,8 @@ Either path converges on `normalizeAiOutput` (clamp money, floor quantity at 1, 
 1000s Vehicle services                  Vehicle · RC · Permit
 1100s Health services                   e Health
 1200s Railway services                  RRB
+1300s Booking services                  Bookings
+1400s Government information services   RTI (Right to Information)
 ```
 
 Three things make the auto-seed safe to run on every page load:
@@ -1074,7 +1076,7 @@ Three things make the auto-seed safe to run on every page load:
 2. **`findMissingCatalogServices` matches on normalised name *and* on seed ID**, so a hand-typed service is never duplicated and a *renamed* default is never re-seeded over the top.
 3. **New entries append at the end of their band**, because inserting in the middle would renumber services whose `sortOrder` was baked in at seed time.
 
-Band 300 filled its tenth slot with Pension (300-390) and band 400 its tenth with Asha (400-490), band 900 holds ration card work, band 1000 vehicle work, band 1100 health work and band 1200 railway work, so the next job has to open band 1300 — *"not take slot 400, that would list it under 'Online application / digital services' with no error anywhere."*
+Band 300 filled its tenth slot with Pension (300-390) and band 400 its tenth with Asha (400-490), band 900 holds ration card work, band 1000 vehicle work, band 1100 health work, band 1200 railway work, band 1300 booking work and band 1400 government information work, so the next job that belongs to a full band has to open band 1500 — *"not take slot 400, that would list it under 'Online application / digital services' with no error anywhere."*
 
 The picker itself is a WAI-ARIA combobox with a real focusable textbox, sticky group headings, full arrow-key navigation, a `Tab`-to-commit behaviour, and a two-pass position measurement that defeats the modal's own `transform` animation.
 
@@ -1238,8 +1240,8 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 |---|---|
 | ![HTML5](https://img.shields.io/badge/HTML5-9-e34f26?style=flat-square&logo=html5&logoColor=white) | 9 static HTML pages |
 | ![CSS3](https://img.shields.io/badge/CSS3-10-5435d3?style=flat-square&logo=css3&logoColor=white) | 10 stylesheets · 7,250 lines · custom-property design tokens |
-| ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 22 native ES modules · 14,135 lines · **no bundler** |
-| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v16` · 2 manifests · 4 shortcuts |
+| ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 22 native ES modules · 14,152 lines · **no bundler** |
+| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v17` · 2 manifests · 4 shortcuts |
 
 No framework. No build step. No `node_modules`. Pages load the Firebase SDK through a pinned import map and everything else is a native ES module.
 
@@ -1293,7 +1295,7 @@ There is **no application server**. Firebase is the backend.
 
 [![Live status](https://img.shields.io/badge/STATUS-%F0%9F%9F%A2%20ONLINE-2d8a4e?style=flat-square)](https://trustxplpy.web.app)
 [![HTTP 200](https://img.shields.io/badge/live%20deploy-HTTP%20200-brightgreen?style=flat-square)](https://trustxplpy.web.app)
-[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v16-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
+[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v17-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
 
 </div>
 
@@ -1836,7 +1838,7 @@ The app runs locally from step 2 of [Installation](#installation). Because every
 
 **2 · Seed representative data** via the Owner console (`admin.html`):
 
-- **🛒 Shop → Add default services** — writes the 50 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
+- **🛒 Shop → Add default services** — writes the 52 seeds at ₹0. Set realistic rates on a handful first, or every screenshot will show `₹0`.
 - **💵 Money / 📅 Month** are read-only views. Record sales through **⌘N** on the dashboard instead, so the atomicity proof is exercised for real.
 - Record a spread of sales across several days: different payment methods, at least one **due** left pending, at least one sale **backfilled** onto a past business day, and at least one day with **no entries at all** so the calendar's catch-up panel is populated.
 
@@ -1899,7 +1901,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 |---|---|
 | Tracked files | 92 |
 | HTML pages | 9 · 3,735 lines |
-| JS modules | 22 · 14,135 lines |
+| JS modules | 22 · 14,152 lines |
 | CSS files | 10 · 7,250 lines |
 | Tests | 5 files · 4,283 lines · 180 cases |
 | Tools | 7 Node scripts |
@@ -1907,7 +1909,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 | Security rules | 978 lines |
 | Runtime dependencies | **0** |
 | Build steps | **0** |
-| Version | 0.13.1 · service worker cache `v16` |
+| Version | 0.13.1 · service worker cache `v17` |
 
 ### Version history
 

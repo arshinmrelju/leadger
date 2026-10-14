@@ -40,14 +40,14 @@ Counts are from `git ls-files` at `v0.13.1` — the **application**, excluding t
 ```text
 92 tracked files
 ├─  9 HTML pages              3,735 lines
-├─ 22 JS modules             14,135 lines
+├─ 22 JS modules             14,152 lines
 ├─ 10 CSS files               7,250 lines
 ├─  5 test files              4,283 lines   180 cases
 ├─  7 tool scripts
 ├─ 16 assets
 ├─ firestore.rules              923 lines   the money
 ├─ database.rules.json           55 lines   expenses + fail-closed legacy paths
-├─ sw.js                        351 lines   cache v16 · 57 precached files
+├─ sw.js                        351 lines   cache v17 · 57 precached files
 └─ package.json                            2 scripts · 0 dependencies · 0 build steps
 ```
 
