@@ -851,7 +851,18 @@ body[data-page="dashboard"] {
 }
 
 .powered-by-logo {
-  height: 24px;
+  /* 36px, not 24px: at 24 the wordmark read as a smudge and the strip it
+     sits in looked half-empty. 36px puts the logo at ~109px wide, which
+     leaves ~20px of slack beside the "POWERED BY" label inside the 252px
+     sidebar. 40px was the tempting round number but needs ~215px of the
+     217px this row actually has, so a slightly wider label on another
+     machine would squeeze the image.
+
+     object-fit: contain is the guard for that exact case: height is fixed
+     and flex-shrink is allowed, so if the row ever does run short the box
+     narrows and the logo letterboxes instead of being squished flat. */
+  height: 36px;
+  object-fit: contain;
   width: auto;
   max-width: 100%;
   min-width: 0;

@@ -185,7 +185,7 @@ function mountPoweredByBadge() {
   link.innerHTML =
     '<span class="powered-by-label">Powered by</span>' +
     '<img class="powered-by-logo" src="assets/techsiah-full-logo.png" alt="Techsiah" ' +
-    'style="height:24px;width:auto;display:block;" />';
+    'style="height:36px;width:auto;display:block;" />';
 
   footer.insertBefore(link, footer.firstChild);
 }

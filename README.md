@@ -153,7 +153,7 @@ TrustX Ledger/
 ├── firestore.rules       923 lines   the money
 ├── database.rules.json    55 lines   expenses + fail-closed legacy paths
 ├── firestore.indexes.json             empty — the day key is the partition
-├── sw.js                 355 lines   cache v18 · 58-file precache
+├── sw.js                 355 lines   cache v19 · 58-file precache
 ├── manifest.webmanifest              4 app shortcuts · shop installable app
 ├── manifest-admin.webmanifest        owner console installable app
 ├── firebase.json                    hosting + both rule sets + emulators + headers
@@ -847,7 +847,7 @@ flowchart TD
         PURE["Pure logic modules<br/>calendar · day-heads · day-ledger<br/>day-audit · service-catalog · receipt-items · utils"]
         UI["UI modules<br/>shell · app · sale-form<br/>txn-actions · image-receipt · service-picker · admin<br/>print-export"]
         IO["Data modules<br/>ledger.js · auth.js"]
-        SW["Service worker sw.js<br/>cache v18 · 58-file precache"]
+        SW["Service worker sw.js<br/>cache v19 · 58-file precache"]
         HTML --> UI
         UI --> IO
         UI --> PURE
@@ -1242,7 +1242,7 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 | ![HTML5](https://img.shields.io/badge/HTML5-9-e34f26?style=flat-square&logo=html5&logoColor=white) | 9 static HTML pages |
 | ![CSS3](https://img.shields.io/badge/CSS3-10-5435d3?style=flat-square&logo=css3&logoColor=white) | 10 stylesheets · 7,304 lines · custom-property design tokens |
 | ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 22 native ES modules · 14,208 lines · **no bundler** |
-| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v18` · 2 manifests · 4 shortcuts |
+| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v19` · 2 manifests · 4 shortcuts |
 
 No framework. No build step. No `node_modules`. Pages load the Firebase SDK through a pinned import map and everything else is a native ES module.
 
@@ -1296,7 +1296,7 @@ There is **no application server**. Firebase is the backend.
 
 [![Live status](https://img.shields.io/badge/STATUS-%F0%9F%9F%A2%20ONLINE-2d8a4e?style=flat-square)](https://trustxplpy.web.app)
 [![HTTP 200](https://img.shields.io/badge/live%20deploy-HTTP%20200-brightgreen?style=flat-square)](https://trustxplpy.web.app)
-[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v18-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
+[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v19-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
 
 </div>
 
@@ -1910,7 +1910,7 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 | Security rules | 978 lines |
 | Runtime dependencies | **0** |
 | Build steps | **0** |
-| Version | 0.13.1 · service worker cache `v18` |
+| Version | 0.13.1 · service worker cache `v19` |
 
 ### Version history
 
