@@ -810,6 +810,55 @@ body[data-page="dashboard"] {
   font-size: 0.7rem !important;
 }
 
+/* ---------- Powered-by badge (TechSiah) ----------
+   The attribution strip at the top of the sidebar footer band, above the
+   user chip. Mounted from js/shell.js so all five shell pages get it from
+   one place.
+
+   The logo is the dark-text wordmark and it is used unconditionally: the
+   footer band is always the light parchment above, so there is no dark
+   surface to swap it for and no prefers-color-scheme branch to write.
+
+   The image's size is ALSO set inline on the <img> in shell.js. HTML and
+   CSS are cached separately, so a browser holding a stale stylesheet
+   alongside fresh markup would otherwise fall back to the PNG's intrinsic
+   height and blow the row out. Two copies of the same number, one of them
+   un-cacheable, is the fix. */
+.powered-by {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px dashed #dbc9b5;
+  font-family: var(--font-sans);
+  text-decoration: none;
+  color: #8c765c;
+}
+
+.powered-by:hover {
+  color: #5c4a30;
+}
+
+.powered-by-label {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8c765c;
+  white-space: nowrap;
+  flex: none;
+}
+
+.powered-by-logo {
+  height: 24px;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  flex-shrink: 1;
+  display: block;
+}
+
 /* ---------- Dashboard Receipt Skeleton & Loading Styles ---------- */
 .dash-sync-pill {
   display: inline-flex;

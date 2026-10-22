@@ -37,7 +37,7 @@
    ========================================================= */
 
 /** Bump to invalidate every cached file on the next activate. */
-const CACHE_VERSION = "v17";
+const CACHE_VERSION = "v18";
 
 const SHELL_CACHE = `trustx-shell-${CACHE_VERSION}`;
 const VENDOR_CACHE = `trustx-vendor-${CACHE_VERSION}`;
@@ -132,6 +132,9 @@ const SHELL_FILES = [
   "assets/coin-gold.svg",
   "assets/coin-silver.svg",
   "assets/cha-ching.mp3",
+  /* The attribution logo in the sidebar footer. Last on purpose: it is the
+     one asset here that belongs to somebody else. */
+  "assets/techsiah-full-logo.png",
 ];
 
 /**

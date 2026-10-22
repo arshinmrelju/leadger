@@ -146,6 +146,50 @@ function mountPwaChrome() {
   mountPwaControls(topbar);
 }
 
+const TECHSIAH_URL = "https://techsiah.web.app";
+
+/**
+ * Put the TechSiah attribution in the sidebar footer.
+ *
+ * BUILT HERE, NOT WRITT INTO EACH PAGE
+ * The sidebar is duplicated across five pages, and the footer band inside it
+ * is duplicated too. Writing the badge into each page's HTML would mean five
+ * copies to keep in sync, and the one that drifts is the one nobody notices.
+ * So it is assembled here and mounted into whichever `.sidebar-footer` the
+ * page happens to have.
+ *
+ * It sits at the TOP of the footer band, above the user chip, because the
+ * band already carries its own dashed top border - the badge then reads as
+ * the caption of that band rather than as another band of its own.
+ *
+ * The logo's size is written inline on the <img> as well as in the
+ * stylesheet, because HTML and CSS are cached separately. A browser holding
+ * a stale stylesheet next to fresh markup would otherwise fall back to the
+ * PNG's intrinsic height and blow the row out.
+ */
+function mountPoweredByBadge() {
+  if (typeof document === "undefined") return;
+  const footer = document.querySelector(".sidebar-footer");
+  if (!footer) return;
+  /* Mounting twice would put two badges in the band. */
+  if (footer.querySelector(".powered-by")) return;
+
+  const link = document.createElement("a");
+  link.className = "powered-by";
+  link.href = TECHSIAH_URL;
+  link.target = "_blank";
+  /* target="_blank" without this hands the opened tab a live window.opener
+     handle back to this page. */
+  link.rel = "noopener noreferrer";
+  link.title = "Powered by TechSiah";
+  link.innerHTML =
+    '<span class="powered-by-label">Powered by</span>' +
+    '<img class="powered-by-logo" src="assets/techsiah-full-logo.png" alt="Techsiah" ' +
+    'style="height:24px;width:auto;display:block;" />';
+
+  footer.insertBefore(link, footer.firstChild);
+}
+
 /* ------------------------------------------------------------------
    The phone tab bar
    ------------------------------------------------------------------
@@ -273,6 +317,11 @@ export async function initAppShell({ onReady, onDayChange, requireAdmin = false,
 
   guardPage(loginPage);
   registerGlobalKeys();
+
+  /* The attribution strip is chrome, not data. It is mounted here, before
+     anything that can throw, so that a failed catalog read still leaves a
+     sidebar that looks finished rather than one missing its footer. */
+  mountPoweredByBadge();
 
   const real = getCurrentUser();
   renderUserChip(real, loginPage);

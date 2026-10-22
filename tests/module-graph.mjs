@@ -694,3 +694,57 @@ test("each precached app module is reachable from a page", () => {
     `imported by a page but missing from the precache: ${uncached.join(", ")}`,
   );
 });
+
+test("the Techsiah attribution is mounted, precached and sized inline", () => {
+  const shell = fs.readFileSync(path.join(ROOT, "js", "shell.js"), "utf8");
+  const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+
+  /* The badge is chrome mounted from the shell, not markup copied into each
+     page, so a page that never calls initAppShell has no attribution strip
+     to find. */
+  assert.match(
+    shell,
+    /mountPoweredByBadge\s*\(/,
+    "js/shell.js must mount the powered-by badge",
+  );
+  assert.match(
+    shell,
+    /querySelector\("\.sidebar-footer"\)/,
+    "the badge must be mounted into the sidebar footer",
+  );
+
+  /* The logo is the one asset in the precache that is not the app's own, and
+     the attribution is the one thing on screen that says who built it. If it
+     is missing from the precache, an installed shop shows an empty box where
+     the logo should be and only when it is online. */
+  const block = sw.match(/SHELL_FILES\s*=\s*\[([\s\S]*?)\]/);
+  assert.ok(block, "sw.js must declare a SHELL_FILES list");
+  const cached = new Set([...block[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]));
+  assert.ok(
+    cached.has("assets/techsiah-full-logo.png"),
+    "sw.js must precache the Techsiah logo",
+  );
+  assert.ok(
+    fs.existsSync(path.join(ROOT, "assets", "techsiah-full-logo.png")),
+    "the Techsiah logo must exist on disk",
+  );
+
+  /* The size is written inline on the <img> as well as in the stylesheet.
+     HTML and CSS are cached separately, so a browser holding a stale
+     stylesheet next to fresh markup would fall back to the PNG's intrinsic
+     height and blow the row out. The inline copy is the one that survives a
+     stale cache, so it is the one that must not be dropped. */
+  assert.match(
+    shell,
+    /<img[^>]*class="powered-by-logo"[^>]*style="[^"]*height:/,
+    "the logo must carry an inline height so a stale stylesheet cannot clip it",
+  );
+
+  /* target="_blank" without noopener hands the opened tab a live
+     window.opener handle back to this page. */
+  assert.match(
+    shell,
+    /rel\s*=\s*["']noopener noreferrer["']/,
+    "the attribution link must set rel=noopener noreferrer",
+  );
+});

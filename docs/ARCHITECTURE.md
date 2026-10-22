@@ -144,7 +144,8 @@ SDK imports the bare specifier `firebase/firestore` and gets the pinned URL.
 
 `admin.html` is in that table like the rest, and it is the reason the console's information
 architecture could stay different while its chrome did not. `initAppShell({ requireAdmin:
-true })` draws the sidebar, top bar, user chip and mobile tab bar and resolves the grant;
+true })` draws the sidebar, top bar, user chip, the Techsiah attribution strip and mobile tab
+bar and resolves the grant;
 `renderOwnerConsole(ctx)` then owns only what the shell cannot: the admin proof and the
 promotion, the four receipt chips and the figures on the sheet. A different navigation inside
 the page is no longer a different page frame.
@@ -239,7 +240,7 @@ migration is recorded in `firestore.rules:616-619`.
 
 | Piece | File | Behaviour |
 |---|---|---|
-| Precaching | `sw.js` | cache `v17`, 61 files (57 app + 4 pinned Firebase SDK bundles), install-time |
+| Precaching | `sw.js` | cache `v18`, 62 files (58 app + 4 pinned Firebase SDK bundles), install-time |
 | Navigation | `sw.js` | network first, cache fallback, then `offline.html` |
 | App data | Firestore | `persistentLocalCache` + multi-tab, so an open shop keeps reading while offline |
 | Writes while offline | — | not queued. A sale needs the rules to approve it, and the rules are server-side |

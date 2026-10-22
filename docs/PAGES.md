@@ -206,8 +206,9 @@ so a printed "all time" list and a printed single day do not look alike.
 Management** · **on the app shell**
 
 A shell page, like every other protected screen: it inherits the sidebar, top bar, user
-chip, install controls and mobile tab bar, and `renderOwnerConsole(ctx)` in `js/admin.js`
-paints into `#mainContent`. What is its own is the paper — the four sections sit on the
+chip, the Techsiah attribution strip, install controls and mobile tab bar, and
+`renderOwnerConsole(ctx)` in `js/admin.js` paints into `#mainContent`. What is its own is
+the paper — the four sections sit on the
 same receipt sheet as the dashboard's, using its stat cards, its stamp and its tear edge,
 so a rupee looks the same on both pages. The sections are chips inside the receipt, not
 sidebar links: the sidebar's one "Owner console" entry already says where you are, and

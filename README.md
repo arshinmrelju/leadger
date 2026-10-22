@@ -17,7 +17,7 @@
 [![Build step](https://img.shields.io/badge/build-none-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![Dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/package.json)
 [![PWA](https://img.shields.io/badge/PWA-installable-2d8a4e?style=flat-square)](https://web.dev/progressive-web-apps/)
-[![Tests](https://img.shields.io/badge/tests-180%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
+[![Tests](https://img.shields.io/badge/tests-181%20node%3Atest-blue?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/tests/receipt-scan.mjs)
 [![License](https://img.shields.io/badge/license-MIT-2d8a4e?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/LICENSE)
 [![Security rules](https://img.shields.io/badge/firestore.rules-923%20lines-c0392b?style=flat-square)](https://github.com/arshinmrelju/leadger/blob/main/firestore.rules)
 
@@ -85,15 +85,15 @@ The interesting engineering is not the CRUD. It is that **a browser is treated a
 
 | Pages | JS modules | CSS files | Rules | Tests | Runtime deps |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| **9** | **22** | **10** | **978** | **180** | **0** |
+| **9** | **22** | **10** | **978** | **181** | **0** |
 
 </div>
 
 `978` = 923 lines of `firestore.rules` + 55 lines of `database.rules.json`.
-`180` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
+`181` Node tests via `node --test` — see [Testing](#testing) for the current honest pass/fail count.
 
 <details>
-<summary><b>📦 What is actually in the repository</b> (92 tracked files)</summary>
+<summary><b>📦 What is actually in the repository</b> (93 tracked files)</summary>
 
 ```
 TrustX Ledger/
@@ -120,7 +120,7 @@ TrustX Ledger/
 │   ├── View receipt photo            js/txn-actions.js
 │   └── Confirm / alert               js/app.js
 │
-├── js/  22 modules · 14,152 lines
+├── js/  22 modules · 14,208 lines
 │   ├── firebase.js         SDK bootstrap · lazy import · offline persistence
 │   ├── auth.js             Google Sign-In · enrollment · grants · admin promotion
 │   ├── ledger.js           the only module that writes money
@@ -145,15 +145,15 @@ TrustX Ledger/
 │   ├── ai-config.js        Gemini model config (key is a placeholder)
 │   └── read-cache / quota / …  no cycles — leaves → firebase → auth/ledger → UI
 │
-├── css/  10 files · 7,250 lines  (style · forms · dashboard · transactions ·
+├── css/  10 files · 7,304 lines  (style · forms · dashboard · transactions ·
 │                                   ledger · calendar · admin · print · responsive · mobile)
 ├── tests/  5 files             (ledger · calendar · receipt-scan · module-graph · owner-console)
 ├── tools/  7 Node scripts       (bootstrap-access · rules-check · make-icons · …)
-├── assets/ 16 files             (logos · favicons · PWA icons · coins · banner · sound)
+├── assets/ 18 files             (logos · favicons · PWA icons · coins · banner · sound · attribution)
 ├── firestore.rules       923 lines   the money
 ├── database.rules.json    55 lines   expenses + fail-closed legacy paths
 ├── firestore.indexes.json             empty — the day key is the partition
-├── sw.js                 351 lines   cache v17 · 57-file precache
+├── sw.js                 355 lines   cache v18 · 58-file precache
 ├── manifest.webmanifest              4 app shortcuts · shop installable app
 ├── manifest-admin.webmanifest        owner console installable app
 ├── firebase.json                    hosting + both rule sets + emulators + headers
@@ -609,7 +609,8 @@ The dashboard reads the day head, which is why the counters must be provably cor
 
 **A shell page, like every other protected screen.** It calls `initAppShell({ requireAdmin:
 true })` and renders into `#mainContent` from `renderOwnerConsole(ctx)`, so it inherits the
-sidebar, the top bar, the user chip, the install controls and the mobile tab bar. What is
+sidebar, the top bar, the user chip, the Techsiah attribution strip, the install controls and
+the mobile tab bar. What is
 its own is the paper: the four sections sit on the same receipt sheet the dashboard prints
 its figures on, using the dashboard's own stat cards, so a rupee looks the same on both
 pages. Sale entry stays out of reach — the chip row is the console's only navigation, and
@@ -846,7 +847,7 @@ flowchart TD
         PURE["Pure logic modules<br/>calendar · day-heads · day-ledger<br/>day-audit · service-catalog · receipt-items · utils"]
         UI["UI modules<br/>shell · app · sale-form<br/>txn-actions · image-receipt · service-picker · admin<br/>print-export"]
         IO["Data modules<br/>ledger.js · auth.js"]
-        SW["Service worker sw.js<br/>cache v17 · 57-file precache"]
+        SW["Service worker sw.js<br/>cache v18 · 58-file precache"]
         HTML --> UI
         UI --> IO
         UI --> PURE
@@ -1122,7 +1123,7 @@ The original bug this replaced: a day whose head has drifted out of step with it
 <details open>
 <summary><b>📱 Installable, offline-first PWA</b> — <code>sw.js</code>, <code>js/pwa.js</code>, <code>manifest.webmanifest</code></summary>
 
-- **Precache: 61 files — 57 app files plus the 4 pinned Firebase SDK bundles** — listed explicitly, because there is no build step to generate a manifest. Each is added individually inside a `try/catch`, because *"a single 404 must not leave the shop with NO service worker."* `tests/module-graph.mjs` cross-checks `SHELL_FILES` against what is actually in `js/` and `css/`, so a new module cannot be added without being cached or deliberately excluded.
+- **Precache: 62 files — 58 app files plus the 4 pinned Firebase SDK bundles** — listed explicitly, because there is no build step to generate a manifest. Each is added individually inside a `try/catch`, because *"a single 404 must not leave the shop with NO service worker."* `tests/module-graph.mjs` cross-checks `SHELL_FILES` against what is actually in `js/` and `css/`, so a new module cannot be added without being cached or deliberately excluded.
 - **Cache-first, revalidating in the background, behind an allowlist.** `www.gstatic.com` and the font hosts are cached; **everything else is passed straight through before `respondWith`**. A blocklist was rejected deliberately — *"it would have to guess at every host Firebase might use, and would fail open on any host nobody thought of."*
 - **Never cached, always:** `/tools/`, `/sa.json`, `/service-account.json`, `/.firebase/`, the debug logs, `sw.js` itself.
 - Only `200` and non-opaque responses are stored. Navigations fall back network → cache → **`offline.html`**, so an installed app never shows a blank void.
@@ -1201,7 +1202,7 @@ Input escaping: `escapeHtml` on every interpolated value; `serviceId` may not co
 <details>
 <summary><b>🎨 A receipt-paper design system</b> — <code>css/style.css</code></summary>
 
-Ten stylesheets, 7,250 lines, one token set:
+Ten stylesheets, 7,304 lines, one token set:
 
 | Token | Value | |
 |---|---|---|
@@ -1239,9 +1240,9 @@ Expenses *are* read from the Realtime Database and displayed on the dashboard an
 | | |
 |---|---|
 | ![HTML5](https://img.shields.io/badge/HTML5-9-e34f26?style=flat-square&logo=html5&logoColor=white) | 9 static HTML pages |
-| ![CSS3](https://img.shields.io/badge/CSS3-10-5435d3?style=flat-square&logo=css3&logoColor=white) | 10 stylesheets · 7,250 lines · custom-property design tokens |
-| ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 22 native ES modules · 14,152 lines · **no bundler** |
-| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v17` · 2 manifests · 4 shortcuts |
+| ![CSS3](https://img.shields.io/badge/CSS3-10-5435d3?style=flat-square&logo=css3&logoColor=white) | 10 stylesheets · 7,304 lines · custom-property design tokens |
+| ![JavaScript](https://img.shields.io/badge/ES2022%20Modules-f0db4f?style=flat-square&logo=javascript&logoColor=white) | 22 native ES modules · 14,208 lines · **no bundler** |
+| ![PWA](https://img.shields.io/badge/PWA-Installable-2d8a4e?style=flat-square) | service worker `v18` · 2 manifests · 4 shortcuts |
 
 No framework. No build step. No `node_modules`. Pages load the Firebase SDK through a pinned import map and everything else is a native ES module.
 
@@ -1295,7 +1296,7 @@ There is **no application server**. Firebase is the backend.
 
 [![Live status](https://img.shields.io/badge/STATUS-%F0%9F%9F%A2%20ONLINE-2d8a4e?style=flat-square)](https://trustxplpy.web.app)
 [![HTTP 200](https://img.shields.io/badge/live%20deploy-HTTP%20200-brightgreen?style=flat-square)](https://trustxplpy.web.app)
-[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v17-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
+[![PWA](https://img.shields.io/badge/offline%20ready-PWA%20cache%20v18-4b8bbf?style=flat-square)](https://trustxplpy.web.app/manifest.webmanifest)
 
 </div>
 
@@ -1785,7 +1786,7 @@ npm run test:rules # Firestore emulator harness — requires `firebase emulators
 ### Current result — stated honestly
 
 ```
-ℹ tests 180     ℹ pass 180     ℹ fail 0     ℹ skipped 0     ℹ todo 0
+ℹ tests 181     ℹ pass 181     ℹ fail 0     ℹ skipped 0     ℹ todo 0
 ```
 
 **The suite is green.** The one case that used to fail here — *a day of legacy sales reads as in
@@ -1899,17 +1900,17 @@ Full instructions: [`docs/SCREENS.md`](docs/SCREENS.md).
 
 | | |
 |---|---|
-| Tracked files | 92 |
-| HTML pages | 9 · 3,735 lines |
-| JS modules | 22 · 14,152 lines |
-| CSS files | 10 · 7,250 lines |
-| Tests | 5 files · 4,283 lines · 180 cases |
+| Tracked files | 93 |
+| HTML pages | 9 · 3,739 lines |
+| JS modules | 22 · 14,208 lines |
+| CSS files | 10 · 7,304 lines |
+| Tests | 5 files · 4,338 lines · 181 cases |
 | Tools | 7 Node scripts |
-| Assets | 16 files |
+| Assets | 18 files |
 | Security rules | 978 lines |
 | Runtime dependencies | **0** |
 | Build steps | **0** |
-| Version | 0.13.1 · service worker cache `v17` |
+| Version | 0.13.1 · service worker cache `v18` |
 
 ### Version history
 
@@ -1981,7 +1982,7 @@ Security ................. ✓           rules matrix · authz · 3-layer valida
                                         sensitive data · 6 known gaps
 Installation ............. ✓           verified against package.json and real tools
 Configuration ............ ✓           3 real config points, placeholders only
-Testing ................. ✓           180 tests · 180 pass / 0 fail
+Testing ................. ✓           181 tests · 181 pass / 0 fail
 Statistics ............... ✓           all badges dynamic, none hardcoded
 Developer ................ ✓            from repository metadata only
 Secrets exposed .......... 0 ✓         no key, token or credential reproduced
@@ -1998,7 +1999,7 @@ Fabricated content ....... 0 ✓         no invented pages, features, stats or m
 
 ### Verification performed
 
-- `npm test` executed — **180 tests, 180 pass, 0 fail**; the long-standing legacy-sales failure is fixed at its cause (fixture + refusal diagnosis), not skipped or weakened
+- `npm test` executed — **181 tests, 181 pass, 0 fail**; the long-standing legacy-sales failure is fixed at its cause (fixture + refusal diagnosis), not skipped or weakened
 - All 9 deployed page URLs requested — **HTTP 200** each
 - **All 10 Mermaid diagrams** (7 here, 3 in `docs/`) parsed with the `mermaid@11` parser that GitHub uses — every one renders
 - **Anchor, fence and HTML-tag balance machine-checked** across this README and all 6 `docs/` files — every internal anchor resolves, every fence closes, every `<details>` pairs
@@ -2022,7 +2023,7 @@ Fabricated content ....... 0 ✓         no invented pages, features, stats or m
 | [`DATABASE-RULES.md`](https://github.com/arshinmrelju/leadger/blob/main/DATABASE-RULES.md) | why the RTDB rules file has no comments, and what moved to Firestore |
 | [`firestore.rules`](https://github.com/arshinmrelju/leadger/blob/main/firestore.rules) | 923 lines — the money |
 | [`database.rules.json`](https://github.com/arshinmrelju/leadger/blob/main/database.rules.json) | expenses + fail-closed legacy paths |
-| [`sw.js`](https://github.com/arshinmrelju/leadger/blob/main/sw.js) | the 57-file precache and its allowlist |
+| [`sw.js`](https://github.com/arshinmrelju/leadger/blob/main/sw.js) | the 58-file precache and its allowlist |
 | [`js/ledger.js`](https://github.com/arshinmrelju/leadger/blob/main/js/ledger.js) | the only module that writes money |
 | [`js/auth.js`](https://github.com/arshinmrelju/leadger/blob/main/js/auth.js) | the access chain, client side |
 | [`tools/bootstrap-access.mjs`](https://github.com/arshinmrelju/leadger/blob/main/tools/bootstrap-access.mjs) | the one-time owner bootstrap |
