@@ -54,6 +54,26 @@
 
 .cal-nav .icon { width: 17px; height: 17px; }
 
+/* The "day off today" toggle wears today's state, so the answer to "am I
+   working today?" is on screen without a tap. Indigo matches the day-off
+   cell and dot, so the button, the grid and the legend agree. */
+.cal-leave-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cal-leave-toggle.is-on {
+  background: #6a5cc4;
+  border-color: #5a4cad;
+  color: #fff;
+}
+
+.cal-leave-toggle.is-on:hover {
+  background: #5a4cad;
+  border-color: #4b3fa8;
+}
+
 /* ---------- Legend ---------- */
 .cal-legend {
   display: flex;
@@ -553,8 +573,11 @@
   /* Tighten the card container since each row is self-describing. */
   .cal-card { padding: 0.5rem 0.75rem; }
 
-  /* Nav: full-width, larger buttons. */
+  /* Nav: full-width, larger buttons. The day-off toggle keeps its words —
+     it is the one control here that carries a state, and an icon alone
+     cannot say whether today is off. */
   .cal-nav .btn { flex: 0 0 44px; width: 44px; min-height: 44px; }
+  .cal-nav .cal-leave-toggle { flex: 0 0 auto; width: auto; }
   .cal-month-label { font-size: 1rem; }
 
   /* Summary stats: 2-across on phone. */

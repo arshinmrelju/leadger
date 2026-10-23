@@ -143,7 +143,7 @@
       escapeHtml,
       todayKolkata,
     } from "./js/utils.js";
-    import { fetchMonthHeads, fetchMonthLeaves, isNetworkError } from "./js/ledger.js";
+    import { fetchMonthHeads, fetchMonthLeaves, isNetworkError, markDayLeave, unmarkDayLeave } from "./js/ledger.js";
     import { dayHeading } from "./js/day-ledger.js";
     import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
@@ -176,6 +176,10 @@
     let loadError = null;
     /* Newest read wins; an older read that lands late is discarded. */
     let loadToken = 0;
+    /* Whether TODAY is marked off. Kept beside the month on screen so the
+       toggle can say what a tap will do before it is tapped; it belongs to
+       today, not to the month being viewed, so it survives month changes. */
+    let todayLeave = false;
 
     /* =========================================================
        Markup
@@ -191,6 +195,8 @@
       '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
     const ICON_LOCK =
       '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+    const ICON_UMBRELLA =
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v2a10 10 0 0 1 10 10H2A10 10 0 0 1 12 2z"/><path d="M12 2v20a2 2 0 0 0 4 0"/></svg>';
 
     function pageMarkup() {
       return (
@@ -202,6 +208,11 @@
             '<span class="cal-month-label" id="calMonthLabel" aria-live="polite"></span>' +
             '<button class="btn btn-secondary btn-icon" type="button" id="calNext" aria-label="Next month" title="Next month">' + ICON_CHEVRON_R + "</button>" +
             '<button class="btn btn-secondary" type="button" id="calThisMonth">This month</button>' +
+            /* One tap marks today off, from any month on screen. Keeping it
+               in the month bar rather than inside the day pane is the whole
+               point: taking the day off is a decision about *today*, and it
+               should not require hunting for today's cell first. */
+            '<button class="btn btn-secondary cal-leave-toggle" type="button" id="calLeaveToday" aria-pressed="false">' + ICON_UMBRELLA + '<span id="calLeaveTodayLabel">Day off today</span></button>' +
             '<button class="btn btn-secondary btn-icon" type="button" id="calRefresh" aria-label="Refresh this month" title="Refresh this month">' + ICON_REFRESH + "</button>" +
           "</div>" +
         "</div>" +
@@ -497,6 +508,63 @@
     }
 
     /* =========================================================
+       Day off today
+       ========================================================= */
+
+    /* The toggle always acts on TODAY, never on the month on screen:
+       "am I working today?" does not change because you happened to be
+       looking at last month. The mark is read from the current month's
+       cache, so opening the calendar while on the current month costs no
+       extra query — and browsing back a month keeps its last known state
+       rather than flickering to "working". */
+    function renderLeaveToggle() {
+      const btn = document.getElementById("calLeaveToday");
+      const label = document.getElementById("calLeaveTodayLabel");
+      if (!btn || !label) return;
+      label.textContent = todayLeave ? "Back on today" : "Day off today";
+      btn.classList.toggle("is-on", todayLeave);
+      btn.setAttribute("aria-pressed", String(todayLeave));
+    }
+
+    async function refreshTodayLeave() {
+      try {
+        const leaves = await fetchMonthLeaves({ yearMonth: currentYearMonth() });
+        todayLeave = !!leaves[todayKolkata()];
+      } catch (err) {
+        /* A failed read must not take the button with it: it keeps its
+           last known state and the tap still writes, because the rules
+           decide the write on the server's copy, not on this guess. */
+        console.error("[trustx-ledger] today's leave read:", err);
+      }
+      renderLeaveToggle();
+    }
+
+    async function toggleTodayLeave() {
+      const btn = document.getElementById("calLeaveToday");
+      if (btn) setLoading(btn, true);
+      try {
+        const result = await (todayLeave ? unmarkDayLeave(todayKolkata()) : markDayLeave(todayKolkata()));
+        todayLeave = result.leave;
+        renderLeaveToggle();
+        /* Redraw. Today is drawn from the same cache the toggle just
+           invalidated, so the cell, the summary and the catch-up list all
+           have to be rebuilt or today would still read as a missed day. */
+        await loadMonth({ force: true });
+        toast(todayLeave ? "Today is marked as a day off." : "Today is a working day again.", "success");
+      } catch (err) {
+        /* Shown whatever the write actually said — a permission denial
+           from a shop account reads as the truth, not as a flaky app. */
+        console.error("[trustx-ledger] leave toggle:", err);
+        toast(reportError(err), "error");
+        /* Put the label back to what the server holds, since the tap did
+           not take. */
+        renderLeaveToggle();
+      } finally {
+        if (btn) setLoading(btn, false);
+      }
+    }
+
+    /* =========================================================
        Boot
        ========================================================= */
 
@@ -507,6 +575,7 @@
       document.getElementById("calPrev").addEventListener("click", () => goToMonth(shiftMonth(yearMonth, -1)));
       document.getElementById("calNext").addEventListener("click", () => goToMonth(shiftMonth(yearMonth, 1)));
       document.getElementById("calThisMonth").addEventListener("click", () => goToMonth(currentYearMonth()));
+      document.getElementById("calLeaveToday").addEventListener("click", toggleTodayLeave);
       document.getElementById("calRefresh").addEventListener("click", () => {
         const btn = document.getElementById("calRefresh");
         setLoading(btn, true);
@@ -518,6 +587,9 @@
       });
 
       await loadMonth();
+      /* Read once the grid is up: the toggle's label must say what a tap
+         will do, and today's mark is not always in the month on screen. */
+      await refreshTodayLeave();
     }
 
     /* One handler for both entry points into a day: the `+` on a cell and a
