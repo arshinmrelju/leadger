@@ -326,6 +326,59 @@ test("a day with no head cannot be closed from the console", () => {
 });
 
 /* =========================================================
+   Leave days, as the owner console presents them
+
+   A day off is the one state that has no head behind it, so it cannot be
+   inferred from the Open/Closed pill the way every other state is. These
+   are the seams that keep it honest: the mark is read, it outranks the
+   pill, and it can be taken back — because a day the console will not
+   let you UNmark is a day you would have to work around forever.
+   ========================================================= */
+
+test("the Day pane reads the leave mark and can take it back", () => {
+  assert.match(mod, /fetchMonthLeaves\(/, "the Day pane must read whether the day was marked off");
+  assert.match(mod, /markDayLeave\(dateKey\)/, "and be able to mark a day off");
+  assert.match(mod, /unmarkDayLeave\(dateKey\)/, "and to take the day off back — a one-way mark would trap a day");
+
+  /* A failed leave read must fall back to "worked" rather than blanking
+     the pane: leave only ever ADDS a reason to refuse, so an unavailable
+     mark cannot be allowed to break the day's own state. */
+  assert.match(mod, /fetchMonthLeaves\(\{[^}]*\}\)\.catch\(/,
+    "a leave read that fails must degrade to a day that was worked");
+});
+
+test("a marked day says Leave, not Open, because Leave is why its sales are refused", () => {
+  /* The pill is the first thing read on the pane. Telling the owner
+     "Open" about a day off sends them straight into a refusal they were
+     never warned about, so leave is branched on FIRST. */
+  const leave = mod.indexOf("if (leave) {");
+  const open = mod.indexOf('pill.textContent = closed ? "Closed" : "Open"');
+  assert.ok(leave !== -1, "the Day pane must branch on the leave mark");
+  assert.ok(open !== -1, "and still name an open or closed day");
+  assert.ok(leave < open, "leave is decided before Open, since it is the reason the day refuses sales");
+
+  assert.match(mod, /pill\.textContent = "Leave"/, "a day off reads as Leave");
+
+  /* Close and leave are separate decisions about the same day: taking a
+     day off back must not silently re-open a day the owner closed. */
+  assert.match(mod, /toggle\.hidden = !head;/, "Close stays available only for a day that has a head");
+});
+
+test("marking a day off asks first, and names what it actually changes", () => {
+  /* It blocks every sale on that day, which is not a casual click. */
+  const fn = mod.slice(mod.indexOf("async function toggleDayLeave"), mod.indexOf("async function toggleDayLeave") + 2400);
+  assert.match(fn, /await confirm\(\{/, "marking a day off must be confirmed");
+  assert.match(fn, /fetchMonthLeaves\(\{[^}]*force:\s*true\s*\}\)/,
+    "and re-reads the mark first — another device may have marked or unmarked the day since this pane was painted");
+
+  /* The two directions get their own wording, because the two buttons
+     are not opposites in effect: one blocks every sale, one unblocks. */
+  assert.match(fn, /Mark as leave/, "the confirm names the action");
+  assert.match(fn, /Take day off back/, "and so does the reverse");
+  assert.match(fn, /await loadDay\(\)/, "the pane repaints from the server, never from the button's own belief");
+});
+
+/* =========================================================
    No half-scoped references
 
    js/admin.js is one module holding four panes' worth of local state —

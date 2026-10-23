@@ -56,6 +56,8 @@ import {
   amountsFromDoc,
   isCounterSetValid,
   counterStepAllowed,
+  isValidLeaveDoc,
+  buildLeaveDoc,
 } from "./day-heads.js";
 import { createReadCache } from "./read-cache.js";
 import {
@@ -204,6 +206,23 @@ const monthCache = createReadCache({
   staleTtlMs: 10 * 60_000,
   onError: readCacheError,
   persist: "month",
+});
+
+/**
+ * One month of leave marks — which days the owner has declared off.
+ *
+ * A month is at most 31 tiny documents, and the answer changes almost
+ * never: a day off is decided in advance and then left alone. So this is
+ * cached like the month of heads it sits beside, and invalidated by the
+ * same writes. Deliberately NOT persisted: the shop side reads it to
+ * explain a refusal and to draw shut days, and a mark taken away on
+ * another device must disappear rather than haunt a stale localStorage
+ * entry until its window expires.
+ */
+const leaveCache = createReadCache({
+  freshTtlMs: 60_000,
+  staleTtlMs: 10 * 60_000,
+  onError: readCacheError,
 });
 
 /* A catalog edit in one tab has to reach the others. The Developer console
@@ -758,6 +777,7 @@ function invalidateDayReads(dateKey) {
     rowsCache.drop();
     historyCache.drop();
     monthCache.drop();
+    leaveCache.drop();
     return;
   }
   headCache.dropPrefix(`head:${dateKey}`);
@@ -769,6 +789,11 @@ function invalidateDayReads(dateKey) {
      past day would otherwise leave the calendar showing the day as
      still missing until its cache window expired. */
   monthCache.drop();
+  /* The month of leave marks sits beside the month of heads and is
+     dropped whole, exactly as the heads are: the cache is keyed by
+     month, so a single day's mark has no prefix of its own to remove,
+     and the day must stop looking shut everywhere at once. */
+  leaveCache.drop();
 }
 
 /**
@@ -990,15 +1015,25 @@ export async function countDayTransactions(dateKey) {
  * one case the shop can actually fix into a sentence that says so.
  */
 export async function fetchDayState(dateKey) {
-  if (!isValidDateKey(dateKey)) return { dateKey, closed: false };
+  if (!isValidDateKey(dateKey)) return { dateKey, closed: false, leave: false };
   try {
     const b = await bridge();
     const fs = b.firestore;
     /* Never cached: this read exists so a write can tell a closed day from
        a missing grant, and answering that from a cached head would defeat
        the reason it is made immediately before the write. */
-    const snap = await chargedGetDoc(fs, headRef(fs, b.db, dateKey));
-    return { dateKey, closed: snap.exists() ? snap.data().state === DAY_STATE.CLOSED : false };
+    const [headSnap, leaveSnap] = await Promise.all([
+      chargedGetDoc(fs, headRef(fs, b.db, dateKey)),
+      chargedGetDoc(fs, leaveRef(fs, b.db, dateKey)),
+    ]);
+    return {
+      dateKey,
+      closed: headSnap.exists() ? headSnap.data().state === DAY_STATE.CLOSED : false,
+      /* A leave mark is a second, independent reason the write below will
+         be refused, so it is read here alongside the head rather than as a
+         second trip the sale form would have to remember to make. */
+      leave: leaveSnap.exists(),
+    };
   } catch (err) {
     /* Fail open, as documented, so a bad connection cannot stop the shop
        recording a sale. A spent quota is reported though — the write that
@@ -1009,7 +1044,7 @@ export async function fetchDayState(dateKey) {
     } else {
       console.warn("[trustx-ledger] day state unavailable, treating as open:", err);
     }
-    return { dateKey, closed: false };
+    return { dateKey, closed: false, leave: false };
   }
 }
 
@@ -1087,6 +1122,145 @@ export async function fetchMonthHeads({ yearMonth = "", force = false } = {}) {
     heads.monthEnd = bounds.lastKey;
     return heads;
   }, { force });
+}
+
+/* ------------------------------------------------------------------
+   Leave days — the owner's private "the shop is shut" mark
+
+   A leave day is the existence of dayLeaves/{dateKey} and nothing else:
+   no counters, no head, no money. It exists so a planned day off stops
+   being drawn as a day the shop FORGOT to write up, and so the rules can
+   refuse a sale against it (firestore.rules' isLeaveDay). Reading it is
+   open to every trusted browser — the counter has to be able to see why
+   its sale was turned away — but only an ADMIN may write it, which is
+   where "private" actually lives.
+   ------------------------------------------------------------------ */
+
+/** The leave document for one day. */
+function leaveRef(fs, db, dateKey) {
+  return fs.doc(fs.collection(db, "dayLeaves"), dateKey);
+}
+
+/**
+ * Every leave mark in one month, as a plain `dateKey -> true` map.
+ *
+ * Same ranged-query shape as fetchMonthHeads: one query, no composite
+ * index, and a ceiling of 31 tiny documents. A day with no mark is
+ * simply absent, which is the honest reading — most days are worked.
+ *
+ * @param {object} opts
+ * @param {string} [opts.yearMonth]  `YYYY-MM`; defaults to this month in India
+ * @param {boolean} [opts.force]     re-read the month from the server
+ * @returns {Promise<object>} dateKey -> true, with `yearMonth` attached
+ */
+export async function fetchMonthLeaves({ yearMonth = "", force = false } = {}) {
+  const bounds = monthBounds(String(yearMonth || "").trim() || currentYearMonth());
+  if (!bounds) throw new Error("Pick a valid month to view.");
+
+  const b = await bridge();
+  const fs = b.firestore;
+
+  return leaveCache.read(`leaves:${bounds.yearMonth}`, async () => {
+    const snap = await chargedGetDocs(
+      fs,
+      fs.query(
+        fs.collection(b.db, "dayLeaves"),
+        fs.orderBy("dateKey"),
+        fs.startAt(bounds.firstKey),
+        fs.endAt(bounds.lastKey)
+      )
+    );
+
+    const leaves = {};
+    for (const doc of snap.docs) {
+      /* The document ID is the dateKey and the rules pin the field to it,
+         so either is trustworthy; prefer the field and fall back to the
+         id for a mark written by an older build. */
+      const data = doc.data() || {};
+      const dateKey = isValidDateKey(data.dateKey) ? data.dateKey : doc.id;
+      if (!isValidDateKey(dateKey)) continue;
+      if (dateKey < bounds.firstKey || dateKey > bounds.lastKey) continue;
+      leaves[dateKey] = true;
+    }
+    leaves.yearMonth = bounds.yearMonth;
+    return leaves;
+  }, { force });
+}
+
+/**
+ * Mark a business day as leave — the shop was shut and nothing may be
+ * recorded against it. ADMIN ONLY, and the rules say so; a shop account
+ * gets a permission-denied here that no retry will clear.
+ *
+ * The mark is created fresh rather than merged, so re-marking a day that
+ * is already off is a clean no-op on the client and an idempotent create
+ * on the server. Un-marking is unmarkDayLeave below, not an edit: the
+ * rules allow create and delete only, so a decision cannot be quietly
+ * re-stamped by an update.
+ *
+ * @param {string} dateKey
+ * @returns {Promise<{dateKey: string, leave: boolean}>}
+ */
+export async function markDayLeave(dateKey) {
+  return setDayLeave(dateKey, true);
+}
+
+/**
+ * Take a leave mark back, so the shop works that day again and it stops
+ * being refused. The exact mirror of markDayLeave.
+ *
+ * @param {string} dateKey
+ * @returns {Promise<{dateKey: string, leave: boolean}>}
+ */
+export async function unmarkDayLeave(dateKey) {
+  return setDayLeave(dateKey, false);
+}
+
+/**
+ * Put a day's leave mark in the state asked for. Shared by
+ * markDayLeave/unmarkDayLeave so the two cannot drift on the shape, the
+ * guard or the invalidation.
+ */
+async function setDayLeave(dateKey, leave) {
+  if (!isValidDateKey(dateKey)) throw new Error("That business day is not valid.");
+
+  const b = await bridge();
+  const fs = b.firestore;
+  const user = b.auth.currentUser;
+  if (!user || !user.uid) throw new Error("You need to be signed in to change a business day.");
+
+  const ref = leaveRef(fs, b.db, dateKey);
+
+  /* Never cached: this read decides whether the write is needed at all,
+     and a second device may have set or cleared the mark since this tab
+     last painted the day. */
+  const snap = await chargedGetDoc(fs, ref);
+  if (snap.exists() === leave) {
+    /* Already in the state asked for. Saying so, rather than writing
+       anyway, is what keeps a double-tap from double-writing — and the
+       rules only allow a create, so a redundant write would be refused. */
+    return { dateKey, leave };
+  }
+
+  if (leave) {
+    /* Validated here, before the network, for the same reason money is:
+       a mark whose dateKey disagrees with its path, or that carries a
+       client clock instead of the server's, is refused by the rules with
+       a denial that names nothing. */
+    const doc = buildLeaveDoc(dateKey, user.uid, fs.serverTimestamp());
+    if (!isValidLeaveDoc(doc, dateKey)) {
+      throw new Error("That leave mark is not valid, so it was not saved.");
+    }
+    await guardQuota(() => fs.setDoc(ref, doc));
+  } else {
+    await guardQuota(() => fs.deleteDoc(ref));
+  }
+  noteWrites();
+  /* The month of heads does not change, but the calendar draws both, so
+     both are dropped: the day must stop looking shut everywhere at once. */
+  invalidateDayReads(dateKey);
+
+  return { dateKey, leave };
 }
 
 /* ------------------------------------------------------------------

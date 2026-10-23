@@ -70,9 +70,12 @@ import {
   updateService,
   fetchTransactions,
   fetchMonthHeads,
+  fetchMonthLeaves,
   fetchMonthExpenses,
   fetchTodaySummary,
   fetchDayState,
+  markDayLeave,
+  unmarkDayLeave,
   repairDayHead,
   closeDay,
   reopenDay,
@@ -926,8 +929,22 @@ async function loadMonth(force) {
   renderMonthProgress(yearMonth, todayKey, isFuture, isCurrent);
 
   let heads;
+  let leaves = {};
   try {
-    heads = await fetchMonthHeads({ yearMonth, force });
+    /* The month's heads and its leave marks are read together, so a day
+       off and a day's money are judged from one moment rather than one
+       query apart. The two are NOT allowed to fail together, though: the
+       heads are the month itself and their failure is worth reporting,
+       while a failed leave read leaves the map empty — the month then
+       reads exactly as it did before leave existed, which is the honest
+       fallback, rather than hiding a month the shop can still see. */
+    [heads, leaves] = await Promise.all([
+      fetchMonthHeads({ yearMonth, force }),
+      fetchMonthLeaves({ yearMonth, force }).catch((err) => {
+        console.warn("[trustx-ledger] month leave marks unavailable, ignoring them:", err);
+        return {};
+      }),
+    ]);
   } catch (err) {
     out.innerHTML = ownErrorMarkup(reportError(err));
     document.getElementById("monthSummaryTiles").innerHTML = "";
@@ -960,7 +977,10 @@ async function loadMonth(force) {
   const missed = [];
   for (let day = 1; day <= consideredDays; day++) {
     const key = yearMonth + "-" + String(day).padStart(2, "0");
-    if (!heads[key]) missed.push(key);
+    /* A day the owner took off is not a day the shop forgot: it has no
+       head because it was never worked, and counting it as missing would
+       keep inviting a sale the rules would refuse. */
+    if (!heads[key] && !leaves[key]) missed.push(key);
   }
 
   /* Expenses per day as well as for the month, grouped from the rows just
@@ -1005,18 +1025,29 @@ async function loadMonth(force) {
     });
 
   /* Day rows, oldest first, because a month reads forwards: one
-     finance-app row per recorded day with its date block, sales,
-     state and figures, instead of a ledger table. */
-  const dayRows = recorded
+     finance-app row per day the owner should see — every recorded day,
+     plus every day taken off. A day off normally has no head, so it has
+     to be added here or the month would simply not show the days the
+     shop was shut, which is the one thing this screen exists to make
+     legible. */
+  const listed = Array.from(new Set(recorded.concat(Object.keys(leaves).filter((k) => isValidDateKey(k))))).sort();
+
+  const dayRows = listed
     .map((key) => {
       const head = heads[key] || {};
       const c = head.counters || {};
       const closed = head.state === DAY_STATE.CLOSED;
+      const leave = !!leaves[key];
       const dayExpenses = expensesByDay.get(key) || 0;
       const taken = Number(c.grossPaise) || 0;
       const got = Number(c.collectedPaise) || 0;
       const count = Number(c.txnCount) || 0;
       const dayNet = got - dayExpenses;
+      /* A leave day is labelled by the reason it has no sales, not by an
+         Open/Closed state that would invite a sale the rules refuse. A
+         day that is both closed AND a day off says so, because those are
+         two separate facts and hiding either would misdescribe the day. */
+      const state = leave ? (closed ? "Leave · Closed" : "Leave") : closed ? "Closed" : "Open";
       return (
         '<div class="own-txn">' +
         '<div class="own-date"><span class="own-date-day">' + escapeHtml(key.slice(8).replace(/^0/, "")) + "</span>" +
@@ -1024,7 +1055,7 @@ async function loadMonth(force) {
         '<div class="own-row-main"><div class="own-row-title">' +
         escapeHtml(weekdayShort(key) + " · " + dayCellLabel(key)) +
         "</div>" +
-        '<div class="own-row-sub">' + countNote(count) + " · " + (closed ? "Closed" : "Open") +
+        '<div class="own-row-sub">' + countNote(count) + " · " + state +
         (expensesKnown ? " · Net " + formatINR(dayNet) : "") + "</div></div>" +
         '<div class="own-amt"><div class="own-amt-value">' + formatINR(taken) + "</div>" +
         '<div class="own-amt-sub">' + (expensesKnown ? "spent " + formatINR(dayExpenses) : "spent unread") + "</div></div>" +
@@ -1044,11 +1075,14 @@ async function loadMonth(force) {
     '<div class="own-total"><div class="own-row-main"><div class="own-row-title">' +
     escapeHtml(monthLabel(yearMonth) || yearMonth) +
     "</div>" +
-    '<div class="own-row-sub">' + countNote(sales) + (missed.length ? " · " + missed.length + " missing" : " · every day recorded") + "</div></div>" +
+    '<div class="own-row-sub">' + countNote(sales) + (missed.length ? " · " + missed.length + " missing" : " · every day accounted for") + "</div></div>" +
     '<div class="own-amt"><div class="own-amt-value">' + formatINR(gross) + "</div>" +
     '<div class="own-amt-sub">' + (expensesKnown ? "net " + formatINR(collected - monthExpenses) : "expenses not read") + "</div></div></div>";
 
-  out.innerHTML = recorded.length
+  /* Listed, not recorded: a month whose only activity was days off still
+     has something to show, and an owner who has just marked a day off
+     should see it here rather than an empty month. */
+  out.innerHTML = listed.length
     ? '<div class="own-list">' + dayRows + "</div>" + totalBlock + missedNote
     : ownStateMarkup(
         "Nothing recorded in " + (monthLabel(yearMonth) || yearMonth),
@@ -1100,6 +1134,7 @@ function wireDay() {
   });
 
   document.getElementById("dayToggleBtn").addEventListener("click", toggleDayState);
+  document.getElementById("dayLeaveBtn").addEventListener("click", toggleDayLeave);
   document.getElementById("auditDayBtn").addEventListener("click", runDayAudit);
   document.getElementById("auditMonthBtn").addEventListener("click", runMonthAudit);
 
@@ -1118,22 +1153,52 @@ async function loadDay() {
   const dateKey = state.dayKey;
   const isToday = dateKey === todayKolkata();
 
-  /* The month's heads are read for two reasons: they carry the day's state
-     (which is what decides whether Close or Re-open is the right button),
-     and they are already cached by the month tab, so this is often free. */
-  const [heads, summary] = await Promise.all([
+  /* The month's heads, its leave marks and this day's figures are read
+     for the same reason: they carry the day's state — closed, or shut
+     for the day off — which is what decides which buttons are the right
+     ones, and the first two are already cached by the month tab, so this
+     is often free. Only the heads are load-bearing: a failed leave read
+     falls back to "worked", the reading the console had before leave
+     existed, so an unavailable mark cannot blank the day over a feature
+     that merely adds a reason to refuse. */
+  const [heads, leaves, summary] = await Promise.all([
     fetchMonthHeads({ yearMonth: dateKey.slice(0, 7) }),
+    fetchMonthLeaves({ yearMonth: dateKey.slice(0, 7) }).catch((err) => {
+      console.warn("[trustx-ledger] day leave marks unavailable, treating as worked:", err);
+      return {};
+    }),
     fetchTodaySummary(dateKey),
   ]);
 
   const head = heads[dateKey] || null;
   const closed = !!(head && head.state === DAY_STATE.CLOSED);
+  const leave = !!leaves[dateKey];
 
   const pill = document.getElementById("dayStatePill");
   const note = document.getElementById("dayStateNote");
   const toggle = document.getElementById("dayToggleBtn");
+  const leaveBtn = document.getElementById("dayLeaveBtn");
 
-  if (!head) {
+  /* The leave mark outranks the head's own state in what the pill says,
+     because it is the reason the day refuses sales — a shopkeeper told
+     "Open" on a shut day would spend a whole sale before meeting the
+     refusal. The two are independent facts, so the buttons stay separate:
+     a day can be closed AND a day off, and taking the day off back must
+     not silently re-open a day the owner closed on purpose. */
+  if (leave) {
+    pill.className = "pill pill-neutral";
+    pill.textContent = "Leave";
+    note.textContent =
+      "The shop is shut this day. No sale can be added, edited or deleted on it. " +
+      "Take the day off back to work it again.";
+    /* Closing is meaningless on a day with no head, and a day off usually
+       has none — so the close button is hidden rather than left to fail. */
+    toggle.hidden = !head;
+    if (head) {
+      toggle.className = "btn btn-sm fin-daytoggle btn-secondary";
+      toggle.textContent = closed ? "Re-open day" : "Close day";
+    }
+  } else if (!head) {
     pill.className = "pill pill-neutral";
     pill.textContent = "Nothing recorded";
     note.textContent = "This day has no head, so there is nothing to close. Close a day once something is on it.";
@@ -1148,6 +1213,13 @@ async function loadDay() {
     toggle.className = "btn btn-sm fin-daytoggle " + (closed ? "btn-secondary" : "btn-primary");
     toggle.textContent = closed ? "Re-open day" : "Close day";
   }
+
+  /* The leave button is always available — it is the one action that
+     works on a day with nothing recorded, which is exactly the day a
+     shopkeeper plans to take off. Only its label and tone change. */
+  leaveBtn.hidden = false;
+  leaveBtn.className = "btn btn-sm fin-daytoggle " + (leave ? "btn-primary" : "btn-secondary");
+  leaveBtn.textContent = leave ? "Take day off back" : "Mark as leave";
 
   /* Same rule as the Money pane: a failed expenses read leaves 0 behind, and
      a net printed off that would be too high by whatever nobody could read. */
@@ -1254,6 +1326,68 @@ async function toggleDayState() {
     await loadDay();
   } catch (err) {
     console.error("[trustx-ledger] day state:", err);
+    toast(reportError(err), "error");
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+/**
+ * Mark a business day as leave, or take the day off back.
+ *
+ * The exact mirror of toggleDayState, and for the same reason it re-reads
+ * rather than trusting the button label: this day may have been marked
+ * off — or worked after all — on another device since the pane was
+ * painted, and the answer decides whether the write is a create or a
+ * delete. The rules allow only those two, never an update, so getting the
+ * direction wrong would be a refusal with nothing to say about it.
+ *
+ * The confirm names the consequence that matters and only that one: a
+ * leave day takes no sales at all. The close/reopen state of the day is
+ * deliberately left alone — those are two separate decisions, and taking
+ * a day off back must not quietly re-open a day the owner closed.
+ */
+async function toggleDayLeave() {
+  const dateKey = state.dayKey;
+  const btn = document.getElementById("dayLeaveBtn");
+
+  const leaves = await fetchMonthLeaves({ yearMonth: dateKey.slice(0, 7), force: true });
+  const leaving = !leaves[dateKey];
+
+  if (leaving) {
+    const ok = await confirm({
+      title: "Mark " + dateKey + " as leave?",
+      message:
+        "The shop is shut this day. No sale can be added, edited, settled or deleted against it until " +
+        "the day off is taken back, and it will stop being counted among the days you missed.",
+      confirmText: "Mark as leave",
+      variant: "danger",
+    });
+    if (!ok) return;
+  } else {
+    const ok = await confirm({
+      title: "Take the day off back?",
+      message:
+        "The shop works " + dateKey + " again, and a sale can be recorded against it. " +
+        "The day keeps whatever is already on it.",
+      confirmText: "Take day off back",
+    });
+    if (!ok) return;
+  }
+
+  setLoading(btn, true);
+  try {
+    const result = leaving ? await markDayLeave(dateKey) : await unmarkDayLeave(dateKey);
+    toast(
+      result && result.leave ? dateKey + " is marked as leave." : dateKey + " is a working day again.",
+      "success",
+    );
+    /* markDayLeave/unmarkDayLeave invalidate the month caches themselves,
+       so the repaint reads the day fresh and the button cannot still say
+       "Mark as leave" for a day that is already off. */
+    await loadDay();
+  } catch (err) {
+    console.error("[trustx-ledger] day leave:", err);
     toast(reportError(err), "error");
   } finally {
     setLoading(btn, false);

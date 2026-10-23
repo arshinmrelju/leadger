@@ -906,6 +906,20 @@ predictable refusal into a sentence the shop can act on. */
       );
       return;
     }
+    /* A day the owner has marked as leave takes no sales at all — the
+       rules refuse it server-side (isLeaveDay in firestore.rules). This
+       exists only to turn that refusal, which arrives as a bare
+       permission-denied, into a sentence the counter can act on. The
+       server stays the authority: if this read fails it fails open and
+       the write simply meets the real check. */
+    if (day.leave) {
+      showFormMsg(
+        "The business day " + dayHeading(dateKey) + " is marked as leave, so the shop is shut and no " +
+        "sale can be recorded against it. Record this sale against an open day, or ask the owner to " +
+        "take the day off back."
+      );
+      return;
+    }
 
     const result = await createTransaction({
       serviceId: selectedService.serviceId,

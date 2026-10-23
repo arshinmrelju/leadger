@@ -38,6 +38,9 @@ rules_version = '2';
 //   dayHeads/{dateKey}                          the independent head for
 //                                               one Asia/Kolkata business day
 //   dayHeads/{dateKey}/transactions/{txnId}     the sales recorded that day
+//   dayLeaves/{dateKey}                         a day the owner marked as
+//                                               off — read by all, written
+//                                               by admins only
 //   services/{serviceId}                        the quick-service catalog
 //
 // A HEAD PER DAY, NOT A dateKey FIELD
@@ -482,6 +485,37 @@ service cloud.firestore {
       return exists(headPath(dk)) && get(headPath(dk)).data.state == 'open';
     }
 
+    // ---------------- Leave days ----------------
+    // A day the owner has marked as shut BEFORE anything was recorded on
+    // it — a festival, a family day, a planned off. Its own top-level
+    // collection rather than a field on the head, for two reasons that
+    // both matter:
+    //
+    //   1. A leave day is exactly the day that has NO head. Requiring a
+    //      head to carry the flag would mean opening a day just to say
+    //      the shop is shut, and an all-zero head is indistinguishable
+    //      on the calendar from a real day that sold nothing.
+    //   2. The head's shape is pinned by hasOnly() in four places below.
+    //      A separate path leaves the money document untouched.
+    //
+    // "Private" is this path's own rule: only an ADMIN may create or
+    // remove the mark (see the dayLeaves match). exists() below needs no
+    // read permission to run — it is a server-side check inside the sale
+    // rule — so a shop browser is refused a sale on a leave day whether
+    // or not it can see the mark, and the shop side reads the mark only
+    // so its calendar and sale form can EXPLAIN the refusal rather than
+    // showing an opaque permission-denied.
+    function leavePath(dk) {
+      return /databases/$(database)/documents/dayLeaves/$(dk);
+    }
+
+    // Is this business day marked as leave? Existence is the mark: there
+    // is no flag to fall out of step with the path, and re-marking is a
+    // delete plus a create, so nothing stale survives.
+    function isLeaveDay(dk) {
+      return exists(leavePath(dk));
+    }
+
     // ---------------- The day head ----------------
     // One document per Asia/Kolkata business day. Created once, on that
     // day's first sale (js/ledger.js ensureDayHead), with zeroed
@@ -613,6 +647,52 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---------------- Leave days ----------------
+    // One tiny document per day the owner has marked as shut. Its
+    // EXISTENCE is the whole record (isLeaveDay above), so there is no
+    // state to keep in step and no flag to go stale.
+    //
+    // THE PRIVACY BOUNDARY LIVES HERE. Reading the mark is open to any
+    // trusted browser, because the shop side needs to show a leave day
+    // as shut - on the calendar, in the day picker, and in the sale form
+    // that has to explain WHY it is refusing a sale instead of showing an
+    // opaque permission-denied. But WRITING it is admin-only: a shop
+    // account can see that the owner has closed a day, and can no more
+    // un-close it than it can close a day itself. So "private" means the
+    // DECISION is the owner's alone, not that the fact is secret - a
+    // secret the counter could not see would only turn every refusal on
+    // that day into an unexplained error.
+    match /dayLeaves/{dateKey} {
+      // The shape is closed on purpose, and small: a dateKey pinned to
+      // its own path, and who marked it and when. `markedAt == request.time`
+      // means the stamp is always the server's, never a client's clock.
+      function validLeaveDoc(doc) {
+        return doc.keys().hasOnly(['dateKey', 'markedAt', 'markedBy'])
+          && doc.dateKey is string
+          && doc.dateKey == dateKey
+          && doc.dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && doc.markedAt == request.time
+          && doc.markedBy == request.auth.uid;
+      }
+
+      allow read: if trusted();
+
+      // Only an owner may declare a day off. Re-declaring is a no-op
+      // guard on the client; the rules allow a create only, so a mark
+      // cannot be edited into carrying something else.
+      allow create: if admin() && validLeaveDoc(request.resource.data);
+
+      // Taking a day off back is equally the owner's call, and equally
+      // admin-only.
+      allow delete: if admin();
+
+      // No update: the document carries nothing that may lawfully change.
+      // To move a leave mark you delete it and, if you still want it,
+      // create it again - which keeps the created/updated stamps honest
+      // rather than letting an edit silently re-date the decision.
+      allow update: if false;
+    }
+
     // Sales, inside their day. The service catalog now lives in the same
     // Firestore database, so rules CAN verify via get() that the service
     // exists and is active at write time — stronger than the old snapshot-
@@ -715,9 +795,21 @@ service cloud.firestore {
       allow read: if trusted();
 
       // Creating a sale and advancing the day's counters is ONE batch, so
-      // the head must move by exactly this sale's contribution.
+      // the head must move by exactly this sale's contribution. A day the
+      // owner has marked as leave takes no sales at all — that refusal
+      // lives here, next to the money, and not in a client check.
+      //
+      // DOCUMENT-ACCESS BUDGET: a single rule evaluation may make at most
+      // 10 get()/getAfter()/exists() calls, and this clause spends 9 of
+      // them — dayOpen (2), isLeaveDay (1), validTransactionDoc (3),
+      // exists(headPath) (1), headSteppedBy's get+getAfter (2). It was 8
+      // before leave was wired in. A tenth call anywhere below must be
+      // traded against one of these, or the rules REFUSE every sale with
+      // an evaluation error rather than a denial — the one failure mode
+      // that looks like the app being broken instead of being locked.
       allow create: if trusted()
         && dayOpen(dateKey)
+        && !isLeaveDay(dateKey)
         && validTransactionDoc(request.resource.data)
         && exists(headPath(dateKey))
         && headSteppedBy(
@@ -731,6 +823,7 @@ service cloud.firestore {
       // head shifts by the difference between the old and new split.
       allow update: if trusted()
         && dayOpen(dateKey)
+        && !isLeaveDay(dateKey)
         && validTransactionEdit(resource.data, request.resource.data)
         && exists(headPath(dateKey))
         && headShiftedBy(
@@ -743,6 +836,7 @@ service cloud.firestore {
       // Deleting retreats the counters by exactly this sale.
       allow delete: if trusted()
         && dayOpen(dateKey)
+        && !isLeaveDay(dateKey)
         && exists(headPath(dateKey))
         && headSteppedBy(
              get(headPath(dateKey)).data.counters,

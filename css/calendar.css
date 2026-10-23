@@ -85,6 +85,7 @@
 .cal-dot.is-empty { background: transparent; border-style: dashed; }
 .cal-dot.is-future { background: var(--color-bg); border-color: var(--color-border); opacity: 0.6; }
 .cal-dot.is-holiday { background: #fbe4e0; border-color: #d96a5b; }
+.cal-dot.is-leave { background: #e5e2fa; border-color: #6a5cc4; }
 
 /* ---------- Grid frame ---------- */
 .cal-card {
@@ -244,6 +245,22 @@
 .cal-cell.is-holiday .cal-cell-day { color: #b3402f; }
 .cal-cell.is-holiday .cal-cell-amount { color: #b3402f; }
 .cal-cell.is-holiday .cal-cell-foot { color: #c05749; }
+
+/* A day the owner has taken off. Deliberately NOT the Sunday red: that
+   wash means "the shop is always shut today", while this means "the
+   owner decided this one day is off", and a shopkeeper scanning the
+   month needs to tell a planned day off from a routine Sunday at a
+   glance. Cool indigo, echoing the owner console's accent, so the two
+   never blur. */
+.cal-cell.is-leave {
+  background: linear-gradient(160deg, #f2f1fd 0%, #e5e2fa 100%);
+  border-color: #b9b3f0;
+  border-style: solid;
+}
+
+.cal-cell.is-leave .cal-cell-day { color: #4b3fa8; }
+.cal-cell.is-leave .cal-cell-amount { color: #4b3fa8; }
+.cal-cell.is-leave .cal-cell-foot { color: #6a5cc4; font-weight: 700; }
 
 .cal-cell.is-outside {
   opacity: 0.5;
@@ -476,6 +493,7 @@
   .cal-cell.is-empty   { border-left-color: var(--color-warning); border-left-style: solid; }
   .cal-cell.is-future  { border-left-color: var(--color-border); }
   .cal-cell.is-holiday { border-left-color: #d96a5b; border-left-style: solid; }
+  .cal-cell.is-leave   { border-left-color: #6a5cc4; border-left-style: solid; }
   .cal-cell.is-outside { border-left-color: transparent; }
 
   /* The cell link becomes a horizontal row. */

@@ -143,7 +143,7 @@
       escapeHtml,
       todayKolkata,
     } from "./js/utils.js";
-    import { fetchMonthHeads, isNetworkError } from "./js/ledger.js";
+    import { fetchMonthHeads, fetchMonthLeaves, isNetworkError } from "./js/ledger.js";
     import { dayHeading } from "./js/day-ledger.js";
     import { reportError } from "./js/auth.js";
     import { initAppShell } from "./js/shell.js";
@@ -212,6 +212,7 @@
           '<span class="cal-legend-item"><i class="cal-dot is-empty"></i>Nothing entered</span>' +
           '<span class="cal-legend-item"><i class="cal-dot is-future"></i>Not yet</span>' +
           '<span class="cal-legend-item"><i class="cal-dot is-holiday"></i>Sunday holiday</span>' +
+          '<span class="cal-legend-item"><i class="cal-dot is-leave"></i>Day off</span>' +
         "</div>" +
 
         '<div class="card cal-card">' +
@@ -248,11 +249,19 @@
       if (!cell.inMonth) classes.push("is-outside");
       if (cell.isToday) classes.push("is-today");
       if (cell.isHoliday) classes.push("is-holiday");
+      if (cell.isLeave) classes.push("is-leave");
 
       const dayNumber = Number(cell.dateKey.slice(8, 10));
       const classesAttr = classes.join(" ");
 
+      /* A day off is named for the reason the shop is shut, before the
+         closed/empty wording: "Nothing entered" would read as a day the
+         shop owes, which is exactly what a day off is not. A FUTURE day
+         off gets the same word — it is marked holiday too, but "Holiday"
+         would name the calendar for the day rather than the decision the
+         owner has already made about it. */
       const statusWord =
+        cell.isLeave ? "Leave" :
         cell.status === DAY_STATUS.CLOSED ? "Closed" :
         cell.status === DAY_STATUS.FUTURE ? (cell.isHoliday ? "Holiday" : "Not yet") :
         cell.status === DAY_STATUS.EMPTY ? (cell.isHoliday ? "Holiday" : "Nothing entered") :
@@ -271,10 +280,15 @@
 
       const foot = '<span class="cal-cell-foot">' + statusWord + "</span>";
 
-      /* A future day cannot take an entry, and a closed one will refuse
-         one, so the button is only offered where it can work. */
+      /* A future day cannot take an entry, a closed one will refuse one,
+         and a day the owner has taken off refuses every sale — checked
+         off the leave MARK and not off status, because a day worked
+         earlier and only later marked off still reads as "filled" while
+         the rules refuse anything further on it. Offering the button
+         there would take the shopkeeper all the way to a filled-in form
+         to be turned away. */
       const addBtn =
-        cell.inMonth && !cell.isFuture && cell.status !== DAY_STATUS.CLOSED
+        cell.inMonth && !cell.isFuture && !cell.isLeave && cell.status !== DAY_STATUS.CLOSED
           ? '<button class="cal-cell-add" type="button" data-add-day="' + escapeHtml(cell.dateKey) + '" ' +
             'aria-label="Record a sale on ' + escapeHtml(heading) + '" title="Record a sale on this day">' + ICON_PLUS + "</button>"
           : "";
@@ -428,9 +442,17 @@
       renderSkeleton();
 
       try {
-        const heads = await fetchMonthHeads({ yearMonth: requested, force });
+        /* The month's heads and its leave marks are read together, so the
+         grid is drawn from one moment: a day taken off on another device
+         must not appear worked for the length of a second query. A failed
+         leave read falls back to an empty map, which draws the month as it
+         looked before leave existed rather than hiding the whole grid. */
+        const [heads, leaves] = await Promise.all([
+          fetchMonthHeads({ yearMonth: requested, force }),
+          fetchMonthLeaves({ yearMonth: requested, force }).catch(() => ({})),
+        ]);
         if (!isCurrent(token, requested)) return;
-        cells = buildGrid({ yearMonth: requested, heads, todayKey: todayKolkata() });
+        cells = buildGrid({ yearMonth: requested, heads, leaves, todayKey: todayKolkata() });
       } catch (err) {
         if (!isCurrent(token, requested)) return;
         console.error("[trustx-ledger] calendar load:", err);

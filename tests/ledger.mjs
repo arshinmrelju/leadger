@@ -67,6 +67,9 @@ import {
   counterStepAllowed,
   HEAD_COUNT_STEP,
   HEAD_MONEY_STEP,
+  LEAVE_DOC_FIELDS,
+  isValidLeaveDoc,
+  buildLeaveDoc,
 } from "../js/day-heads.js";
 
 import {
@@ -1323,6 +1326,145 @@ test("the client's copy of the rules' head bound still matches firestore.rules",
   assert.equal(HEAD_COUNT_STEP, 1, "the rules still allow a head to move by one sale, not two");
   assert.match(bound[0], /after\.txnCount == before\.txnCount - 1/, "a head may still lose one sale");
   assert.match(bound[0], /countersOk\(after\)/, "the rules judge the destination, not the journey");
+});
+
+/* =========================================================
+   Leave days: the rules the mark lives by
+
+   A day off is worth nothing to a thief and everything to a refusal, so
+   the whole feature turns on firestore.rules — the shape of the mark,
+   who may write it, and the fact that it stops a sale. These tests read
+   the rules file itself for the last two, because a leave mark the
+   client believes is admin-only while the rules allow a shop account to
+   write it is not a privacy setting, it is a comment.
+   ========================================================= */
+
+test("firestore.rules keeps a leave mark admin-written and gives it the client's own shape", () => {
+  const rules = fs.readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
+  const match = rules.match(/match \/dayLeaves\/\{dateKey\} \{[\s\S]*?\n    \}/);
+  assert.ok(match, "dayLeaves must still have its own match block");
+  const block = match[0];
+
+  /* Privacy lives entirely here: a shop account must not be able to take
+     a day off or give it back. */
+  assert.match(block, /allow create: if admin\(\) && validLeaveDoc\(request\.resource\.data\)/,
+    "only an admin may mark a day as leave");
+  assert.match(block, /allow delete: if admin\(\)/, "only an admin may take the day off back");
+  assert.match(block, /allow update: if false;/,
+    "a mark is created and deleted, never edited, so it cannot be re-stamped");
+
+  /* The shop side reads the mark only to EXPLAIN a refusal the rules
+     would issue anyway, which is what trusted() allows. */
+  assert.match(block, /allow read: if trusted\(\)/, "the counter can see a day is shut");
+
+  /* The shape the client mirrors in isValidLeaveDoc. */
+  assert.match(block, /hasOnly\(\['dateKey', 'markedAt', 'markedBy'\]\)/,
+    "the mark carries a date, a stamp and a marker, and nothing else");
+  assert.match(block, /doc\.markedAt == request\.time/, "the stamp is the server's, never a client clock");
+  assert.match(block, /doc\.markedBy == request\.auth\.uid/, "the mark names the admin who made it");
+
+  assert.equal(
+    LEAVE_DOC_FIELDS.join(","),
+    "dateKey,markedAt,markedBy",
+    "the client's LEAVE_DOC_FIELDS must be the rules' hasOnly list, in order",
+  );
+});
+
+test("firestore.rules refuses every sale on a leave day, not just a new one", () => {
+  const rules = fs.readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
+  const sales = rules.match(/match \/dayHeads\/\{dateKey\}\/transactions\/\{txnId\} \{[\s\S]*?\n    \}/);
+  assert.ok(sales, "the transactions block must still exist");
+  const block = sales[0];
+
+  /* Each of the three writes gets its own check: blocking only the create
+     would leave a shop able to edit or delete its way onto a day the
+     owner has declared shut — and a delete on a leave day would also
+     retreat counters the rules then could not re-advance. */
+  const gates = block.match(/&& !isLeaveDay\(dateKey\)/g) || [];
+  assert.equal(gates.length, 3, "create, update and delete each refuse a leave day");
+  assert.match(block, /&& dayOpen\(dateKey\)/, "the leave check sits beside the day's own open check");
+
+  /* exists() is a server-side check: it needs no read permission on the
+     mark, so the refusal holds for a browser that cannot see the mark
+     at all. */
+  assert.match(rules, /function isLeaveDay\(dk\) \{\s*return exists\(leavePath\(dk\)\);/,
+    "the block is a server-side exists(), not a client-side read");
+});
+
+/**
+ * What js/ledger.js actually passes as `markedAt`: the value the Firebase
+ * SDK's serverTimestamp() returns.
+ *
+ * Shaped by reading firebase-firestore.js 12.18.0 — `function
+ * serverTimestamp(){return new ServerTimestampFieldValueImpl("serverTimestamp")}`
+ * over `class FieldValue{constructor(_){this._methodName=_}}`. It is a
+ * FieldValue whose only own field is `_methodName`; it carries NO
+ * `serverTimestamp: true` marker. Tests that invent a friendlier shape
+ * here would let a validator that rejects the real SDK pass green while
+ * refusing every mark in the browser, which is exactly the bug this
+ * helper exists to make impossible to reintroduce.
+ */
+function realServerTimestampSentinel() {
+  return { _methodName: "serverTimestamp" };
+}
+
+test("isValidLeaveDoc answers the way the rules' validLeaveDoc does", () => {
+  const dateKey = "2026-10-23";
+
+  /* The ordinary mark: the shape markDayLeave actually writes, with the
+     stamp the SDK ACTUALLY returns. */
+  const mark = buildLeaveDoc(dateKey, "uid-1", realServerTimestampSentinel());
+  assert.ok(isValidLeaveDoc(mark, dateKey), "a fresh mark for its own path is accepted");
+  assert.deepEqual(Object.keys(mark), LEAVE_DOC_FIELDS, "and it carries exactly the allowed fields");
+
+  /* Regression: the sentinel is a FieldValue with a `_methodName` field,
+     not a `{serverTimestamp: true}` object. A validator keyed to the
+     invented shape accepted nothing real — the mark was refused in the
+     browser while these tests stayed green. */
+  assert.equal(Object.prototype.hasOwnProperty.call(mark.markedAt, "serverTimestamp"), false,
+    "the real SDK sentinel carries no `serverTimestamp` property, so the validator must not require one");
+
+  /* The dateKey is checked against the PATH, not merely against the
+     pattern: a mark for one day filed under another is the drift the
+     rules refuse with doc.dateKey == dateKey. */
+  assert.equal(isValidLeaveDoc(mark, "2026-10-24"), false, "a mark filed under another day is refused");
+  assert.equal(isValidLeaveDoc({ ...mark, dateKey: "not-a-day" }, "not-a-day"), false,
+    "a key that is not a date is refused even on its own path");
+
+  /* Every hand-rolled clock is refused, because the rules compare the
+     stamp with request.time and no client clock can equal it. These are
+     the three shapes a wrong stamp arrives in. */
+  assert.equal(isValidLeaveDoc({ ...mark, markedAt: new Date() }, dateKey), false,
+    "a Date is refused — the rules read request.time");
+  assert.equal(isValidLeaveDoc({ ...mark, markedAt: Date.now() }, dateKey), false,
+    "a millisecond count is refused");
+  assert.equal(isValidLeaveDoc({ ...mark, markedAt: "2026-10-23T10:00:00Z" }, dateKey), false,
+    "a stringified time is refused");
+  assert.equal(isValidLeaveDoc({ ...mark, markedAt: null }, dateKey), false,
+    "a missing stamp is refused");
+  assert.equal(isValidLeaveDoc({ ...mark, markedAt: undefined }, dateKey), false,
+    "an absent stamp is refused too, not only an explicit null");
+
+  /* The direction of the residual doubt matters: an object the client
+     cannot recognise as a clock is let through for the server to judge,
+     because a false accept costs one refused write and a false reject
+     costs the owner the ability to mark a day off at all. */
+  assert.ok(isValidLeaveDoc({ ...mark, markedAt: {} }, dateKey),
+    "an unrecognised object is the server's call, not this function's");
+
+  /* A non-admin writing a mark is refused by the rules' admin() gate;
+     the client can only be sure of the SHAPE, so markedBy must be a uid. */
+  assert.equal(isValidLeaveDoc({ ...mark, markedBy: "" }, dateKey), false, "an unnamed marker is refused");
+
+  /* Closed shape, exactly as the rules' hasOnly does. */
+  assert.equal(isValidLeaveDoc({ ...mark, note: "family day" }, dateKey), false,
+    "a note is not a field the rules allow, so the client refuses it here rather than after the network");
+  delete mark.markedBy;
+  assert.equal(isValidLeaveDoc(mark, dateKey), false, "a mark missing a field is refused");
+
+  assert.equal(isValidLeaveDoc(null, dateKey), false, "rubbish in, false out — never a crash");
+  assert.equal(isValidLeaveDoc(undefined, dateKey), false);
+  assert.equal(isValidLeaveDoc("2026-10-23", dateKey), false);
 });
 
 test("counterStepAllowed mirrors the rules: one sale, a valid destination", () => {

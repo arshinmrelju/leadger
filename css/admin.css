@@ -821,6 +821,24 @@ body[data-page="admin"].fin-login-page {
   font-weight: 800;
 }
 
+/* The two day actions sit side by side, each taking half the row: close
+   and mark-as-leave are separate decisions about the same day, and
+   stacking them full-width would push the tiles below the fold. The
+   100% width of .fin-daytoggle is scoped back down to the flexed child
+   so neither button overflows the row. */
+.fin-dayactions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fin-dayactions .fin-daytoggle {
+  flex: 1 1 0;
+  width: auto;
+  margin-top: 0;
+  min-width: 0;
+}
+
 .fin-daytoggle.btn-primary {
   background: var(--fin-primary);
 }

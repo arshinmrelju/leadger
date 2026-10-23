@@ -86,6 +86,14 @@ const ICON_RECEIPT =
 const CLOSED_DAY_MSG =
   "This business day is closed, so its sales can no longer be changed. Reopen it from the Daily Ledger page to make a correction.";
 
+/* A day the owner has marked as leave takes no sales at all, so there is
+   nothing here to correct — and no reopen that would help, because the
+   refusal comes from the leave mark, not from the day's state. The next
+   move is the owner's, which is what this says. */
+const LEAVE_DAY_MSG =
+  "This business day is marked as leave, so the shop is shut and its sales cannot be changed. " +
+  "Only the owner can take the day off back from the Owner console.";
+
 let overlay = null;    // the edit dialog, built on first use
 let services = null;   // catalog for the picker; null until the first read
 let editing = null;    // the row currently open in the dialog
@@ -302,6 +310,10 @@ async function describeRefusedWrite(err, closed, row) {
 async function assertDayOpen(row) {
   const day = await fetchDayState(row.dateKey);
   if (day.closed) throw new Error(CLOSED_DAY_MSG);
+  /* A leave mark is a second, independent refusal — the rules refuse it
+     server-side (isLeaveDay) — so it is checked here to name it rather
+     than let it arrive as a bare permission-denied. */
+  if (day.leave) throw new Error(LEAVE_DAY_MSG);
 }
 
 /* ---------------- Edit dialog ---------------- */
@@ -468,6 +480,12 @@ async function editRow(row, closed) {
   const day = await fetchDayState(row.dateKey);
   if (day.closed) {
     toast(CLOSED_DAY_MSG, "error");
+    return false;
+  }
+  /* Same second refusal as assertDayOpen, caught before the dialog is
+     built: there is no point opening a form the save will refuse. */
+  if (day.leave) {
+    toast(LEAVE_DAY_MSG, "error");
     return false;
   }
 

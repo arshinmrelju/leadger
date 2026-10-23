@@ -153,6 +153,80 @@ test("buildGrid: every Sunday is a holiday, and holidays are not missed", () => 
   assert.ok(!missedDays(cells).includes("2026-09-13"));
 });
 
+test("buildGrid: a day the owner took off reads as LEAVE, not as a day with nothing on it", () => {
+  /* 2026-09-07 is a Monday with no head: without the leave mark it is
+     exactly the "Nothing entered" cell that invites a sale the rules
+     would now refuse. */
+  const cells = buildGrid({
+    yearMonth: "2026-09",
+    todayKey: "2026-09-30",
+    leaves: { "2026-09-07": true },
+  });
+  const cell = cells.find((c) => c.dateKey === "2026-09-07");
+
+  assert.ok(cell, "the day is still drawn");
+  assert.equal(cell.status, "leave", "a day off is named for why nothing is on it");
+  assert.equal(cell.isLeave, true);
+  assert.equal(cell.isHoliday, true, "and counts among the days the shop is shut");
+
+  /* The whole point: a day off is not a day the shop owes. */
+  assert.ok(!missedDays(cells).includes("2026-09-07"), "a day off is never listed as missed");
+});
+
+test("buildGrid: marking a day off over sales that already exist keeps the money on screen", () => {
+  /* The owner can mark a day as leave after a day was worked — the rules
+     then refuse further sales, but what was already taken is real and
+     must neither vanish from the grid nor from the month's totals. */
+  const cells = buildGrid({
+    yearMonth: "2026-09",
+    todayKey: "2026-09-30",
+    heads: { "2026-09-15": head({ txnCount: 3, grossPaise: 50000, collectedPaise: 50000, duePaise: 0 }) },
+    leaves: { "2026-09-15": true },
+  });
+  const cell = cells.find((c) => c.dateKey === "2026-09-15");
+
+  assert.equal(cell.isLeave, true, "the day is marked as a day off");
+  assert.equal(cell.status, "filled", "and it still reads as the worked day it is");
+  assert.equal(cell.txnCount, 3, "its sales are kept");
+  assert.equal(cell.grossPaise, 50000, "and so is its money");
+
+  const t = monthTotals(cells);
+  assert.equal(t.grossPaise, 50000, "the month still counts what that day took");
+  assert.equal(t.daysLeave, 0, "a worked day with a later mark on it is still a worked day");
+
+  /* Its figures are real, so no "could not be read" apology is owed. */
+  assert.equal(cell.figuresUnreadable, false);
+});
+
+test("buildGrid: without a leave map the month draws exactly as it did before leave existed", () => {
+  /* The caller is allowed to have no leave data at all — a failed read
+     falls back to {} — so buildGrid must not invent shut days. */
+  const plain = buildGrid({ yearMonth: "2026-09", todayKey: "2026-09-30" });
+  const empty = buildGrid({ yearMonth: "2026-09", todayKey: "2026-09-30", leaves: null });
+  const blank = buildGrid({ yearMonth: "2026-09", todayKey: "2026-09-30", leaves: {} });
+
+  assert.equal(plain.some((c) => c.isLeave), false, "no map means no days off");
+  assert.deepEqual(blank, empty, "and an empty map is the same month, cell for cell");
+
+  /* Junk is tolerated rather than crashing the grid. */
+  const junk = buildGrid({ yearMonth: "2026-09", todayKey: "2026-09-30", leaves: "nonsense" });
+  assert.equal(junk.length, 42, "a broken leave map still yields a whole grid");
+  assert.equal(junk.some((c) => c.isLeave), false);
+});
+
+test("buildGrid: a future day off is named now, because the owner has already decided", () => {
+  const cells = buildGrid({
+    yearMonth: "2026-09",
+    todayKey: "2026-09-15",
+    leaves: { "2026-09-25": true },
+  });
+  const cell = cells.find((c) => c.dateKey === "2026-09-25");
+
+  assert.equal(cell.status, "future", "it is still a day that has not arrived");
+  assert.equal(cell.isLeave, true, "but the decision is already worth showing");
+  assert.ok(!missedDays(cells).includes("2026-09-25"), "and it is not a day the shop owes");
+});
+
 test("buildGrid: a day with sales is FILLED, and a closed one is CLOSED", () => {
   const cells = buildGrid({
     yearMonth: "2026-09",
@@ -325,6 +399,38 @@ test("monthTotals: sums the recorded days and counts the rest as missing", () =>
   /* Sept 6 2026 was a Sunday holiday, so it is not owed. */
   assert.equal(t.daysHoliday, 1);
   assert.equal(t.daysMissed, 7);
+});
+
+test("monthTotals: days off are counted as days off, not as holidays and not as missed", () => {
+  /* The same month as above, with Sept 7 — a working Monday — taken off. */
+  const without = buildGrid({
+    yearMonth: "2026-09",
+    todayKey: "2026-09-10",
+    heads: {
+      "2026-09-01": head({ txnCount: 2, grossPaise: 30000, collectedPaise: 20000, duePaise: 10000 }),
+      "2026-09-02": head({ txnCount: 1, grossPaise: 10000, collectedPaise: 10000, duePaise: 0 }, "closed"),
+    },
+  });
+  const withLeave = buildGrid({
+    yearMonth: "2026-09",
+    todayKey: "2026-09-10",
+    heads: {
+      "2026-09-01": head({ txnCount: 2, grossPaise: 30000, collectedPaise: 20000, duePaise: 10000 }),
+      "2026-09-02": head({ txnCount: 1, grossPaise: 10000, collectedPaise: 10000, duePaise: 0 }, "closed"),
+    },
+    leaves: { "2026-09-07": true },
+  });
+
+  const a = monthTotals(without);
+  const b = monthTotals(withLeave);
+
+  assert.equal(b.daysLeave, 1, "the day off is counted in its own right");
+  assert.equal(b.daysMissed, a.daysMissed - 1, "and it leaves exactly one day that is still owed");
+  assert.equal(b.daysHoliday, a.daysHoliday, "it is not filed as a Sunday-style holiday");
+  assert.equal(b.daysRecorded, a.daysRecorded, "and nothing about the money moves");
+
+  /* The day count is unchanged: a day off is still a day of the month. */
+  assert.equal(b.daysInMonth, a.daysInMonth);
 });
 
 test("monthTotals: a month with nothing in it is all missing, not zero-sold", () => {

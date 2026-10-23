@@ -42,6 +42,8 @@ export const DAY_STATUS = Object.freeze({
   EMPTY: "empty",
   /** After today, so nothing can be recorded on it yet. */
   FUTURE: "future",
+  /** The owner marked the shop shut for this day — a day off. */
+  LEAVE: "leave",
 });
 
 /** Monday-first, because that is how an Indian shop calendar is read. */
@@ -178,11 +180,16 @@ export function dayCellLabel(dateKey) {
  *   `figuresUnreadable` when the day is closed but its counters do not
  *   add up: the lock and the Closed label are real, the money is not.
  */
-export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
+export function buildGrid({ yearMonth, heads = null, leaves = null, todayKey = "" } = {}) {
   const bounds = monthBounds(yearMonth);
   if (!bounds) return [];
 
   const table = heads && typeof heads === "object" ? heads : {};
+  /* A map of dateKey -> true for the days the owner has taken off. Read
+     beside the heads rather than from them: a day off is a separate fact
+     from the day's money, held in its own collection (dayLeaves), and it
+     usually has no head at all. */
+  const offDays = leaves && typeof leaves === "object" ? leaves : {};
   const today = isValidDateKey(todayKey) ? todayKey : "";
   const gridStart = shiftDayKey(bounds.firstKey, -weekdayIndex(bounds.firstKey));
 
@@ -191,6 +198,7 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
     const dateKey = shiftDayKey(gridStart, i);
     const inMonth = dateKey.slice(0, 7) === bounds.yearMonth;
     const isToday = today ? dateKey === today : false;
+    const isLeave = !!offDays[dateKey];
 
     /* A future day is not "missing" even though it has no head, so the
        status is decided before the head is consulted and the caller
@@ -198,14 +206,20 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
        the cell is AFTER today. */
     if (today && daysBetweenDateKeys(today, dateKey) > 0) {
       const cell = blankCell(dateKey, inMonth, true, isToday);
-      cell.isHoliday = isSunday(dateKey) && inMonth;
+      /* A planned day off in the future is still worth naming now: the
+         owner has already decided the shop is shut, and a cell that says
+         only "Not yet" hides a decision that affects the counter. */
+      cell.isLeave = isLeave && inMonth;
+      cell.isHoliday = (isSunday(dateKey) || cell.isLeave) && inMonth;
       cells.push(cell);
       continue;
     }
 
     const raw = inMonth ? table[dateKey] : null;
     const head = raw ? readHead(raw) : null;
-    const holiday = isSunday(dateKey);
+    /* Every Sunday is a holiday, and so is every day the owner has taken
+       off — both are days the shop is shut and nothing is owed. */
+    const holiday = isSunday(dateKey) || isLeave;
 
     if (!head) {
       /* No head, or one whose counters do not add up. Those are different
@@ -218,8 +232,23 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
          to type sales into a day that refuses them. */
       const closed = isClosedHead(raw);
       const cell = blankCell(dateKey, inMonth, false, isToday);
+      cell.isLeave = isLeave && inMonth;
       cell.isHoliday = holiday && inMonth;
-      if (closed) {
+      if (isLeave) {
+        /* A day off is its own status, decided before the closed check:
+           it is the reason nothing was recorded, so it must not read as
+           "Nothing entered" and be counted among the days the shop owes. */
+        cell.status = DAY_STATUS.LEAVE;
+        cell.closed = !!closed;
+        /* Unreadable figures are the SAME fact here as on any other day:
+           the day is closed and its totals cannot be added up. The usual
+           case — a day off with no head at all — has nothing to read and
+           nothing to apologise for, so it stays false and the cell shows
+           a plain "—". Marking it true would tell the shopkeeper a
+           closed day's totals had failed to load, when the honest answer
+           is that the day was never worked. */
+        cell.figuresUnreadable = !!closed;
+      } else if (closed) {
         cell.status = DAY_STATUS.CLOSED;
         cell.closed = true;
         cell.figuresUnreadable = true;
@@ -238,7 +267,9 @@ export function buildGrid({ yearMonth, heads = null, todayKey = "" } = {}) {
       collectedPaise: head.collectedPaise,
       duePaise: head.duePaise,
       closed: head.closed,
+      isLeave: isLeave && inMonth,
       isHoliday: holiday && inMonth,
+      figuresUnreadable: false,
     });
   }
   return cells;
@@ -294,6 +325,7 @@ function blankCell(dateKey, inMonth, isFuture, isToday) {
     closed: false,
     figuresUnreadable: false,
     isHoliday: false,
+    isLeave: false,
   };
 }
 
@@ -383,11 +415,20 @@ export function monthTotals(cells) {
     daysClosed: 0,
     daysMissed: 0,
     daysHoliday: 0,
+    daysLeave: 0,
   };
 
   for (const cell of Array.isArray(cells) ? cells : []) {
     if (!cell || !cell.inMonth || cell.isFuture) continue;
     totals.daysInMonth += 1;
+    /* A day the owner took off is counted on its own, not as a holiday
+       and not as a missed day: it is a deliberate shut day, which is
+       neither "the shop is always shut on Sundays" nor "the shop forgot
+       to write this day up". */
+    if (cell.status === DAY_STATUS.LEAVE) {
+      totals.daysLeave += 1;
+      continue;
+    }
     if (cell.isHoliday && cell.status !== DAY_STATUS.FILLED && cell.status !== DAY_STATUS.CLOSED) {
       totals.daysHoliday += 1;
       continue;
@@ -421,6 +462,10 @@ export function missedDays(cells, limit = 10) {
   for (const cell of Array.isArray(cells) ? cells : []) {
     if (!cell || !cell.inMonth) continue;
     if (cell.isHoliday) continue;
+    /* A day the owner took off is not a day the shop owes: it has no
+       head because it was never worked, and listing it would keep
+       inviting a sale the rules would refuse. */
+    if (cell.status === DAY_STATUS.LEAVE) continue;
     if (cell.status !== DAY_STATUS.EMPTY) continue;
     list.push(cell.dateKey);
   }

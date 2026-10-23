@@ -233,3 +233,86 @@ export function counterStepAllowed(before, after) {
 
   return true;
 }
+
+/* ------------------------------------------------------------------
+   Leave days — the pure shape of "the shop is shut today"
+   ------------------------------------------------------------------
+   A leave day has no head and no counters: it is only the FACT that the
+   owner declared the day off, stored as the existence of
+   dayLeaves/{dateKey}. This half mirrors the rules' validLeaveDoc so the
+   client can answer "will the rules accept this mark?" BEFORE spending
+   the write, exactly as counterStepAllowed does for a head.
+
+   It carries no money and no arithmetic, but it belongs here rather than
+   in the data layer for the same reason the other shapes do: the rules
+   pin it with keys().hasOnly(), and a rule that drifts from the client
+   is a refusal nobody can explain. tests/ledger.mjs reads
+   firestore.rules and asserts the two still agree.
+   ------------------------------------------------------------------ */
+
+/** The only fields a leave document may carry. Mirrors the rules. */
+export const LEAVE_DOC_FIELDS = Object.freeze(["dateKey", "markedAt", "markedBy"]);
+
+/** A leave dateKey is an ordinary business day, pinned to its path. */
+const LEAVE_DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Would firestore.rules accept this leave document on this path?
+ *
+ * The dateKey is checked against the PATH it is being written to, not
+ * merely against the regex: a mark for one day filed under another day's
+ * id is exactly the drift the rules refuse, and catching it here means
+ * the owner is told which day disagrees instead of seeing a denial.
+ *
+ * `markedAt` must be the value `fs.serverTimestamp()` returns, because
+ * the rules compare it with request.time and NOTHING else can equal it.
+ * The client cannot prove the stamp IS that value without reaching into
+ * the SDK's own fields: the sentinel exposes no `serverTimestamp`
+ * property to read (it is a FieldValue whose only own field is its
+ * method name), and a check written against a private field would die
+ * silently on the next SDK upgrade — every mark refused, no error the
+ * shop could act on. So this checks what is certain from outside: that
+ * the stamp is not one of the client clocks the rules WILL refuse — a
+ * Date, a number or a string. Accepting a value the server turns down is
+ * the safe direction to be wrong in; refusing one the server would take
+ * is not. The server stays the authority on the rest.
+ *
+ * @param {object} doc    the leave document as the client would write it
+ * @param {string} pathKey  the dateKey in the document's own path
+ * @returns {boolean}
+ */
+export function isValidLeaveDoc(doc, pathKey) {
+  if (!doc || typeof doc !== "object") return false;
+
+  const keys = Object.keys(doc);
+  if (keys.length !== LEAVE_DOC_FIELDS.length) return false;
+  for (const field of LEAVE_DOC_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(doc, field)) return false;
+  }
+
+  if (typeof doc.dateKey !== "string" || !LEAVE_DATE_KEY_REGEX.test(doc.dateKey)) return false;
+  /* The mark belongs to the day it is filed under, or not at all. */
+  if (doc.dateKey !== pathKey) return false;
+  if (typeof doc.markedBy !== "string" || doc.markedBy.length < 1) return false;
+
+  /* Every hand-rolled clock is refused, and they are distinguishable
+     from the sentinel without knowing its internals: a client clock
+     arrives as a Date, a number or a string. `null`/`undefined` are
+     refused too, because a missing stamp is a missing field as far as
+     request.time is concerned. */
+  const stamp = doc.markedAt;
+  if (stamp === null || typeof stamp === "undefined") return false;
+  if (stamp instanceof Date || typeof stamp === "number" || typeof stamp === "string") return false;
+  if (typeof stamp !== "object") return false;
+
+  return true;
+}
+
+/** A fresh leave mark for `dateKey`, stamped with the server's clock. */
+export function buildLeaveDoc(dateKey, uid, serverTimestampSentinel) {
+  return {
+    dateKey,
+    markedAt: serverTimestampSentinel,
+    markedBy: uid,
+  };
+}
