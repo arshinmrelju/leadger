@@ -811,9 +811,14 @@ body[data-page="dashboard"] {
 }
 
 /* ---------- Powered-by badge (TechSiah) ----------
-   The attribution strip at the top of the sidebar footer band, above the
+   The attribution card at the top of the sidebar footer band, above the
    user chip. Mounted from js/shell.js so all five shell pages get it from
    one place.
+
+   It deliberately reuses the user chip's visual language (#fffdf9 fill,
+   dashed #dbc9b5 border, 10px radius, same soft shadow) so the two read as
+   a matched pair of tappable objects in the same band rather than as a
+   chip with a stray image glued above it.
 
    The logo is the dark-text wordmark and it is used unconditionally: the
    footer band is always the light parchment above, so there is no dark
@@ -825,49 +830,96 @@ body[data-page="dashboard"] {
    height and blow the row out. Two copies of the same number, one of them
    un-cacheable, is the fix. */
 .powered-by {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding-bottom: 0.6rem;
-  margin-bottom: 0.6rem;
-  border-bottom: 1px dashed #dbc9b5;
+  gap: 0.4rem;
+  padding: 0.55rem 0.7rem 0.6rem;
+  margin-bottom: 0.7rem;
+  background: #fffdf9;
+  border: 1px dashed #dbc9b5;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(110, 75, 30, 0.04);
   font-family: var(--font-sans);
   text-decoration: none;
   color: #8c765c;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
+/* Going from dashed to solid on hover is the whole affordance: it says the
+   card just became "live" without moving anything under the pointer. */
 .powered-by:hover {
+  background: #ffffff;
+  border-color: #c8b79b;
+  border-style: solid;
   color: #5c4a30;
+}
+
+.powered-by:focus-visible {
+  outline: 2px solid #1a753d;
+  outline-offset: 2px;
+}
+
+.powered-by:active {
+  transform: translateY(1px);
 }
 
 .powered-by-label {
   font-size: 0.6rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: #8c765c;
   white-space: nowrap;
   flex: none;
 }
 
-.powered-by-logo {
-  /* 36px, not 24px: at 24 the wordmark read as a smudge and the strip it
-     sits in looked half-empty. 36px puts the logo at ~109px wide, which
-     leaves ~20px of slack beside the "POWERED BY" label inside the 252px
-     sidebar. 40px was the tempting round number but needs ~215px of the
-     217px this row actually has, so a slightly wider label on another
-     machine would squeeze the image.
+/* Clips the "IDEAS TO REAL SOLUTIONS" tagline off the wordmark PNG so the
+   name itself can be large enough to read - see the comment on
+   mountPoweredByBadge in js/shell.js. 29px of a 42px-tall image shows the
+   top ~69%, which is the mark plus the wordmark and nothing else. */
+.powered-by-logo-crop {
+  display: block;
+  height: 29px;
+  max-width: 100%;
+  overflow: hidden;
+  line-height: 0;
+}
 
-     object-fit: contain is the guard for that exact case: height is fixed
-     and flex-shrink is allowed, so if the row ever does run short the box
-     narrows and the logo letterboxes instead of being squished flat. */
-  height: 36px;
-  object-fit: contain;
+.powered-by-logo {
+   /* 42px, not 24px: at 24 the wordmark read as a smudge. 42px puts the
+      name at ~120px wide inside the ~194px the card actually has, so it
+      stays legible and still has slack for a longer label or a narrower
+      sidebar.
+
+      object-fit: contain plus the max-width above is the guard for the row
+      ever running short: the box narrows and the logo letterboxes instead
+      of being squished flat. */
+  height: 42px;
   width: auto;
   max-width: 100%;
   min-width: 0;
-  flex-shrink: 1;
   display: block;
+  object-fit: contain;
+  object-position: top center;
+}
+
+/* The new-tab arrow. Hidden until hover/focus so the resting card is just
+   label + logo, and only shown once the user is actually on it. */
+.powered-by-arrow {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  opacity: 0;
+  color: #8c765c;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.powered-by:hover .powered-by-arrow,
+.powered-by:focus-visible .powered-by-arrow {
+  opacity: 0.85;
 }
 
 /* ---------- Dashboard Receipt Skeleton & Loading Styles ---------- */
